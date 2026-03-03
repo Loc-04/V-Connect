@@ -1,0 +1,28 @@
+{
+  "name": "shared-backend",
+  "version": "1.0.0",
+  "description": "V-Connect shared backend API",
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development nodemon shared-backend/src/server.js",
+    "start": "cross-env NODE_ENV=production node shared-backend/src/server.js",
+    "test": "cross-env NODE_ENV=test vitest run",
+    "test:watch": "cross-env NODE_ENV=test vitest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "nodemon": "^3.0.3",
+    "supertest": "^7.1.1",
+    "vitest": "^2.1.1"
+  }
+}
