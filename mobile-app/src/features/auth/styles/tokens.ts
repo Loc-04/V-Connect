@@ -1,0 +1,35 @@
+export const AuthTokens = {
+  colors: {
+    brandBlue: '#0a7ea4',
+    brandBlueDark: '#086a8a',
+    white: '#ffffff',
+    backgroundPrimary: '#ffffff',
+    backgroundSecondary: '#f4f8fa',
+    textPrimary: '#11181C',
+    textSecondary: '#687076',
+    textPlaceholder: '#9BA1A6',
+    inputBorder: '#d0d7de',
+    inputBorderFocus: '#0a7ea4',
+    error: '#d93025',
+    disabled: '#c4c9cc',
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+    xxl: 48,
+  },
+  radius: {
+    sm: 6,
+    md: 10,
+    lg: 16,
+  },
+  fontSize: {
+    sm: 13,
+    md: 15,
+    lg: 18,
+    xl: 28,
+  },
+} as const;
