@@ -1,10 +1,27 @@
 ## Shared Backend
 
-Run:
+### Run Backend
+
+From `V-Connect/shared-backend`:
 
 ```bash
 npm install
 npm run dev
+```
+
+Expected log:
+
+```text
+shared-backend listening on http://localhost:3000
+```
+
+### Stop Backend
+
+1. In the terminal that is running backend, press `Ctrl + C`.
+2. If the process is stuck, in PowerShell run:
+
+```powershell
+Get-Process node | Stop-Process -Force
 ```
 
 Required env:
