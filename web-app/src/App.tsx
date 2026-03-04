@@ -5,6 +5,7 @@ import { PublicOnlyRoute, RequireAdminRoute, RoleHomeRedirect } from './auth/Rou
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
@@ -31,6 +32,8 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/browse" element={<BrowseOpportunitiesPage />} />
+
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
           <Route
