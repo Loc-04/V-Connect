@@ -7,6 +7,7 @@ import {
   AuthPrimaryButton,
   AuthSwitchLink,
   AuthTokens,
+  signInWithEmail,
 } from '@/src/features/auth';
 import { ROUTES } from '@/src/shared/constants/route-constants';
 
@@ -33,9 +34,16 @@ export default function LoginScreen() {
   async function handleLogin() {
     if (!validate()) return;
     setLoading(true);
-    // TODO: integrate auth service
-    Alert.alert('Login', `Submit: ${email}`);
-    setLoading(false);
+    try {
+      const { error } = await signInWithEmail(email.trim(), password);
+      if (error) {
+        Alert.alert('Login Failed', error);
+      }
+    } catch {
+      Alert.alert('Login Failed', 'An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

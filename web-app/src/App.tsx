@@ -6,6 +6,7 @@ import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
+import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
@@ -33,6 +34,8 @@ function App() {
             }
           />
           <Route path="/activities/create" element={<CreateActivityPage />} />
+          <Route path="/browse" element={<BrowseOpportunitiesPage />} />
+
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
           <Route
