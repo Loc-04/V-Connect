@@ -7,6 +7,7 @@ import {
   AuthPrimaryButton,
   AuthSwitchLink,
   AuthTokens,
+  signUpWithEmail,
 } from '@/src/features/auth';
 import { ROUTES } from '@/src/shared/constants/route-constants';
 
@@ -48,9 +49,27 @@ export default function RegisterScreen() {
   async function handleRegister() {
     if (!validate()) return;
     setLoading(true);
-    // TODO: integrate auth service
-    Alert.alert('Register', `Submit: ${email}`);
-    setLoading(false);
+    try {
+      const { data: session, error } = await signUpWithEmail(
+        email.trim(),
+        password,
+        { fullName: fullName.trim() },
+      );
+      if (error) {
+        Alert.alert('Registration Failed', error);
+        return;
+      }
+      if (!session) {
+        Alert.alert(
+          'Check Your Email',
+          'A confirmation link has been sent to your email. Please verify before signing in.',
+        );
+      }
+    } catch {
+      Alert.alert('Registration Failed', 'An unexpected error occurred.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   function clearError(field: keyof FormErrors) {
