@@ -5,6 +5,7 @@ import { PublicOnlyRoute, RequireAdminRoute, RoleHomeRedirect } from './auth/Rou
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { CreateActivityPage } from './pages/CreateActivityPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
@@ -31,6 +32,7 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/activities/create" element={<CreateActivityPage />} />
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
           <Route
