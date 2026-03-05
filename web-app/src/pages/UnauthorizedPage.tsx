@@ -16,7 +16,7 @@ export function UnauthorizedPage() {
       <section className="card auth-card">
         <h1>Access Restricted</h1>
         <p className="muted">
-          This web workspace currently serves admin pages only. Your role: {profile?.role ?? 'unknown'}.
+          You do not have access to this page. Your role: {profile?.role ?? 'unknown'}.
         </p>
 
         {!session && (

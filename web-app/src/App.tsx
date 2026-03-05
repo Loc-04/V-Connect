@@ -1,15 +1,17 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthProvider } from './auth/AuthContext';
-import { PublicOnlyRoute, RequireAdminRoute, RoleHomeRedirect } from './auth/RouteGuards';
+import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute, RoleHomeRedirect } from './auth/RouteGuards';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
 import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
 import { LoginPage } from './pages/LoginPage';
+import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { VolunteerHomePage } from './pages/VolunteerHomePage';
 
 function App() {
   return (
@@ -37,6 +39,24 @@ function App() {
           <Route path="/browse" element={<BrowseOpportunitiesPage />} />
 
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
+          <Route
+            path="/volunteer/home"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <VolunteerHomePage />
+              </RequireRoleRoute>
+            }
+          />
+
+          <Route
+            path="/organizer/dashboard"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerDashboardPage />
+              </RequireRoleRoute>
+            }
+          />
 
           <Route
             path="/admin"

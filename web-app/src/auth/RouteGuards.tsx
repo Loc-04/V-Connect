@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
 import { useAuth } from './useAuth';
+import { getRoleHomePath } from './rolePaths';
 
 function PageLoading() {
   return (
@@ -28,11 +29,7 @@ export function RoleHomeRedirect() {
     return <Navigate to="/unauthorized" replace />;
   }
 
-  if (profile.role === 'admin') {
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
-  return <Navigate to="/unauthorized" replace />;
+  return <Navigate to={getRoleHomePath(profile.role)} replace />;
 }
 
 export function PublicOnlyRoute({ children }: { children: ReactNode }) {
@@ -46,14 +43,20 @@ export function PublicOnlyRoute({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  if (profile?.role === 'admin') {
-    return <Navigate to="/admin/dashboard" replace />;
+  if (!profile) {
+    return <Navigate to="/unauthorized" replace />;
   }
 
-  return <Navigate to="/unauthorized" replace />;
+  return <Navigate to={getRoleHomePath(profile.role)} replace />;
 }
 
-export function RequireAdminRoute({ children }: { children: ReactNode }) {
+export function RequireRoleRoute({
+  children,
+  allowedRoles,
+}: {
+  children: ReactNode;
+  allowedRoles: string[];
+}) {
   const { loading, session, profile } = useAuth();
   const location = useLocation();
 
@@ -65,9 +68,13 @@ export function RequireAdminRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  if (!profile || profile.role !== 'admin') {
+  if (!profile || !allowedRoles.includes(String(profile.role))) {
     return <Navigate to="/unauthorized" replace />;
   }
 
   return <>{children}</>;
+}
+
+export function RequireAdminRoute({ children }: { children: ReactNode }) {
+  return <RequireRoleRoute allowedRoles={['admin']}>{children}</RequireRoleRoute>;
 }
