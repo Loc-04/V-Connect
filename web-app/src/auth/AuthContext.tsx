@@ -11,9 +11,49 @@ interface MeResponse {
   profile: UserRecord | null;
 }
 
+interface ProfileSeed {
+  role: 'volunteer' | 'organizer';
+  fullName: string;
+  phone: string;
+}
+
 async function fetchUserProfile(accessToken: string): Promise<UserRecord | null> {
   const response = await apiRequest<MeResponse>('/auth/me', { accessToken });
   return response.profile;
+}
+
+function extractProfileSeed(session: Session): ProfileSeed | null {
+  const metadata = session.user.user_metadata ?? {};
+  const role = typeof metadata.role === 'string' ? metadata.role.trim().toLowerCase() : '';
+  const fullName = typeof metadata.full_name === 'string' ? metadata.full_name.trim() : '';
+  const phone = typeof metadata.phone === 'string' ? metadata.phone.trim() : '';
+
+  if ((role !== 'volunteer' && role !== 'organizer') || !fullName || !phone) {
+    return null;
+  }
+
+  return { role, fullName, phone };
+}
+
+async function ensureProfile(accessToken: string, session: Session): Promise<UserRecord | null> {
+  let profile = await fetchUserProfile(accessToken);
+  if (profile) {
+    return profile;
+  }
+
+  const seed = extractProfileSeed(session);
+  if (!seed) {
+    return null;
+  }
+
+  await apiRequest('/auth/register-profile', {
+    method: 'POST',
+    accessToken,
+    body: seed,
+  });
+
+  profile = await fetchUserProfile(accessToken);
+  return profile;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -40,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const nextProfile = await fetchUserProfile(nextSession.access_token);
+        const nextProfile = await ensureProfile(nextSession.access_token, nextSession);
         if (!active) {
           return;
         }
@@ -95,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Sign-in succeeded but no active session was returned.');
     }
 
-    const nextProfile = await fetchUserProfile(data.session.access_token);
+    const nextProfile = await ensureProfile(data.session.access_token, data.session);
     if (!nextProfile) {
       throw new Error('No profile found in public.users for this account.');
     }
@@ -124,6 +164,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw signUpError;
     }
 
+    const identities = signUpData.user?.identities ?? [];
+    const isDuplicateEmailSignup =
+      !signUpData.session &&
+      signUpData.user &&
+      Array.isArray(identities) &&
+      identities.length === 0;
+
+    if (isDuplicateEmailSignup) {
+      throw new Error('Email already registered. Please log in instead.');
+    }
+
     const userId = signUpData.user?.id;
     if (!userId) {
       throw new Error('Registration succeeded but no user id was returned.');
@@ -140,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      const nextProfile = await fetchUserProfile(signUpData.session.access_token);
+      const nextProfile = await ensureProfile(signUpData.session.access_token, signUpData.session);
       setSession(signUpData.session);
       setProfile(nextProfile);
       return { requiresEmailConfirmation: false, profile: nextProfile };

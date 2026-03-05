@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
+import { getRoleHomePath } from '../auth/rolePaths';
 import { useAuth } from '../auth/useAuth';
 import type { RegisterInput } from '../types/domain';
 
@@ -54,8 +55,8 @@ export function RegisterPage() {
         return;
       }
 
-      if (result.profile?.role === 'admin') {
-        navigate('/admin/dashboard', { replace: true });
+      if (result.profile) {
+        navigate(getRoleHomePath(result.profile.role), { replace: true });
         return;
       }
 

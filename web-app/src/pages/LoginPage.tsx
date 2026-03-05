@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
+import { getRoleHomePath } from '../auth/rolePaths';
 import { useAuth } from '../auth/useAuth';
 
 export function LoginPage() {
@@ -24,13 +25,14 @@ export function LoginPage() {
     try {
       const profile = await signInWithPassword(email.trim(), password);
       const target = (location.state as { from?: string } | null)?.from;
+      const roleHome = getRoleHomePath(profile.role);
 
-      if (profile.role === 'admin') {
-        navigate(target ?? '/admin/dashboard', { replace: true });
+      if (target && profile.role === 'admin') {
+        navigate(target, { replace: true });
         return;
       }
 
-      navigate('/unauthorized', { replace: true });
+      navigate(roleHome, { replace: true });
     } catch (error) {
       setFormError(getAuthErrorMessage(error));
     } finally {
