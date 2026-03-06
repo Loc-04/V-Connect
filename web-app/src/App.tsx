@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+﻿import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthProvider } from './auth/AuthContext';
 import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute, RoleHomeRedirect } from './auth/RouteGuards';
@@ -9,6 +9,7 @@ import { CreateActivityPage } from './pages/CreateActivityPage';
 import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
 import { LoginPage } from './pages/LoginPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+import { ProfileUiPage } from './pages/ProfileUiPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
@@ -45,6 +46,15 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['volunteer']}>
                 <VolunteerHomePage />
+              </RequireRoleRoute>
+            }
+          />
+
+          <Route
+            path="/volunteer/profile-ui"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <ProfileUiPage />
               </RequireRoleRoute>
             }
           />
