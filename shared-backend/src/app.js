@@ -8,6 +8,9 @@ dotenv.config();
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173';
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const PASSWORD_RESET_REDIRECT_TO =
+  process.env.PASSWORD_RESET_REDIRECT_TO ??
+  `${FRONTEND_ORIGIN.split(',')[0]?.trim().replace(/\/+$/, '') ?? 'http://localhost:5173'}/reset-password`;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('Missing SUPABASE_URL (or EXPO_PUBLIC_SUPABASE_URL) / SUPABASE_SERVICE_ROLE_KEY in shared-backend/.env');
@@ -86,6 +89,10 @@ function normalizeStringArray(value, fieldName) {
   }
 
   return normalized;
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function normalizeActivityLocation(value) {
@@ -318,6 +325,40 @@ async function getDistribution(table, key, excludeDeleted = false) {
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+app.post('/auth/reset-password', async (req, res) => {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+
+  if (!email) {
+    res.status(400).json({ message: 'email is required.' });
+    return;
+  }
+
+  if (!isValidEmail(email)) {
+    res.status(400).json({ message: 'email must be a valid email address.' });
+    return;
+  }
+
+  try {
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: PASSWORD_RESET_REDIRECT_TO,
+    });
+
+    if (error) {
+      const statusCode = Number.isInteger(error.status) ? error.status : 500;
+      res.status(statusCode).json({ message: error.message });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'If the email is registered, a password reset link has been sent.',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to send reset password email.';
+    res.status(500).json({ message });
+  }
 });
 
 app.get('/auth/me', requireAuth, (req, res) => {

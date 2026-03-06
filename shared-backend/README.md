@@ -25,6 +25,7 @@ shared-backend listening on http://localhost:3000
 ### Core Endpoints
 
 - `GET /health`
+- `POST /auth/reset-password`
 - `GET /auth/me`
 - `POST /auth/register-profile`
 - `GET /activities`
@@ -58,5 +59,28 @@ Get-Process node | Stop-Process -Force
 
 - `PORT` (optional, default `3000`)
 - `FRONTEND_ORIGIN` (optional, default `http://localhost:5173`)
+- `PASSWORD_RESET_REDIRECT_TO` (optional, default `${FRONTEND_ORIGIN}/reset-password`)
 - `SUPABASE_URL` (or `EXPO_PUBLIC_SUPABASE_URL`)
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+### Password Reset API
+
+Request:
+
+```http
+POST /auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+Success response:
+
+```json
+{
+  "success": true,
+  "message": "If the email is registered, a password reset link has been sent."
+}
+```
