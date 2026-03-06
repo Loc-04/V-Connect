@@ -27,6 +27,11 @@ shared-backend listening on http://localhost:3000
 - `GET /health`
 - `GET /auth/me`
 - `POST /auth/register-profile`
+- `GET /activities`
+- `GET /activities/:id`
+- `POST /activities`
+- `PATCH /activities/:id`
+- `DELETE /activities/:id`
 - `GET /admin/users`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`

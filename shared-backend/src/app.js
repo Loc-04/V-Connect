@@ -28,7 +28,11 @@ app.use(express.json());
 
 const userColumns = 'id, role, full_name, phone, avatar_url, status, created_at, updated_at, deleted_at';
 const volunteerColumns = 'user_id, skills, interests, availability, total_hours, updated_at';
+const activityColumns =
+  'id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id, created_at, updated_at, deleted_at';
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
+const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
+const activityWriteRoles = new Set(['admin', 'organizer']);
 
 function extractBearerToken(req) {
   const authorization = req.headers.authorization;
@@ -82,6 +86,160 @@ function normalizeStringArray(value, fieldName) {
   }
 
   return normalized;
+}
+
+function normalizeActivityLocation(value) {
+  if (typeof value === 'string') {
+    const address = value.trim();
+    if (!address) {
+      throw new Error('location cannot be empty.');
+    }
+
+    return {
+      address,
+      city: '',
+      lat: 0,
+      lng: 0,
+    };
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error('location must be an object or string.');
+  }
+
+  const address = typeof value.address === 'string' ? value.address.trim() : '';
+  if (!address) {
+    throw new Error('location.address is required.');
+  }
+
+  const city = typeof value.city === 'string' ? value.city.trim() : '';
+  const lat = Number(value.lat ?? 0);
+  const lng = Number(value.lng ?? 0);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error('location.lat and location.lng must be numbers.');
+  }
+
+  return {
+    address,
+    city,
+    lat,
+    lng,
+  };
+}
+
+function toIsoDateString(value, fieldName) {
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be an ISO date string.`);
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${fieldName} must be a valid date.`);
+  }
+
+  return parsed.toISOString();
+}
+
+function normalizeActivityPayload(body, { partial = false } = {}) {
+  if (!isPlainObject(body)) {
+    throw new Error('Body must be a JSON object.');
+  }
+
+  const payload = {};
+
+  if (Object.hasOwn(body, 'title')) {
+    if (typeof body.title !== 'string') {
+      throw new Error('title must be a string.');
+    }
+    const title = body.title.trim();
+    if (!title) {
+      throw new Error('title cannot be empty.');
+    }
+    payload.title = title;
+  } else if (!partial) {
+    throw new Error('title is required.');
+  }
+
+  if (Object.hasOwn(body, 'description')) {
+    if (typeof body.description !== 'string') {
+      throw new Error('description must be a string.');
+    }
+    payload.description = body.description.trim();
+  } else if (!partial) {
+    payload.description = '';
+  }
+
+  if (Object.hasOwn(body, 'location')) {
+    payload.location = normalizeActivityLocation(body.location);
+  } else if (!partial) {
+    payload.location = {
+      address: 'TBD',
+      city: '',
+      lat: 0,
+      lng: 0,
+    };
+  }
+
+  if (Object.hasOwn(body, 'startTime')) {
+    payload.start_time = toIsoDateString(body.startTime, 'startTime');
+  } else if (!partial) {
+    throw new Error('startTime is required.');
+  }
+
+  if (Object.hasOwn(body, 'endTime')) {
+    payload.end_time = toIsoDateString(body.endTime, 'endTime');
+  } else if (!partial) {
+    throw new Error('endTime is required.');
+  }
+
+  if (Object.hasOwn(body, 'capacity')) {
+    const capacity = Number(body.capacity);
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      throw new Error('capacity must be a positive integer.');
+    }
+    payload.capacity = capacity;
+  } else if (!partial) {
+    throw new Error('capacity is required.');
+  }
+
+  if (Object.hasOwn(body, 'requiredSkills')) {
+    payload.required_skills = normalizeStringArray(body.requiredSkills, 'requiredSkills');
+  } else if (!partial) {
+    payload.required_skills = [];
+  }
+
+  if (Object.hasOwn(body, 'status')) {
+    if (typeof body.status !== 'string') {
+      throw new Error('status must be a string.');
+    }
+    const normalizedStatus = body.status.trim().toLowerCase();
+    if (!validActivityStatuses.has(normalizedStatus)) {
+      throw new Error(`Invalid status. Allowed: ${Array.from(validActivityStatuses).join(', ')}`);
+    }
+    payload.status = normalizedStatus;
+  } else if (!partial) {
+    payload.status = 'draft';
+  }
+
+  if (partial && Object.keys(payload).length === 0) {
+    throw new Error('No valid activity fields provided.');
+  }
+
+  const hasBothTimeValues = Object.hasOwn(payload, 'start_time') && Object.hasOwn(payload, 'end_time');
+  if (hasBothTimeValues) {
+    const startTime = new Date(payload.start_time);
+    const endTime = new Date(payload.end_time);
+    if (endTime <= startTime) {
+      throw new Error('endTime must be later than startTime.');
+    }
+  }
+
+  return payload;
+}
+
+function canWriteActivities(role) {
+  return activityWriteRoles.has(String(role));
 }
 
 async function requireAuth(req, res, next) {
@@ -369,6 +527,257 @@ app.patch('/profile/me', requireAuth, async (req, res) => {
     const message = error instanceof Error ? error.message : 'Failed to update profile.';
     res.status(500).json({ message });
   }
+});
+
+app.get('/activities', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const mine = String(req.query.mine ?? 'false').toLowerCase() === 'true';
+  const statusFilter =
+    typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'all';
+  const requestedLimit = Number(req.query.limit ?? 24);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 100)
+    : 24;
+
+  if (statusFilter !== 'all' && !validActivityStatuses.has(statusFilter)) {
+    res.status(400).json({
+      message: `Invalid status filter. Allowed: all, ${Array.from(validActivityStatuses).join(', ')}`,
+    });
+    return;
+  }
+
+  if (mine && !canWriteActivities(role)) {
+    res.status(403).json({ message: 'Only organizers/admins can query own activities.' });
+    return;
+  }
+
+  let query = supabaseAdmin
+    .from('activities')
+    .select(activityColumns)
+    .is('deleted_at', null)
+    .order('start_time', { ascending: true })
+    .limit(limit);
+
+  if (mine) {
+    if (role !== 'admin') {
+      query = query.eq('organizer_id', req.auth.user.id);
+    }
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+  } else if (role === 'volunteer') {
+    query = query.eq('status', 'published');
+  } else if (statusFilter !== 'all') {
+    query = query.eq('status', statusFilter);
+  } else {
+    query = query.eq('status', 'published');
+  }
+
+  if (search) {
+    query = query.ilike('title', `%${search}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.json({ activities: data ?? [] });
+});
+
+app.get('/activities/:id', requireAuth, async (req, res) => {
+  const activityId = req.params.id;
+
+  const { data, error } = await supabaseAdmin
+    .from('activities')
+    .select(activityColumns)
+    .eq('id', activityId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const isOwner = data.organizer_id === req.auth.user.id;
+  const canAccess = data.status === 'published' || isOwner || role === 'admin';
+  if (!canAccess) {
+    res.status(403).json({ message: 'You do not have permission to access this activity.' });
+    return;
+  }
+
+  res.json({ activity: data });
+});
+
+app.post('/activities', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (!canWriteActivities(role)) {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeActivityPayload(req.body, { partial: false });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const createPayload = {
+    ...payload,
+    organizer_id: req.auth.user.id,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from('activities')
+    .insert(createPayload)
+    .select(activityColumns)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.status(201).json({ activity: data });
+});
+
+app.patch('/activities/:id', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (!canWriteActivities(role)) {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  const activityId = req.params.id;
+  const { data: existingActivity, error: existingError } = await supabaseAdmin
+    .from('activities')
+    .select(activityColumns)
+    .eq('id', activityId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (existingError) {
+    res.status(500).json({ message: existingError.message });
+    return;
+  }
+
+  if (!existingActivity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  if (role !== 'admin' && existingActivity.organizer_id !== req.auth.user.id) {
+    res.status(403).json({ message: 'You can update only your own activities.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeActivityPayload(req.body, { partial: true });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  const mergedStartTime = payload.start_time ?? existingActivity.start_time;
+  const mergedEndTime = payload.end_time ?? existingActivity.end_time;
+  if (mergedStartTime && mergedEndTime && new Date(mergedEndTime) <= new Date(mergedStartTime)) {
+    res.status(400).json({ message: 'endTime must be later than startTime.' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('activities')
+    .update({
+      ...payload,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', activityId)
+    .is('deleted_at', null)
+    .select(activityColumns)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  res.json({ activity: data });
+});
+
+app.delete('/activities/:id', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (!canWriteActivities(role)) {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  const activityId = req.params.id;
+
+  const { data: existingActivity, error: existingError } = await supabaseAdmin
+    .from('activities')
+    .select('id, organizer_id')
+    .eq('id', activityId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (existingError) {
+    res.status(500).json({ message: existingError.message });
+    return;
+  }
+
+  if (!existingActivity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  if (role !== 'admin' && existingActivity.organizer_id !== req.auth.user.id) {
+    res.status(403).json({ message: 'You can delete only your own activities.' });
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('activities')
+    .update({
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', activityId)
+    .is('deleted_at', null);
+
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.json({ success: true, message: 'Activity deleted successfully.' });
 });
 
 app.post('/auth/register-profile', requireAuth, async (req, res) => {
