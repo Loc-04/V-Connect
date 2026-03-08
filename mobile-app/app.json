@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.vconnect.mobile",
+      "versionCode": 1,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

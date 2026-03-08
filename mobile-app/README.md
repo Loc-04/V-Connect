@@ -10,7 +10,21 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Create local environment file
+
+   ```bash
+   # macOS/Linux
+   cp .env.example .env
+
+   # Windows PowerShell
+   Copy-Item .env.example .env
+   ```
+
+   Fill required keys in `.env`:
+   - `EXPO_PUBLIC_SUPABASE_URL`
+   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+
+3. Start the app
 
    ```bash
    npx expo start
@@ -41,6 +55,14 @@ To learn more about developing your project with Expo, look at the following res
 
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+
+## Android release pipeline
+
+See `RELEASE_PIPELINE.md` for:
+
+- `run:android` dev workflow
+- EAS build profiles (`development`, `preview`, `production`)
+- release checklist and versioning strategy
 
 ## Join the community
 

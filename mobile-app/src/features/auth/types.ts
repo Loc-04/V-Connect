@@ -1,4 +1,5 @@
 export type UserRole = 'admin' | 'organizer' | 'volunteer';
+export type RegistrationRole = Exclude<UserRole, 'admin'>;
 
 export interface AuthSession {
   userId: string;
@@ -16,6 +17,5 @@ export interface RegisterPayload {
   email: string;
   password: string;
   fullName: string;
-  phone: string;
-  role: UserRole;
+  role: RegistrationRole;
 }

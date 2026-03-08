@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -8,14 +8,21 @@ import {
   AuthSwitchLink,
   AuthTokens,
   signInWithEmail,
+  useAuth,
 } from '@/src/features/auth';
 import { ROUTES } from '@/src/shared/constants/route-constants';
 
 export default function LoginScreen() {
+  const { authError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!authError) return;
+    Alert.alert('Authentication Issue', authError);
+  }, [authError]);
 
   function validate(): boolean {
     const next: typeof errors = {};

@@ -5,25 +5,37 @@ import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 
-import { AuthProvider, useAuth } from '@/src/features/auth';
+import { AuthProvider, canAccessRouteGroup, getHomeRouteForRole, useAuth } from '@/src/features/auth';
+import { ROUTES } from '@/src/shared/constants/route-constants';
 import { useColorScheme } from '@/src/shared/hooks/use-color-scheme';
 
 function RouteGuard() {
-  const { status } = useAuth();
+  const { status, role } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (status === 'loading') return;
 
-    const inAuthGroup = segments[0] === '(auth)';
+    const currentGroup = segments[0];
+    const inAuthGroup = currentGroup === '(auth)';
 
     if (status === 'unauthenticated' && !inAuthGroup) {
-      router.replace('/(auth)/login');
-    } else if (status === 'authenticated' && inAuthGroup) {
-      router.replace('/(volunteer)/(tabs)/home');
+      router.replace(ROUTES.AUTH.LOGIN as never);
+      return;
     }
-  }, [status, segments, router]);
+
+    if (status !== 'authenticated' || !role) return;
+
+    if (inAuthGroup) {
+      router.replace(getHomeRouteForRole(role) as never);
+      return;
+    }
+
+    if (!canAccessRouteGroup(role, currentGroup)) {
+      router.replace(getHomeRouteForRole(role) as never);
+    }
+  }, [status, role, segments, router]);
 
   if (status === 'loading') {
     return (

@@ -13,8 +13,9 @@ if (!url || !anonKey) {
 export const supabase = createClient(url, anonKey, {
   auth: {
     storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
+    // Keep auth transient in development for easier auth-flow testing.
+    autoRefreshToken: !__DEV__,
+    persistSession: !__DEV__,
     detectSessionInUrl: false,
   },
 });
