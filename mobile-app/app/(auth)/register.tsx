@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   AuthScreenContainer,
@@ -7,6 +7,7 @@ import {
   AuthPrimaryButton,
   AuthSwitchLink,
   AuthTokens,
+  type RegistrationRole,
   signUpWithEmail,
 } from '@/src/features/auth';
 import { ROUTES } from '@/src/shared/constants/route-constants';
@@ -16,6 +17,7 @@ interface FormErrors {
   email?: string;
   password?: string;
   confirmPassword?: string;
+  role?: string;
 }
 
 export default function RegisterScreen() {
@@ -23,6 +25,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<RegistrationRole>('volunteer');
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +45,9 @@ export default function RegisterScreen() {
     if (confirmPassword !== password) {
       next.confirmPassword = 'Passwords do not match';
     }
+    if (!role) {
+      next.role = 'Role is required';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -53,7 +59,7 @@ export default function RegisterScreen() {
       const { data: session, error } = await signUpWithEmail(
         email.trim(),
         password,
-        { fullName: fullName.trim() },
+        { fullName: fullName.trim(), role },
       );
       if (error) {
         Alert.alert('Registration Failed', error);
@@ -80,7 +86,7 @@ export default function RegisterScreen() {
     <AuthScreenContainer>
       <View style={styles.header}>
         <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Join V-Connect as a volunteer</Text>
+        <Text style={styles.subtitle}>Create your V-Connect account</Text>
       </View>
 
       <AuthTextInput
@@ -128,6 +134,30 @@ export default function RegisterScreen() {
         textContentType="newPassword"
       />
 
+      <View style={styles.roleSection}>
+        <Text style={styles.roleLabel}>Role</Text>
+        <View style={styles.roleOptions}>
+          {(['volunteer', 'organizer'] as const).map((option) => {
+            const selected = role === option;
+            return (
+              <Pressable
+                key={option}
+                style={[styles.roleButton, selected && styles.roleButtonSelected]}
+                onPress={() => {
+                  setRole(option);
+                  clearError('role');
+                }}
+              >
+                <Text style={[styles.roleButtonText, selected && styles.roleButtonTextSelected]}>
+                  {option === 'volunteer' ? 'Volunteer' : 'Organizer'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {errors.role ? <Text style={styles.roleError}>{errors.role}</Text> : null}
+      </View>
+
       <AuthPrimaryButton
         title="Create Account"
         loading={loading}
@@ -157,5 +187,44 @@ const styles = StyleSheet.create({
     fontSize: AuthTokens.fontSize.md,
     color: AuthTokens.colors.textSecondary,
     marginTop: AuthTokens.spacing.xs,
+  },
+  roleSection: {
+    marginTop: AuthTokens.spacing.sm,
+    marginBottom: AuthTokens.spacing.sm,
+  },
+  roleLabel: {
+    marginBottom: AuthTokens.spacing.xs,
+    color: AuthTokens.colors.textPrimary,
+    fontSize: AuthTokens.fontSize.sm,
+    fontWeight: '600',
+  },
+  roleOptions: {
+    flexDirection: 'row',
+    gap: AuthTokens.spacing.sm,
+  },
+  roleButton: {
+    flex: 1,
+    borderRadius: AuthTokens.radius.md,
+    borderWidth: 1,
+    borderColor: AuthTokens.colors.inputBorder,
+    paddingVertical: AuthTokens.spacing.md,
+    alignItems: 'center',
+    backgroundColor: AuthTokens.colors.backgroundSecondary,
+  },
+  roleButtonSelected: {
+    borderColor: AuthTokens.colors.brandBlue,
+    backgroundColor: 'rgba(10, 126, 164, 0.12)',
+  },
+  roleButtonText: {
+    color: AuthTokens.colors.textSecondary,
+    fontWeight: '600',
+  },
+  roleButtonTextSelected: {
+    color: AuthTokens.colors.brandBlue,
+  },
+  roleError: {
+    marginTop: AuthTokens.spacing.xs,
+    color: AuthTokens.colors.error,
+    fontSize: AuthTokens.fontSize.sm,
   },
 });

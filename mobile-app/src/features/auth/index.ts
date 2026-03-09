@@ -1,4 +1,4 @@
-export type { AuthSession, LoginCredentials, RegisterPayload, UserRole } from './types';
+export type { AuthSession, LoginCredentials, RegisterPayload, UserRole, RegistrationRole } from './types';
 export {
   AuthScreenContainer,
   AuthTextInput,
@@ -15,3 +15,4 @@ export {
 } from './services';
 export type { AuthResult } from './services';
 export { AuthProvider, useAuth } from './context';
+export { getHomeRouteForRole, canAccessRouteGroup } from './authorization';
