@@ -36,8 +36,22 @@ function App() {
               </PublicOnlyRoute>
             }
           />
-          <Route path="/activities/create" element={<CreateActivityPage />} />
-          <Route path="/browse" element={<BrowseOpportunitiesPage />} />
+          <Route
+            path="/activities/create"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer', 'admin']}>
+                <CreateActivityPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/browse"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+                <BrowseOpportunitiesPage />
+              </RequireRoleRoute>
+            }
+          />
 
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
 

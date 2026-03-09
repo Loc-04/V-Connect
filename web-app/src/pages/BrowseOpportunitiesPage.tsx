@@ -1,11 +1,14 @@
-﻿import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { listActivities } from '../lib/activities';
+import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import './BrowseOpportunitiesPage.css';
 
 type CategoryTone = 'blue' | 'orange' | 'green' | 'purple' | 'red';
 
-interface Opportunity {
+interface OpportunityViewModel {
   id: string;
   category: string;
   categoryTone: CategoryTone;
@@ -17,80 +20,133 @@ interface Opportunity {
   spotsLeft: number;
 }
 
-const opportunities: Opportunity[] = [
-  {
-    id: 'beach-cleanup',
-    category: 'Environment',
-    categoryTone: 'blue',
-    imageUrl: 'https://www.figma.com/api/mcp/asset/73bbdb6f-1786-4a38-9a37-ecf34fb60d25',
-    date: 'Sat, Oct 14 • 9:00 AM',
-    title: 'Weekend Beach Cleanup',
-    location: 'Santa Monica Pier, CA (2 mi)',
-    tags: ['Teamwork', 'Outdoors'],
-    spotsLeft: 5,
-  },
-  {
-    id: 'after-school-tutor',
-    category: 'Education',
-    categoryTone: 'orange',
-    imageUrl: 'https://www.figma.com/api/mcp/asset/c4e0a534-32d3-49cb-aba8-14a2b2056a79',
-    date: 'Mon, Oct 16 • 3:30 PM',
-    title: 'After-School Tutor',
-    location: 'Lincoln High School, CA (5 mi)',
-    tags: ['Math', 'Mentorship'],
-    spotsLeft: 2,
-  },
-  {
-    id: 'food-bank-sorting',
-    category: 'Community',
-    categoryTone: 'green',
-    imageUrl: 'https://www.figma.com/api/mcp/asset/6a5002f9-8b8f-45bf-acdf-9bb974a7cbde',
-    date: 'Tue, Oct 17 • 10:00 AM',
-    title: 'Food Bank Sorting',
-    location: 'LA Food Bank, CA (8 mi)',
-    tags: ['Packing', 'Organizing'],
-    spotsLeft: 12,
-  },
-  {
-    id: 'senior-center',
-    category: 'Elderly Care',
-    categoryTone: 'purple',
-    imageUrl: 'https://www.figma.com/api/mcp/asset/0dffc8ae-0616-4cc0-a486-52548c62cde2',
-    date: 'Wed, Oct 18 • 1:00 PM',
-    title: 'Senior Center Companion',
-    location: 'Sunrise Home, CA (3 mi)',
-    tags: ['Social', 'Empathy'],
-    spotsLeft: 3,
-  },
-  {
-    id: 'soup-kitchen',
-    category: 'Kitchen',
-    categoryTone: 'red',
-    imageUrl: 'https://www.figma.com/api/mcp/asset/fd82fe30-483f-4524-933f-e39542f9a28b',
-    date: 'Fri, Oct 20 • 5:00 PM',
-    title: 'Evening Soup Kitchen',
-    location: 'Downtown Shelter, CA (10 mi)',
-    tags: ['Cooking', 'Service'],
-    spotsLeft: 8,
-  },
-  {
-    id: 'tree-planting',
-    category: 'Environment',
-    categoryTone: 'blue',
-    imageUrl: 'https://www.figma.com/api/mcp/asset/193c5a23-bc14-46de-81ef-4add7d40b32c',
-    date: 'Sat, Oct 21 • 8:00 AM',
-    title: 'City Park Tree Planting',
-    location: 'Griffith Park, CA (12 mi)',
-    tags: ['Gardening', 'Physical'],
-    spotsLeft: 20,
-  },
+const fallbackImages = [
+  'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1200',
+  'https://images.pexels.com/photos/6646955/pexels-photo-6646955.jpeg?auto=compress&cs=tinysrgb&w=1200',
+  'https://images.pexels.com/photos/6646866/pexels-photo-6646866.jpeg?auto=compress&cs=tinysrgb&w=1200',
+  'https://images.pexels.com/photos/6995268/pexels-photo-6995268.jpeg?auto=compress&cs=tinysrgb&w=1200',
+  'https://images.pexels.com/photos/6646907/pexels-photo-6646907.jpeg?auto=compress&cs=tinysrgb&w=1200',
 ];
 
-const filterLabels = ['Category', 'Distance', 'Date'];
+const statusFilters: Array<{ label: string; value: ActivityStatus | 'all' }> = [
+  { label: 'Published', value: 'published' },
+  { label: 'All', value: 'all' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Cancelled', value: 'cancelled' },
+];
+
+function mapStatusToTone(status: string): CategoryTone {
+  switch (status) {
+    case 'completed':
+      return 'green';
+    case 'cancelled':
+      return 'red';
+    case 'draft':
+      return 'purple';
+    case 'published':
+      return 'blue';
+    default:
+      return 'orange';
+  }
+}
+
+function formatDateLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Date TBD';
+  }
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function getLocationLabel(location: ActivityRecord['location']) {
+  if (!location) {
+    return 'Location TBD';
+  }
+
+  if (typeof location === 'string') {
+    return location;
+  }
+
+  if (typeof location.address === 'string' && location.address.trim()) {
+    return location.address;
+  }
+
+  return 'Location TBD';
+}
+
+function toOpportunity(activity: ActivityRecord, index: number): OpportunityViewModel {
+  const status = String(activity.status ?? '').toLowerCase();
+  const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
+
+  return {
+    id: activity.id,
+    category: status || 'opportunity',
+    categoryTone: mapStatusToTone(status),
+    imageUrl: fallbackImages[index % fallbackImages.length],
+    date: formatDateLabel(activity.start_time),
+    title: activity.title ?? 'Untitled activity',
+    location: getLocationLabel(activity.location),
+    tags: requiredSkills.slice(0, 3),
+    spotsLeft: Number(activity.capacity ?? 0),
+  };
+}
 
 export function BrowseOpportunitiesPage() {
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { session, signOut, profile } = useAuth();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ActivityStatus | 'all'>('published');
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!session?.access_token) {
+      setLoading(false);
+      setError('No active session token.');
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    void (async () => {
+      try {
+        const nextActivities = await listActivities({
+          accessToken: session.access_token,
+          status: statusFilter,
+          search: searchTerm || undefined,
+          limit: 60,
+        });
+
+        if (!cancelled) {
+          setActivities(nextActivities);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load activities.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm, session?.access_token, statusFilter]);
+
+  const opportunities = useMemo(() => activities.map((activity, index) => toOpportunity(activity, index)), [activities]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -102,21 +158,22 @@ export function BrowseOpportunitiesPage() {
       <header className="browse-top-nav">
         <div className="browse-container browse-nav-inner">
           <div className="browse-brand">
-            <img alt="" className="browse-brand-logo" src="https://www.figma.com/api/mcp/asset/25df3982-f136-40ef-a70b-1f115f888a93" />
+            <img
+              alt=""
+              className="browse-brand-logo"
+              src="https://www.figma.com/api/mcp/asset/25df3982-f136-40ef-a70b-1f115f888a93"
+            />
             <span>V-Connect</span>
           </div>
 
           <div className="browse-nav-actions">
-            <button className="browse-nav-link" type="button">
-              Home
-            </button>
             <button className="browse-nav-link browse-nav-link-active" type="button">
               Browse
             </button>
-            <button className="browse-nav-link" type="button">
-              My Activities
+            <button className="browse-nav-link" onClick={() => navigate('/')} type="button">
+              Home
             </button>
-            <button className="browse-nav-link" type="button">
+            <button className="browse-nav-link" onClick={() => navigate('/volunteer/home')} type="button">
               Profile
             </button>
             <button className="browse-logout-btn" onClick={handleSignOut} type="button">
@@ -130,21 +187,34 @@ export function BrowseOpportunitiesPage() {
         <div className="browse-container">
           <div className="browse-hero">
             <h1>Find your next impact</h1>
-            <p>Browse local volunteer opportunities and make a difference today.</p>
+            <p>
+              Browse volunteer opportunities from Supabase. Signed in as {profile?.full_name ?? profile?.id ?? 'User'}.
+            </p>
           </div>
 
           <div className="browse-search-wrap">
             <div className="browse-search-input-shell">
               <SearchIcon />
-              <input aria-label="Search opportunities" placeholder="Search by keyword, skill, or cause..." type="text" />
+              <input
+                aria-label="Search opportunities"
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search by keyword, skill, or cause..."
+                type="text"
+                value={searchTerm}
+              />
             </div>
 
             <div className="browse-search-divider" />
 
             <div className="browse-filters">
-              {filterLabels.map((label) => (
-                <button className="browse-filter-btn" key={label} type="button">
-                  {label}
+              {statusFilters.map((status) => (
+                <button
+                  className="browse-filter-btn"
+                  key={status.value}
+                  onClick={() => setStatusFilter(status.value)}
+                  type="button"
+                >
+                  {status.label}
                   <ChevronDownIcon />
                 </button>
               ))}
@@ -154,55 +224,56 @@ export function BrowseOpportunitiesPage() {
             </div>
           </div>
 
+          {error && <p className="form-error">{error}</p>}
+          {loading && <p className="muted">Loading activities...</p>}
+
           <section className="browse-grid" aria-label="Volunteer opportunities">
-            {opportunities.map((opportunity) => (
-              <article className="browse-card" key={opportunity.id}>
-                <div className="browse-card-image-wrap">
-                  <img alt={opportunity.title} className="browse-card-image" src={opportunity.imageUrl} />
-                  <span className={`browse-category browse-category-${opportunity.categoryTone}`}>{opportunity.category}</span>
-                  <button aria-label="Save opportunity" className="browse-favorite-btn" type="button">
-                    <HeartIcon />
-                  </button>
-                </div>
-
-                <div className="browse-card-body">
-                  <div className="browse-meta-line">
-                    <CalendarIcon />
-                    <span>{opportunity.date}</span>
-                  </div>
-
-                  <h2>{opportunity.title}</h2>
-
-                  <div className="browse-meta-line browse-location-line">
-                    <PinIcon />
-                    <span>{opportunity.location}</span>
-                  </div>
-
-                  <div className="browse-tags">
-                    {opportunity.tags.map((tag) => (
-                      <span className="browse-tag" key={`${opportunity.id}-${tag}`}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="browse-card-footer">
-                    <span>{opportunity.spotsLeft} spots left</span>
-                    <button className="browse-apply-btn" type="button">
-                      Quick Apply
+            {!loading &&
+              !error &&
+              opportunities.map((opportunity) => (
+                <article className="browse-card" key={opportunity.id}>
+                  <div className="browse-card-image-wrap">
+                    <img alt={opportunity.title} className="browse-card-image" src={opportunity.imageUrl} />
+                    <span className={`browse-category browse-category-${opportunity.categoryTone}`}>{opportunity.category}</span>
+                    <button aria-label="Save opportunity" className="browse-favorite-btn" type="button">
+                      <HeartIcon />
                     </button>
                   </div>
-                </div>
-              </article>
-            ))}
+
+                  <div className="browse-card-body">
+                    <div className="browse-meta-line">
+                      <CalendarIcon />
+                      <span>{opportunity.date}</span>
+                    </div>
+
+                    <h2>{opportunity.title}</h2>
+
+                    <div className="browse-meta-line browse-location-line">
+                      <PinIcon />
+                      <span>{opportunity.location}</span>
+                    </div>
+
+                    <div className="browse-tags">
+                      {opportunity.tags.length === 0 && <span className="browse-tag">General</span>}
+                      {opportunity.tags.map((tag) => (
+                        <span className="browse-tag" key={`${opportunity.id}-${tag}`}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="browse-card-footer">
+                      <span>{opportunity.spotsLeft} spots</span>
+                      <button className="browse-apply-btn" type="button">
+                        Quick Apply
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
           </section>
 
-          <div className="browse-load-more-row">
-            <button className="browse-load-more-btn" type="button">
-              Load More Opportunities
-              <ChevronDownIcon />
-            </button>
-          </div>
+          {!loading && !error && opportunities.length === 0 && <p className="muted">No activities found.</p>}
         </div>
       </section>
     </main>
