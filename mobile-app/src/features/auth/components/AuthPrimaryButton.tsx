@@ -3,17 +3,27 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
   type PressableProps,
 } from 'react-native';
+import type { ReactNode } from 'react';
 
 import { AuthTokens } from '../styles/tokens';
 
 type Props = Omit<PressableProps, 'children'> & {
   title: string;
   loading?: boolean;
+  rightIcon?: ReactNode;
 };
 
-export function AuthPrimaryButton({ title, loading, disabled, style, ...rest }: Props) {
+export function AuthPrimaryButton({
+  title,
+  loading,
+  disabled,
+  rightIcon,
+  style,
+  ...rest
+}: Props) {
   const isDisabled = disabled || loading;
 
   return (
@@ -25,12 +35,16 @@ export function AuthPrimaryButton({ title, loading, disabled, style, ...rest }: 
         style as object,
       ]}
       disabled={isDisabled}
+      accessibilityRole="button"
       {...rest}
     >
       {loading ? (
         <ActivityIndicator color={AuthTokens.colors.white} />
       ) : (
-        <Text style={styles.text}>{title}</Text>
+        <View style={styles.row}>
+          <Text style={styles.text}>{title}</Text>
+          {rightIcon ? <View style={styles.icon}>{rightIcon}</View> : null}
+        </View>
       )}
     </Pressable>
   );
@@ -38,12 +52,13 @@ export function AuthPrimaryButton({ title, loading, disabled, style, ...rest }: 
 
 const styles = StyleSheet.create({
   button: {
-    height: 50,
-    borderRadius: AuthTokens.radius.md,
+    minHeight: AuthTokens.controlHeights.button,
+    borderRadius: AuthTokens.radius.pill,
     backgroundColor: AuthTokens.colors.brandBlue,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: AuthTokens.spacing.sm,
+    marginTop: AuthTokens.spacing.md,
+    ...AuthTokens.shadows.button,
   },
   pressed: {
     backgroundColor: AuthTokens.colors.brandBlueDark,
@@ -51,9 +66,19 @@ const styles = StyleSheet.create({
   disabled: {
     backgroundColor: AuthTokens.colors.disabled,
   },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: AuthTokens.spacing.sm,
+  },
   text: {
     color: AuthTokens.colors.white,
-    fontSize: AuthTokens.fontSize.lg,
-    fontWeight: '600',
+    fontSize: AuthTokens.typography.button.fontSize,
+    lineHeight: AuthTokens.typography.button.lineHeight,
+    fontWeight: AuthTokens.typography.button.fontWeight,
+  },
+  icon: {
+    marginTop: 1,
   },
 });
