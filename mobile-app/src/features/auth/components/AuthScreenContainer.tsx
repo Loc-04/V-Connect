@@ -12,9 +12,15 @@ import { AuthTokens } from '../styles/tokens';
 
 type Props = ViewProps & {
   children: React.ReactNode;
+  contentMode?: 'centeredCard' | 'form';
 };
 
-export function AuthScreenContainer({ children, style, ...rest }: Props) {
+export function AuthScreenContainer({
+  children,
+  style,
+  contentMode = 'form',
+  ...rest
+}: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -30,7 +36,11 @@ export function AuthScreenContainer({ children, style, ...rest }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
-          contentContainerStyle={[styles.scroll, style]}
+          contentContainerStyle={[
+            styles.scroll,
+            contentMode === 'centeredCard' ? styles.scrollCentered : styles.scrollForm,
+            style,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -51,8 +61,13 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    justifyContent: 'center',
     paddingHorizontal: AuthTokens.spacing.lg,
-    paddingVertical: AuthTokens.spacing.xl,
+    paddingVertical: AuthTokens.spacing.lg,
+  },
+  scrollCentered: {
+    justifyContent: 'center',
+  },
+  scrollForm: {
+    justifyContent: 'flex-start',
   },
 });

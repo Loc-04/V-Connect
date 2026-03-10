@@ -10,6 +10,7 @@ export interface AuthResult<T = void> {
 interface SignUpMetadata {
   fullName?: string;
   role?: Exclude<UserRole, 'admin'>;
+  phone?: string;
 }
 
 interface UserRoleRow {
@@ -40,6 +41,9 @@ function mapError(err: AuthError | null): string | null {
   if (msg.includes('signup is disabled')) return 'Registration is currently disabled.';
   if (msg.includes('rate limit')) return 'Too many attempts. Please try again later.';
   if (msg.includes('network')) return 'Network error. Check your connection.';
+  if (msg.includes('users_phone_key') || (msg.includes('duplicate key value') && msg.includes('phone'))) {
+    return 'This phone number is already in use.';
+  }
   return err.message;
 }
 
@@ -57,20 +61,26 @@ async function upsertUserRecord(params: {
   id: string;
   fullName: string;
   role: Exclude<UserRole, 'admin'>;
+  phone?: string;
 }): Promise<AuthResult> {
   const { error } = await supabase.from('users').upsert(
     {
       id: params.id,
       full_name: params.fullName,
       role: params.role,
+      phone: params.phone,
       status: 'active',
     },
     { onConflict: 'id' },
   );
   if (error) {
+    const message = error.message.toLowerCase();
     return {
       data: null,
-      error: 'Account was created, but profile setup failed. Please try signing in again.',
+      error:
+        message.includes('users_phone_key') || (message.includes('duplicate key value') && message.includes('phone'))
+          ? 'This phone number is already in use.'
+          : 'Account was created, but profile setup failed. Please try signing in again.',
     };
   }
   return { data: null, error: null };
@@ -95,12 +105,17 @@ export async function signInWithEmail(
     typeof data.session.user.user_metadata?.full_name === 'string'
       ? data.session.user.user_metadata.full_name
       : data.session.user.email?.split('@')[0] ?? 'User';
+  const fallbackPhone =
+    typeof data.session.user.user_metadata?.phone === 'string'
+      ? data.session.user.user_metadata.phone
+      : undefined;
 
   if (fallbackRole) {
     const bootstrapResult = await upsertUserRecord({
       id: data.session.user.id,
       fullName: fallbackFullName,
       role: fallbackRole,
+      phone: fallbackPhone,
     });
     if (!bootstrapResult.error) {
       const retriedRole = await getUserRole(data.session.user.id);
@@ -127,6 +142,7 @@ export async function signUpWithEmail(
         ? {
             full_name: metadata.fullName,
             role: metadata.role,
+            phone: metadata.phone,
           }
         : undefined,
     },
@@ -142,6 +158,7 @@ export async function signUpWithEmail(
       id: data.user.id,
       fullName: metadata.fullName,
       role: metadata.role,
+      phone: metadata.phone,
     });
     if (profileResult.error) {
       return { data: null, error: profileResult.error };
@@ -150,6 +167,11 @@ export async function signUpWithEmail(
 
   // Supabase returns a user with an empty session when email confirmation is required.
   if (data.user && !data.session) {
+    const identities = (data.user as { identities?: unknown[] }).identities;
+    const isLikelyDuplicateEmail = Array.isArray(identities) && identities.length === 0;
+    if (isLikelyDuplicateEmail) {
+      return { data: null, error: 'An account with this email already exists.' };
+    }
     return { data: null, error: null };
   }
   return { data: data.session, error: null };

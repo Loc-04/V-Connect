@@ -1,10 +1,15 @@
 import { useState } from 'react';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import {
   AuthScreenContainer,
   AuthTextInput,
   AuthPrimaryButton,
+  AuthDivider,
+  AuthRoleSelect,
+  AuthSocialButton,
   AuthSwitchLink,
   AuthTokens,
   type RegistrationRole,
@@ -15,19 +20,32 @@ import { ROUTES } from '@/src/shared/constants/route-constants';
 interface FormErrors {
   fullName?: string;
   email?: string;
+  phone?: string;
   password?: string;
   confirmPassword?: string;
   role?: string;
 }
 
 export default function RegisterScreen() {
+  const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<RegistrationRole>('volunteer');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
+
+  function normalizePhone(value: string): string {
+    const trimmed = value.trim().replace(/[\s-]/g, '');
+    if (trimmed.startsWith('+')) {
+      return `+${trimmed.slice(1).replace(/\D/g, '')}`;
+    }
+    return trimmed.replace(/\D/g, '');
+  }
 
   function validate(): boolean {
     const next: FormErrors = {};
@@ -36,6 +54,12 @@ export default function RegisterScreen() {
       next.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(email)) {
       next.email = 'Invalid email format';
+    }
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      next.phone = 'Phone number is required';
+    } else if (!/^\+?\d{8,15}$/.test(normalizedPhone)) {
+      next.phone = 'Invalid phone number format';
     }
     if (!password) {
       next.password = 'Password is required';
@@ -54,12 +78,13 @@ export default function RegisterScreen() {
 
   async function handleRegister() {
     if (!validate()) return;
+    const normalizedPhone = normalizePhone(phone);
     setLoading(true);
     try {
       const { data: session, error } = await signUpWithEmail(
         email.trim(),
         password,
-        { fullName: fullName.trim(), role },
+        { fullName: fullName.trim(), role, phone: normalizedPhone },
       );
       if (error) {
         Alert.alert('Registration Failed', error);
@@ -84,25 +109,41 @@ export default function RegisterScreen() {
 
   return (
     <AuthScreenContainer>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={() => router.replace(ROUTES.AUTH.LOGIN)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Back to sign in"
+        >
+          <MaterialIcons name="arrow-back" size={22} color={AuthTokens.colors.textPrimary} />
+        </Pressable>
+        <View style={styles.brandMini}>
+          <MaterialIcons name="volunteer-activism" size={18} color={AuthTokens.colors.brandBlue} />
+          <Text style={styles.brandMiniText}>V-Connect</Text>
+        </View>
+      </View>
+
       <View style={styles.header}>
         <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Create your V-Connect account</Text>
+        <Text style={styles.subtitle}>Join our community of volunteers</Text>
       </View>
 
       <AuthTextInput
         label="Full Name"
-        placeholder="Your full name"
+        placeholder="Enter your full name"
         value={fullName}
         onChangeText={(t) => { setFullName(t); clearError('fullName'); }}
         error={errors.fullName}
         autoCapitalize="words"
         autoComplete="name"
         textContentType="name"
+        leadingIcon={<MaterialIcons name="person-outline" size={18} color={AuthTokens.colors.iconDefault} />}
       />
 
       <AuthTextInput
-        label="Email"
-        placeholder="you@example.com"
+        label="Email Address"
+        placeholder="example@domain.com"
         value={email}
         onChangeText={(t) => { setEmail(t); clearError('email'); }}
         error={errors.email}
@@ -110,58 +151,85 @@ export default function RegisterScreen() {
         autoCapitalize="none"
         autoComplete="email"
         textContentType="emailAddress"
+        leadingIcon={<MaterialIcons name="mail-outline" size={18} color={AuthTokens.colors.iconDefault} />}
+      />
+
+      <AuthTextInput
+        label="Phone Number"
+        placeholder="Enter your phone number"
+        value={phone}
+        onChangeText={(t) => { setPhone(t); clearError('phone'); }}
+        error={errors.phone}
+        keyboardType="phone-pad"
+        autoComplete="tel"
+        textContentType="telephoneNumber"
+        leadingIcon={<MaterialIcons name="call" size={18} color={AuthTokens.colors.iconDefault} />}
+      />
+
+      <AuthRoleSelect
+        label="Select Role"
+        value={role}
+        error={errors.role}
+        onChange={(nextRole) => {
+          setRole(nextRole);
+          clearError('role');
+        }}
       />
 
       <AuthTextInput
         label="Password"
-        placeholder="At least 6 characters"
+        placeholder="........"
         value={password}
         onChangeText={(t) => { setPassword(t); clearError('password'); }}
         error={errors.password}
-        secureTextEntry
+        secureTextEntry={!showPassword}
         autoComplete="new-password"
         textContentType="newPassword"
+        leadingIcon={<MaterialIcons name="lock-outline" size={18} color={AuthTokens.colors.iconDefault} />}
+        trailingIcon={
+          <MaterialIcons
+            name={showPassword ? 'visibility-off' : 'visibility'}
+            size={20}
+            color={AuthTokens.colors.iconDefault}
+          />
+        }
+        onTrailingPress={() => setShowPassword((prev) => !prev)}
+        trailingAccessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
       />
 
       <AuthTextInput
         label="Confirm Password"
-        placeholder="Re-enter your password"
+        placeholder="........"
         value={confirmPassword}
         onChangeText={(t) => { setConfirmPassword(t); clearError('confirmPassword'); }}
         error={errors.confirmPassword}
-        secureTextEntry
+        secureTextEntry={!showConfirmPassword}
         autoComplete="new-password"
         textContentType="newPassword"
+        leadingIcon={<MaterialIcons name="history-toggle-off" size={18} color={AuthTokens.colors.iconDefault} />}
+        trailingIcon={
+          <MaterialIcons
+            name={showConfirmPassword ? 'visibility-off' : 'visibility'}
+            size={20}
+            color={AuthTokens.colors.iconDefault}
+          />
+        }
+        onTrailingPress={() => setShowConfirmPassword((prev) => !prev)}
+        trailingAccessibilityLabel={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
       />
 
-      <View style={styles.roleSection}>
-        <Text style={styles.roleLabel}>Role</Text>
-        <View style={styles.roleOptions}>
-          {(['volunteer', 'organizer'] as const).map((option) => {
-            const selected = role === option;
-            return (
-              <Pressable
-                key={option}
-                style={[styles.roleButton, selected && styles.roleButtonSelected]}
-                onPress={() => {
-                  setRole(option);
-                  clearError('role');
-                }}
-              >
-                <Text style={[styles.roleButtonText, selected && styles.roleButtonTextSelected]}>
-                  {option === 'volunteer' ? 'Volunteer' : 'Organizer'}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        {errors.role ? <Text style={styles.roleError}>{errors.role}</Text> : null}
-      </View>
-
       <AuthPrimaryButton
-        title="Create Account"
+        title="Sign Up"
         loading={loading}
         onPress={handleRegister}
+        rightIcon={<MaterialIcons name="arrow-forward" size={18} color={AuthTokens.colors.white} />}
+      />
+
+      <AuthDivider label="Or" />
+
+      <AuthSocialButton
+        title="Sign up with Google"
+        onPress={() => Alert.alert('Coming Soon', 'Google sign-up is not implemented yet.')}
       />
 
       <AuthSwitchLink
@@ -174,57 +242,36 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
+  topBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: AuthTokens.spacing.xl,
+    gap: AuthTokens.spacing.mdm,
+    marginBottom: AuthTokens.spacing.lgm,
+    marginTop: AuthTokens.spacing.sm,
+  },
+  brandMini: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: AuthTokens.spacing.xs,
+  },
+  brandMiniText: {
+    color: AuthTokens.colors.brandBlue,
+    fontSize: AuthTokens.fontSize.lg,
+    fontWeight: '700',
+  },
+  header: {
+    marginBottom: AuthTokens.spacing.lg,
   },
   title: {
-    fontSize: AuthTokens.fontSize.xl,
-    fontWeight: '700',
+    fontSize: AuthTokens.typography.formTitle.fontSize,
+    lineHeight: AuthTokens.typography.formTitle.lineHeight,
+    fontWeight: AuthTokens.typography.formTitle.fontWeight,
     color: AuthTokens.colors.textPrimary,
   },
   subtitle: {
-    fontSize: AuthTokens.fontSize.md,
+    fontSize: AuthTokens.typography.subtitle.fontSize,
+    lineHeight: AuthTokens.typography.subtitle.lineHeight,
     color: AuthTokens.colors.textSecondary,
-    marginTop: AuthTokens.spacing.xs,
-  },
-  roleSection: {
-    marginTop: AuthTokens.spacing.sm,
-    marginBottom: AuthTokens.spacing.sm,
-  },
-  roleLabel: {
-    marginBottom: AuthTokens.spacing.xs,
-    color: AuthTokens.colors.textPrimary,
-    fontSize: AuthTokens.fontSize.sm,
-    fontWeight: '600',
-  },
-  roleOptions: {
-    flexDirection: 'row',
-    gap: AuthTokens.spacing.sm,
-  },
-  roleButton: {
-    flex: 1,
-    borderRadius: AuthTokens.radius.md,
-    borderWidth: 1,
-    borderColor: AuthTokens.colors.inputBorder,
-    paddingVertical: AuthTokens.spacing.md,
-    alignItems: 'center',
-    backgroundColor: AuthTokens.colors.backgroundSecondary,
-  },
-  roleButtonSelected: {
-    borderColor: AuthTokens.colors.brandBlue,
-    backgroundColor: 'rgba(10, 126, 164, 0.12)',
-  },
-  roleButtonText: {
-    color: AuthTokens.colors.textSecondary,
-    fontWeight: '600',
-  },
-  roleButtonTextSelected: {
-    color: AuthTokens.colors.brandBlue,
-  },
-  roleError: {
-    marginTop: AuthTokens.spacing.xs,
-    color: AuthTokens.colors.error,
-    fontSize: AuthTokens.fontSize.sm,
+    marginTop: AuthTokens.spacing.ssm,
   },
 });

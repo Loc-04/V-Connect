@@ -4,6 +4,10 @@ export {
   AuthTextInput,
   AuthPrimaryButton,
   AuthSwitchLink,
+  AuthDivider,
+  AuthSocialButton,
+  AuthCheckboxRow,
+  AuthRoleSelect,
 } from './components';
 export { AuthTokens } from './styles/tokens';
 export {

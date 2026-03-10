@@ -18,4 +18,5 @@ export interface RegisterPayload {
   password: string;
   fullName: string;
   role: RegistrationRole;
+  phone: string;
 }
