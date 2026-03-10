@@ -12,34 +12,45 @@ export function AdminLayout() {
   };
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <div>
-          <p className="badge">V-Connect Admin</p>
-          <h1>Admin Workspace</h1>
-          <p className="muted">{profile?.full_name ?? 'Admin'} · {profile?.id}</p>
+    <main className="admin-shell">
+      <aside className="admin-sidebar">
+        <div className="admin-sidebar-profile">
+          <span className="admin-profile-avatar">{(profile?.full_name ?? 'A').slice(0, 1).toUpperCase()}</span>
+          <div>
+            <p className="admin-profile-name">V-Connect Admin</p>
+            <small>SUPER ADMIN</small>
+          </div>
         </div>
 
-        <div className="header-actions">
-          <NavLink
-            className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
-            to="/admin/dashboard"
-          >
+        <nav className="admin-sidebar-nav">
+          <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/dashboard">
             Dashboard
           </NavLink>
-          <NavLink
-            className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
-            to="/admin/users"
-          >
-            Users
+          <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/users">
+            User Management
           </NavLink>
-          <button className="danger-btn" onClick={handleSignOut} type="button">
-            Logout
+          <button className="sidebar-link placeholder" type="button">
+            Volunteer Opportunities
           </button>
-        </div>
-      </header>
+          <button className="sidebar-link placeholder" type="button">
+            Reports
+          </button>
+          <button className="sidebar-link placeholder" type="button">
+            Settings
+          </button>
+        </nav>
 
-      <section className="content-wrap">
+        <div className="admin-sidebar-help">
+          <p>Need Help?</p>
+          <small>Check docs or contact support.</small>
+        </div>
+
+        <button className="sidebar-signout" onClick={handleSignOut} type="button">
+          Sign Out
+        </button>
+      </aside>
+
+      <section className="admin-content">
         <Outlet />
       </section>
     </main>

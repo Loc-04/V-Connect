@@ -18,16 +18,17 @@ interface DashboardMetrics {
 }
 
 interface DistributionProps {
+  className?: string;
   title: string;
   data: Record<string, number>;
 }
 
-function DistributionList({ title, data }: DistributionProps) {
+function DistributionList({ title, data, className }: DistributionProps) {
   const entries = Object.entries(data);
   const total = entries.reduce((sum, [, value]) => sum + value, 0);
 
   return (
-    <article className="metric-block">
+    <article className={['metric-block', className].filter(Boolean).join(' ')}>
       <h3>{title}</h3>
       {entries.length === 0 && <p className="muted">No data.</p>}
       {entries.length > 0 && (
@@ -100,37 +101,37 @@ export function AdminDashboardPage() {
   );
 
   return (
-    <section className="card">
-      <div className="section-head">
+    <section className="admin-dashboard-page card">
+      <div className="dashboard-page-head">
         <div>
           <h2>Admin Dashboard</h2>
           <p className="muted">Live metrics from public tables in Supabase.</p>
         </div>
-        <button className="secondary-btn" onClick={() => void loadDashboard()} type="button">
+        <button className="secondary-btn dashboard-refresh-btn" onClick={() => void loadDashboard()} type="button">
           Refresh
         </button>
       </div>
 
-      {lastSync && <p className="muted">Last sync: {lastSync}</p>}
+      {lastSync && <p className="muted dashboard-last-sync">Last sync: {lastSync}</p>}
       {error && <p className="form-error">{error}</p>}
 
       {loading ? (
         <p className="muted">Loading dashboard...</p>
       ) : (
         <>
-          <div className="metric-grid">
+          <div className="dashboard-metric-grid metric-grid">
             {cards.map((card) => (
-              <article className="metric-card" key={card.label}>
+              <article className="metric-card dashboard-metric-card" key={card.label}>
                 <p>{card.label}</p>
                 <strong>{card.value}</strong>
               </article>
             ))}
           </div>
 
-          <div className="distribution-grid">
-            <DistributionList data={metrics?.usersByRole ?? {}} title="Users by Role" />
-            <DistributionList data={metrics?.activitiesByStatus ?? {}} title="Activities by Status" />
-            <DistributionList data={metrics?.participationsByStatus ?? {}} title="Participations by Status" />
+          <div className="dashboard-distribution-grid distribution-grid">
+            <DistributionList className="dashboard-distribution-card" data={metrics?.usersByRole ?? {}} title="Users by Role" />
+            <DistributionList className="dashboard-distribution-card" data={metrics?.activitiesByStatus ?? {}} title="Activities by Status" />
+            <DistributionList className="dashboard-distribution-card" data={metrics?.participationsByStatus ?? {}} title="Participations by Status" />
           </div>
         </>
       )}
