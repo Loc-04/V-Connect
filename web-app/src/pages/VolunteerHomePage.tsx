@@ -18,9 +18,17 @@ export function VolunteerHomePage() {
         <p className="muted">
           Welcome {profile?.full_name ?? 'Volunteer'}.
         </p>
-        <p className="muted">
-          Volunteer web features are being integrated.
-        </p>
+        <p className="muted">Pick a feature:</p>
+
+        <div className="header-actions">
+          <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
+            Browse activities
+          </button>
+          <button className="secondary-btn" onClick={() => navigate('/volunteer/profile-ui')} type="button">
+            My profile
+          </button>
+        </div>
+
         <button className="danger-btn" onClick={handleSignOut} type="button">
           Logout
         </button>

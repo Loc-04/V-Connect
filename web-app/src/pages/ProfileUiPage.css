@@ -71,12 +71,18 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  text-align: left;
   padding: 10px 10px;
+  border: 0;
   border-radius: 10px;
+  background: transparent;
   text-decoration: none;
   color: #3c4f67;
+  cursor: pointer;
   font-size: 16px;
   font-weight: 600;
+  font-family: inherit;
 }
 
 .vol-profile-menu-icon {

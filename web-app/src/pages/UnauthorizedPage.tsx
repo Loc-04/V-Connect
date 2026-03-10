@@ -4,7 +4,7 @@ import { useAuth } from '../auth/useAuth';
 
 export function UnauthorizedPage() {
   const navigate = useNavigate();
-  const { profile, signOut, session } = useAuth();
+  const { profile, signOut, session, error } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
@@ -18,6 +18,8 @@ export function UnauthorizedPage() {
         <p className="muted">
           You do not have access to this page. Your role: {profile?.role ?? 'unknown'}.
         </p>
+
+        {error && <p className="form-error">{error}</p>}
 
         {!session && (
           <p className="muted">
