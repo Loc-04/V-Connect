@@ -7,6 +7,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
 import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
+import { FeedbackPage } from './pages/FeedbackPage';
 import { LoginPage } from './pages/LoginPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { ProfileUiPage } from './pages/ProfileUiPage';
@@ -49,6 +50,14 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
                 <BrowseOpportunitiesPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/feedback"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+                <FeedbackPage />
               </RequireRoleRoute>
             }
           />

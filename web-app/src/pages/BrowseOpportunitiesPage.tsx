@@ -176,6 +176,9 @@ export function BrowseOpportunitiesPage() {
             <button className="browse-nav-link" onClick={() => navigate('/volunteer/home')} type="button">
               Profile
             </button>
+            <button className="browse-nav-link" onClick={() => navigate('/feedback')} type="button">
+              Feedback
+            </button>
             <button className="browse-logout-btn" onClick={handleSignOut} type="button">
               Log Out
             </button>

@@ -33,6 +33,9 @@ export function AdminLayout() {
           >
             Users
           </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')} to="/feedback">
+            Feedback
+          </NavLink>
           <button className="danger-btn" onClick={handleSignOut} type="button">
             Logout
           </button>

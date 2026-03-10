@@ -33,6 +33,7 @@ const userColumns = 'id, role, full_name, phone, avatar_url, status, created_at,
 const volunteerColumns = 'user_id, skills, interests, availability, total_hours, updated_at';
 const activityColumns =
   'id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id, created_at, updated_at, deleted_at';
+const feedbackColumns = 'id, user_id, rating, category, message, created_at, updated_at';
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
 const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
 const activityWriteRoles = new Set(['admin', 'organizer']);
@@ -243,6 +244,39 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
   }
 
   return payload;
+}
+
+function normalizeFeedbackPayload(body) {
+  if (!isPlainObject(body)) {
+    throw new Error('Body must be a JSON object.');
+  }
+
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!message) {
+    throw new Error('message is required.');
+  }
+  if (message.length > 2000) {
+    throw new Error('message must be 2000 characters or fewer.');
+  }
+
+  const rating = Number(body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error('rating must be an integer between 1 and 5.');
+  }
+
+  const category = typeof body.category === 'string' ? body.category.trim().toLowerCase() : 'general';
+  if (!category) {
+    throw new Error('category cannot be empty.');
+  }
+  if (category.length > 40) {
+    throw new Error('category must be 40 characters or fewer.');
+  }
+
+  return {
+    message,
+    rating,
+    category,
+  };
 }
 
 function canWriteActivities(role) {
@@ -819,6 +853,108 @@ app.delete('/activities/:id', requireAuth, async (req, res) => {
   }
 
   res.json({ success: true, message: 'Activity deleted successfully.' });
+});
+
+app.get('/feedback', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const mineDefault = role !== 'admin';
+  let mine = mineDefault;
+
+  if (typeof req.query.mine === 'string') {
+    const normalizedMine = req.query.mine.trim().toLowerCase();
+    if (normalizedMine === 'true') {
+      mine = true;
+    } else if (normalizedMine === 'false') {
+      mine = false;
+    } else {
+      res.status(400).json({ message: 'mine must be true or false.' });
+      return;
+    }
+  }
+
+  if (!mine && role !== 'admin') {
+    res.status(403).json({ message: 'Only admin can query all feedback.' });
+    return;
+  }
+
+  const requestedLimit = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 200)
+    : 50;
+
+  const category =
+    typeof req.query.category === 'string' ? req.query.category.trim().toLowerCase() : '';
+  const ratingFilterRaw = req.query.rating;
+  let ratingFilter = null;
+
+  if (typeof ratingFilterRaw === 'string' && ratingFilterRaw.trim().length > 0) {
+    const parsedRating = Number(ratingFilterRaw);
+    if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+      res.status(400).json({ message: 'rating must be an integer between 1 and 5.' });
+      return;
+    }
+    ratingFilter = parsedRating;
+  }
+
+  let query = supabaseAdmin.from('feedbacks').select(feedbackColumns).order('created_at', {
+    ascending: false,
+  });
+
+  if (mine) {
+    query = query.eq('user_id', req.auth.user.id);
+  }
+
+  if (category) {
+    query = query.eq('category', category);
+  }
+
+  if (ratingFilter !== null) {
+    query = query.eq('rating', ratingFilter);
+  }
+
+  query = query.limit(limit);
+
+  const { data, error } = await query;
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.json({ feedbacks: data ?? [] });
+});
+
+app.post('/feedback', requireAuth, async (req, res) => {
+  let payload;
+  try {
+    payload = normalizeFeedbackPayload(req.body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from('feedbacks')
+    .insert({
+      ...payload,
+      user_id: req.auth.user.id,
+      created_at: now,
+      updated_at: now,
+    })
+    .select(feedbackColumns)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502' || error.code === '23503') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.status(201).json({ feedback: data });
 });
 
 app.post('/auth/register-profile', requireAuth, async (req, res) => {

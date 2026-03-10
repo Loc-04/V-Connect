@@ -21,6 +21,14 @@ export function VolunteerHomePage() {
         <p className="muted">
           Volunteer web features are being integrated.
         </p>
+        <div className="header-actions">
+          <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
+            Browse Activities
+          </button>
+          <button className="secondary-btn" onClick={() => navigate('/feedback')} type="button">
+            Feedback
+          </button>
+        </div>
         <button className="danger-btn" onClick={handleSignOut} type="button">
           Logout
         </button>
