@@ -63,9 +63,15 @@ export function ParticipationHistoryPage() {
     };
   }, []);
 
-  useEffect(() => {
+  const handleStatusFilterChange = (value: StatusFilter) => {
+    setStatusFilter(value);
     setPage(1);
-  }, [query, statusFilter]);
+  };
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
 
   const filteredRecords = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -178,7 +184,7 @@ export function ParticipationHistoryPage() {
                   <button
                     className={statusFilter === tab.value ? 'history-tab is-active' : 'history-tab'}
                     key={tab.value}
-                    onClick={() => setStatusFilter(tab.value)}
+                    onClick={() => handleStatusFilterChange(tab.value)}
                     type="button"
                   >
                     {tab.label}
@@ -188,7 +194,7 @@ export function ParticipationHistoryPage() {
 
               <input
                 className="history-search"
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => handleQueryChange(event.target.value)}
                 placeholder="Search activities..."
                 type="search"
                 value={query}
