@@ -1,0 +1,262 @@
+﻿@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+.vol-shell {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+.vol-shell-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 244px;
+  border-right: 1px solid var(--border);
+  background: #ffffff;
+  padding: 0.86rem 0.74rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.72rem;
+}
+
+.vol-shell-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.vol-shell-brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  color: #ffffff;
+  display: inline-grid;
+  place-items: center;
+  box-shadow: 0 8px 18px rgba(139, 92, 246, 0.24);
+}
+
+.vol-shell-nav {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.vol-shell-nav-item {
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.5rem 0.56rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  border: 1px solid transparent;
+}
+
+.vol-shell-nav-item.is-active {
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
+  border-color: rgba(139, 92, 246, 0.18);
+}
+
+.vol-shell-nav-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.vol-shell-side-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--bg-soft);
+  padding-top: 0.68rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.vol-shell-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.vol-shell-profile-avatar {
+  width: 29px;
+  height: 29px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  color: #ffffff;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.vol-shell-profile-chip strong {
+  display: block;
+  font-size: 0.72rem;
+}
+
+.vol-shell-profile-chip small {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.vol-shell-signout {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  padding: 0.25rem 0.1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vol-shell-main {
+  margin-left: 244px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.vol-shell-topbar {
+  min-height: 56px;
+  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+  padding: 0 0.9rem;
+}
+
+.vol-shell-topbar-inner {
+  width: min(1140px, 100%);
+  margin: 0 auto;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.vol-shell-search {
+  width: min(395px, 100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  padding: 0 0.72rem;
+  min-height: 38px;
+}
+
+.vol-shell-search input {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  font: inherit;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.vol-shell-search input:focus {
+  outline: none;
+}
+
+.vol-shell-notify-btn {
+  width: 31px;
+  height: 31px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+}
+
+.vol-shell-top-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.vol-shell-body {
+  flex: 1;
+  width: min(1140px, 100%);
+  margin: 0 auto;
+  padding: 0.74rem 0.95rem 0.95rem;
+  display: grid;
+  gap: 0.56rem;
+}
+
+.vol-shell-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.vol-shell-page-head h1 {
+  margin: 0;
+  font-size: clamp(1.45rem, 2.6vw, 2rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.vol-shell-page-head p {
+  margin: 0.18rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.vol-shell-page-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+@media (max-width: 1040px) {
+  .vol-shell-sidebar {
+    position: static;
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vol-shell-main {
+    margin-left: 0;
+  }
+
+  .vol-shell-topbar-inner,
+  .vol-shell-body {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .vol-shell-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vol-shell-topbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+    padding: 0.6rem 0;
+  }
+
+  .vol-shell-search {
+    width: 100%;
+  }
+
+  .vol-shell-notify-btn {
+    align-self: flex-end;
+  }
+}

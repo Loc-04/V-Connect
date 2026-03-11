@@ -8,8 +8,10 @@ import { AdminUsersPage } from './pages/AdminUsersPage';
 import { ActivityDetailPage } from './pages/ActivityDetailPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
 import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
+import { FeedbackPage } from './pages/FeedbackPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { ParticipationHistoryPage } from './pages/ParticipationHistoryPage';
 import { ProfileUiPage } from './pages/ProfileUiPage';
@@ -107,6 +109,22 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['volunteer']}>
                 <ProfileUiPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/volunteer/feedback"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <FeedbackPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/volunteer/notifications"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <NotificationsPage />
               </RequireRoleRoute>
             }
           />
