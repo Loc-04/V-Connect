@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Activity } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
@@ -153,7 +154,9 @@ export function ResetPasswordPage() {
         <div className="password-hero-inner">
           <div className="password-hero-copy">
             <div className="hero-brand password-brand">
-              <span className="brand-icon">V</span>
+              <span className="brand-icon">
+                <Activity size={16} />
+              </span>
               <span>V-Connect</span>
             </div>
             <h1>Empowering communities together.</h1>

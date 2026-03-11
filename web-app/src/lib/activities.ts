@@ -60,6 +60,14 @@ export async function listActivities(options: ListActivitiesOptions): Promise<Ac
   return response.activities;
 }
 
+export async function getActivityById(activityId: string, accessToken: string): Promise<ActivityRecord> {
+  const response = await apiRequest<ActivityResponse>(`/activities/${activityId}`, {
+    accessToken,
+  });
+
+  return response.activity;
+}
+
 export async function createActivity(
   payload: ActivityPayload,
   accessToken: string

@@ -15,9 +15,10 @@ function PageLoading() {
 }
 
 export function RoleHomeRedirect() {
-  const { loading, session, profile } = useAuth();
+  const { loading, error, session, profile } = useAuth();
+  const waitingForProfile = Boolean(session && !profile && !error);
 
-  if (loading) {
+  if (loading || waitingForProfile) {
     return <PageLoading />;
   }
 
@@ -33,9 +34,10 @@ export function RoleHomeRedirect() {
 }
 
 export function PublicOnlyRoute({ children }: { children: ReactNode }) {
-  const { loading, session, profile } = useAuth();
+  const { loading, error, session, profile } = useAuth();
+  const waitingForProfile = Boolean(session && !profile && !error);
 
-  if (loading) {
+  if (loading || waitingForProfile) {
     return <PageLoading />;
   }
 
@@ -57,10 +59,11 @@ export function RequireRoleRoute({
   children: ReactNode;
   allowedRoles: string[];
 }) {
-  const { loading, session, profile } = useAuth();
+  const { loading, error, session, profile } = useAuth();
   const location = useLocation();
+  const waitingForProfile = Boolean(session && !profile && !error);
 
-  if (loading) {
+  if (loading || waitingForProfile) {
     return <PageLoading />;
   }
 

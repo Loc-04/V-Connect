@@ -1,4 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  MoreVertical,
+  Search,
+  ShieldUser,
+  UserRoundCog,
+  Users,
+} from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { apiRequest } from '../lib/api';
@@ -6,6 +17,7 @@ import type { UserRecord } from '../types/domain';
 
 const roleOptions = ['admin', 'organizer', 'volunteer'];
 const baseStatusOptions = ['active', 'inactive', 'suspended'];
+const USERS_PER_PAGE = 10;
 
 interface UserEditDraft {
   role: string;
@@ -19,6 +31,8 @@ interface AdminUsersResponse {
 interface AdminUserUpdateResponse {
   user: UserRecord;
 }
+
+type PageItem = number | 'ellipsis';
 
 function formatRelativeDate(date: string | null): string {
   if (!date) {
@@ -69,6 +83,28 @@ function makeEmail(fullName: string | null, id: string): string {
   return `${fullName.trim().toLowerCase().replace(/\s+/g, '.')}@example.com`;
 }
 
+function buildPaginationItems(currentPage: number, totalPages: number): PageItem[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set<number>([1, totalPages, currentPage, currentPage - 1, currentPage + 1]);
+  const normalized = Array.from(pages).filter((page) => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+
+  const items: PageItem[] = [];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const page = normalized[index];
+    items.push(page);
+
+    const next = normalized[index + 1];
+    if (next && next - page > 1) {
+      items.push('ellipsis');
+    }
+  }
+
+  return items;
+}
+
 export function AdminUsersPage() {
   const { session } = useAuth();
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -77,6 +113,7 @@ export function AdminUsersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +203,23 @@ export function AdminUsersPage() {
       return matchesKeyword && matchesRole && matchesStatus;
     });
   }, [users, searchTerm, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, roleFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+
+  useEffect(() => {
+    setCurrentPage((current) => (current > totalPages ? totalPages : current));
+  }, [totalPages]);
+
+  const pageStartIndex = (currentPage - 1) * USERS_PER_PAGE;
+  const paginatedUsers = filteredUsers.slice(pageStartIndex, pageStartIndex + USERS_PER_PAGE);
+  const showingFrom = filteredUsers.length === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = filteredUsers.length === 0 ? 0 : Math.min(pageStartIndex + USERS_PER_PAGE, filteredUsers.length);
+
+  const pageItems = useMemo(() => buildPaginationItems(currentPage, totalPages), [currentPage, totalPages]);
 
   const stats = useMemo(
     () => ({
@@ -267,7 +321,7 @@ export function AdminUsersPage() {
         </div>
         <div className="users-head-actions">
           <label className="users-search-wrap">
-            <span aria-hidden="true" className="users-search-icon" />
+            <Search aria-hidden="true" className="users-icon users-search-icon" />
             <input
               className="text-input users-search-input"
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -284,7 +338,9 @@ export function AdminUsersPage() {
       <div className="users-stat-grid">
         <article className="users-stat-card users-stat-total">
           <div className="stat-top">
-            <span aria-hidden="true" className="users-stat-icon" />
+            <span aria-hidden="true" className="users-stat-icon">
+              <Users className="users-icon-sm" />
+            </span>
             <span className="stat-growth">+12%</span>
           </div>
           <strong>{stats.total.toLocaleString()}</strong>
@@ -292,7 +348,9 @@ export function AdminUsersPage() {
         </article>
         <article className="users-stat-card users-stat-volunteer">
           <div className="stat-top">
-            <span aria-hidden="true" className="users-stat-icon" />
+            <span aria-hidden="true" className="users-stat-icon">
+              <UserRoundCog className="users-icon-sm" />
+            </span>
             <span className="stat-growth">+5%</span>
           </div>
           <strong>{stats.volunteer.toLocaleString()}</strong>
@@ -300,7 +358,9 @@ export function AdminUsersPage() {
         </article>
         <article className="users-stat-card users-stat-organizer">
           <div className="stat-top">
-            <span aria-hidden="true" className="users-stat-icon" />
+            <span aria-hidden="true" className="users-stat-icon">
+              <BriefcaseBusiness className="users-icon-sm" />
+            </span>
             <span className="stat-growth">+15%</span>
           </div>
           <strong>{stats.organizer.toLocaleString()}</strong>
@@ -308,7 +368,9 @@ export function AdminUsersPage() {
         </article>
         <article className="users-stat-card users-stat-admin">
           <div className="stat-top">
-            <span aria-hidden="true" className="users-stat-icon" />
+            <span aria-hidden="true" className="users-stat-icon">
+              <ShieldUser className="users-icon-sm" />
+            </span>
             <span className="stat-growth neutral">-0%</span>
           </div>
           <strong>{stats.admin.toLocaleString()}</strong>
@@ -320,6 +382,7 @@ export function AdminUsersPage() {
         <div className="users-table-toolbar">
           <div className="users-left-toolbar">
             <button className="filter-btn" type="button">
+              <Filter className="users-icon-sm" />{' '}
               Filter
             </button>
             <div className="users-filter-chips">
@@ -357,13 +420,23 @@ export function AdminUsersPage() {
               ))}
             </select>
             <p className="users-showing-text">
-              Showing 1-{filteredUsers.length} of {users.length}
+              Showing {showingFrom}-{showingTo} of {filteredUsers.length}
             </p>
-            <button className="arrow-btn" type="button">
-              &lt;
+            <button
+              className="arrow-btn"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+              type="button"
+            >
+              <ChevronLeft className="users-icon-sm" />
             </button>
-            <button className="arrow-btn" type="button">
-              &gt;
+            <button
+              className="arrow-btn"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+              type="button"
+            >
+              <ChevronRight className="users-icon-sm" />
             </button>
           </div>
         </div>
@@ -386,7 +459,7 @@ export function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((user) => {
+                {paginatedUsers.map((user) => {
                   const draft = draftByUserId[user.id] ?? {
                     role: String(user.role ?? 'volunteer'),
                     status: String(user.status ?? 'active'),
@@ -452,7 +525,9 @@ export function AdminUsersPage() {
                               setMenuUserId((current) => (current === user.id ? null : user.id));
                             }}
                             type="button"
-                          />
+                          >
+                            <MoreVertical className="users-icon-sm" />
+                          </button>
                           {menuUserId === user.id && (
                             <div className="row-action-menu" role="menu">
                               <button
@@ -493,28 +568,41 @@ export function AdminUsersPage() {
           </div>
         )}
 
-        {!loading && (
+        {!loading && filteredUsers.length > 0 && (
           <div className="users-table-footer">
-            <button className="footer-nav-btn" type="button">
-              Previous
+            <button
+              className="footer-nav-btn"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+              type="button"
+            >
+              <ChevronLeft className="users-icon-sm" /> Previous
             </button>
             <div className="footer-pages">
-              <button className="page-btn active" type="button">
-                1
-              </button>
-              <button className="page-btn" type="button">
-                2
-              </button>
-              <button className="page-btn" type="button">
-                3
-              </button>
-              <span className="page-dots">...</span>
-              <button className="page-btn" type="button">
-                12
-              </button>
+              {pageItems.map((item, index) =>
+                item === 'ellipsis' ? (
+                  <span className="page-dots" key={`ellipsis-${index}`}>
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    className={item === currentPage ? 'page-btn active' : 'page-btn'}
+                    key={item}
+                    onClick={() => setCurrentPage(item)}
+                    type="button"
+                  >
+                    {item}
+                  </button>
+                )
+              )}
             </div>
-            <button className="footer-nav-btn" type="button">
-              Next
+            <button
+              className="footer-nav-btn"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+              type="button"
+            >
+              Next <ChevronRight className="users-icon-sm" />
             </button>
           </div>
         )}
