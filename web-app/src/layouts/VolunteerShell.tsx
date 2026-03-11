@@ -1,9 +1,10 @@
-﻿import { Bell, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { VolunteerSidebar, type VolunteerNavKey } from '../components/navigation/VolunteerSidebar';
+import { NotificationDropdown } from '../components/notifications/NotificationDropdown';
 import './VolunteerShell.css';
 
 interface VolunteerShellProps {
@@ -45,14 +46,7 @@ export function VolunteerShell({ activeNav, pageTitle, pageSubtitle, headerActio
               <input id="vol-shell-search-input" placeholder="Search opportunities..." type="search" />
             </label>
 
-            <button
-              aria-label="Open notifications"
-              className="vol-shell-notify-btn"
-              onClick={() => navigate('/volunteer/notifications')}
-              type="button"
-            >
-              <Bell className="vol-shell-top-icon" />
-            </button>
+            <NotificationDropdown />
           </div>
         </header>
 

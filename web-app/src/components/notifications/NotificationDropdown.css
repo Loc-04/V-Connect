@@ -1,0 +1,243 @@
+.mini-notify-wrap {
+  position: relative;
+}
+
+.mini-notify-trigger {
+  position: relative;
+}
+
+.mini-notify-badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #ffffff;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 0.25rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1;
+  border: 2px solid #ffffff;
+}
+
+.mini-notify-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 360px;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #e3e8f2;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.12);
+  padding: 0.75rem;
+  z-index: 60;
+}
+
+.mini-notify-head {
+  display: grid;
+  gap: 0.6rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.mini-notify-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mini-notify-head-top h2 {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.2;
+  color: #111827;
+}
+
+.mini-notify-view-all {
+  border: 0;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 0.73rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mini-notify-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mini-notify-tab {
+  border: 0;
+  border-radius: 999px;
+  background: #f3f5fa;
+  color: #5b6478;
+  min-height: 30px;
+  padding: 0 0.72rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mini-notify-tab.is-active {
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  color: #ffffff;
+}
+
+.mini-notify-list {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+}
+
+.mini-notify-item {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0.72rem;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: start;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mini-notify-item:hover {
+  background: #f8fafc;
+}
+
+.mini-notify-item.is-unread {
+  background: #f6f5ff;
+}
+
+.mini-notify-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #e5e9f2;
+}
+
+.mini-notify-icon-glyph {
+  width: 18px;
+  height: 18px;
+}
+
+.mini-notify-icon-opportunity {
+  background: #ece9ff;
+  color: #4338ca;
+}
+
+.mini-notify-icon-feedback {
+  background: #ddfbf2;
+  color: #0f766e;
+}
+
+.mini-notify-icon-approval {
+  background: #edf2f7;
+  color: #475569;
+}
+
+.mini-notify-icon-certificate {
+  background: #f5f7fb;
+  color: #475569;
+}
+
+.mini-notify-icon-security {
+  background: #ffeddc;
+  color: #ea580c;
+}
+
+.mini-notify-icon-message {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.mini-notify-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.mini-notify-title {
+  font-size: 0.79rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.25;
+}
+
+.mini-notify-desc {
+  font-size: 0.71rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.mini-notify-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: end;
+  padding-top: 0.08rem;
+}
+
+.mini-notify-time {
+  font-size: 0.64rem;
+  color: #8b94a7;
+  white-space: nowrap;
+}
+
+.mini-notify-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2563eb;
+}
+
+.mini-notify-empty {
+  margin: 0;
+  padding: 0.4rem 0.1rem;
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.mini-notify-footer {
+  border-top: 1px solid #eef2f7;
+  padding-top: 0.72rem;
+}
+
+.mini-notify-footer-btn {
+  width: 100%;
+  border: 1px solid #d7deea;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #3f4b61;
+  min-height: 38px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.mini-notify-footer-btn:hover {
+  background: #f7f9fc;
+  border-color: #cbd5e3;
+}
+
+@media (max-width: 760px) {
+  .mini-notify-dropdown {
+    width: min(360px, calc(100vw - 1.5rem));
+    right: -0.2rem;
+  }
+}
