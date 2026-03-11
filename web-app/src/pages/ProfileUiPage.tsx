@@ -1,4 +1,22 @@
-﻿import './ProfileUiPage.css';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Activity,
+  Award,
+  Bell,
+  Camera,
+  CalendarDays,
+  History,
+  LayoutDashboard,
+  Leaf,
+  LogOut,
+  Medal,
+  Pencil,
+  Plus,
+  Settings,
+  Sparkles,
+  Trees,
+} from 'lucide-react';
+import './ProfileUiPage.css';
 
 const weekBars = [32, 44, 20, 38, 74, 75, 20];
 
@@ -19,23 +37,31 @@ const interests = [
   'Elderly Care',
 ];
 
+interface ProfileMenuItem {
+  label: string;
+  icon: LucideIcon;
+  active?: boolean;
+}
+
 const menuMain = [
-  { label: 'Dashboard', icon: 'DB', active: true },
-  { label: 'My Activities', icon: 'AC' },
-  { label: 'Recommendations', icon: 'RC' },
-];
+  { label: 'Dashboard', icon: LayoutDashboard, active: true },
+  { label: 'My Activities', icon: Activity },
+  { label: 'Recommendations', icon: Sparkles },
+] satisfies ProfileMenuItem[];
 
 const menuRecords = [
-  { label: 'Participation History', icon: 'PH' },
-  { label: 'Certificates', icon: 'CT' },
-];
+  { label: 'Participation History', icon: History },
+  { label: 'Certificates', icon: Award },
+] satisfies ProfileMenuItem[];
 
 export function ProfileUiPage() {
   return (
     <div className="vol-profile-page">
       <aside className="vol-profile-sidebar">
         <div className="vol-profile-brand">
-          <span className="vol-profile-brand-mark" aria-hidden="true" />
+          <span className="vol-profile-brand-mark" aria-hidden="true">
+            <Activity size={14} />
+          </span>
           <span className="vol-profile-brand-text">V-Connect</span>
         </div>
 
@@ -44,7 +70,7 @@ export function ProfileUiPage() {
           {menuMain.map((item) => (
             <a className={`vol-profile-menu-item ${item.active ? 'vol-profile-active' : ''}`} href="#" key={item.label}>
               <span className="vol-profile-menu-icon" aria-hidden="true">
-                {item.icon}
+                <item.icon size={16} />
               </span>
               <span>{item.label}</span>
             </a>
@@ -56,7 +82,7 @@ export function ProfileUiPage() {
           {menuRecords.map((item) => (
             <a className="vol-profile-menu-item" href="#" key={item.label}>
               <span className="vol-profile-menu-icon" aria-hidden="true">
-                {item.icon}
+                <item.icon size={16} />
               </span>
               <span>{item.label}</span>
             </a>
@@ -65,11 +91,15 @@ export function ProfileUiPage() {
 
         <div className="vol-profile-sidebar-footer">
           <a className="vol-profile-menu-item" href="#">
-            <span className="vol-profile-menu-icon" aria-hidden="true">ST</span>
+            <span className="vol-profile-menu-icon" aria-hidden="true">
+              <Settings size={16} />
+            </span>
             <span>Settings</span>
           </a>
           <a className="vol-profile-menu-item" href="#">
-            <span className="vol-profile-menu-icon" aria-hidden="true">LO</span>
+            <span className="vol-profile-menu-icon" aria-hidden="true">
+              <LogOut size={16} />
+            </span>
             <span>Logout</span>
           </a>
         </div>
@@ -79,7 +109,9 @@ export function ProfileUiPage() {
         <header className="vol-profile-topbar">
           <input className="vol-profile-search-box" placeholder="Search opportunities..." />
           <div className="vol-profile-topbar-user">
-            <button aria-label="Notifications" className="vol-profile-bell" type="button" />
+            <button aria-label="Notifications" className="vol-profile-bell" type="button">
+              <Bell size={14} />
+            </button>
             <div className="vol-profile-topbar-divider" />
             <div className="vol-profile-user-meta">
               <strong>Sarah Jenkins</strong>
@@ -111,7 +143,7 @@ export function ProfileUiPage() {
                   src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80"
                 />
                 <button className="vol-profile-camera-btn" type="button" aria-label="Change avatar">
-                  CM
+                  <Camera size={12} />
                 </button>
               </div>
 
@@ -128,21 +160,27 @@ export function ProfileUiPage() {
 
                 <div className="vol-profile-metric-row">
                   <div className="vol-profile-metric-box">
-                    <span className="vol-profile-metric-icon vol-profile-metric-icon-green" aria-hidden="true" />
+                    <span className="vol-profile-metric-icon vol-profile-metric-icon-green" aria-hidden="true">
+                      <Leaf size={16} />
+                    </span>
                     <div>
                       <small>Total Impact</small>
                       <strong>450+ Hours</strong>
                     </div>
                   </div>
                   <div className="vol-profile-metric-box">
-                    <span className="vol-profile-metric-icon vol-profile-metric-icon-blue" aria-hidden="true" />
+                    <span className="vol-profile-metric-icon vol-profile-metric-icon-blue" aria-hidden="true">
+                      <CalendarDays size={16} />
+                    </span>
                     <div>
                       <small>Member Since</small>
                       <strong>March 2022</strong>
                     </div>
                   </div>
                   <div className="vol-profile-metric-box">
-                    <span className="vol-profile-metric-icon vol-profile-metric-icon-purple" aria-hidden="true" />
+                    <span className="vol-profile-metric-icon vol-profile-metric-icon-purple" aria-hidden="true">
+                      <Medal size={16} />
+                    </span>
                     <div>
                       <small>Reputation</small>
                       <strong>98/100 Score</strong>
@@ -162,7 +200,7 @@ export function ProfileUiPage() {
               <div className="vol-profile-card-head">
                 <h3>Skills & Expertise</h3>
                 <button type="button" aria-label="Add skill">
-                  +
+                  <Plus size={16} />
                 </button>
               </div>
               <div className="vol-profile-chips">
@@ -180,7 +218,7 @@ export function ProfileUiPage() {
               <div className="vol-profile-card-head">
                 <h3>Availability</h3>
                 <button type="button" aria-label="Edit availability">
-                  ED
+                  <Pencil size={14} />
                 </button>
               </div>
               <div className="vol-profile-week-labels">
@@ -219,7 +257,9 @@ export function ProfileUiPage() {
             <article className="vol-profile-card vol-profile-upcoming-card">
               <h3>Upcoming Activity</h3>
               <div className="vol-profile-upcoming-inner">
-                <span className="vol-profile-upcoming-icon" aria-hidden="true">TR</span>
+                <span className="vol-profile-upcoming-icon" aria-hidden="true">
+                  <Trees size={14} />
+                </span>
                 <div>
                   <span className="vol-profile-tag">TOMORROW</span>
                   <h4>Tree Planting Initiative</h4>

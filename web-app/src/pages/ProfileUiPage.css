@@ -1,15 +1,15 @@
-﻿.vol-profile-page {
+.vol-profile-page {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 286px minmax(0, 1fr);
-  background: #f3f5f8;
-  color: #1d2435;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Nunito Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .vol-profile-sidebar {
-  border-right: 1px solid #d9dee7;
-  background: #f7f9fc;
+  border-right: 1px solid var(--border);
+  background: var(--bg-soft);
   padding: 18px 14px 14px;
   display: flex;
   flex-direction: column;
@@ -28,33 +28,26 @@
   width: 24px;
   height: 24px;
   border-radius: 7px;
-  background: linear-gradient(140deg, #0f8b7d, #0f7a6d);
-  position: relative;
-}
-
-.vol-profile-brand-mark::after {
-  content: '';
-  position: absolute;
-  right: 3px;
-  top: 3px;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #e5fffa;
+  background: linear-gradient(140deg, var(--grad-start), var(--grad-end));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.24);
 }
 
 .vol-profile-brand-text {
   font-weight: 800;
   font-size: 36px;
   line-height: 1;
-  color: #0f8b7d;
+  color: var(--grad-end);
 }
 
 .vol-profile-menu-title {
   margin: 12px 8px 2px;
   font-size: 12px;
   letter-spacing: 0.03em;
-  color: #9aa6b9;
+  color: var(--muted);
   font-weight: 700;
 }
 
@@ -74,38 +67,37 @@
   padding: 10px 10px;
   border-radius: 10px;
   text-decoration: none;
-  color: #3c4f67;
+  color: var(--muted);
   font-size: 16px;
   font-weight: 600;
 }
 
 .vol-profile-menu-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 5px;
-  border: 1px solid #d6dce8;
+  border: 1px solid var(--border);
   display: grid;
   place-items: center;
-  font-size: 8px;
-  color: #5f6f87;
+  color: var(--grad-end);
   background: #ffffff;
   flex: 0 0 auto;
 }
 
 .vol-profile-active {
-  background: #dfeeed;
-  color: #0f8173;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-active .vol-profile-menu-icon {
-  border-color: #a3d2cd;
-  background: #edf8f6;
-  color: #0f8173;
+  border-color: rgba(139, 92, 246, 0.24);
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-sidebar-footer {
   margin-top: auto;
-  border-top: 1px solid #d9dee7;
+  border-top: 1px solid var(--border);
   padding-top: 10px;
   display: grid;
   gap: 6px;
@@ -119,8 +111,8 @@
 
 .vol-profile-topbar {
   min-height: 62px;
-  border-bottom: 1px solid #d9dee7;
-  background: #f9fbfd;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
   padding: 10px 24px;
   display: flex;
   align-items: center;
@@ -130,20 +122,20 @@
 
 .vol-profile-search-box {
   width: min(390px, 100%);
-  border: 1px solid #d7dfeb;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #eef2f7;
+  background: var(--bg-soft);
   padding: 10px 14px;
   font-size: 15px;
 }
 
 .vol-profile-search-box::placeholder {
-  color: #8f9daf;
+  color: var(--muted);
 }
 
 .vol-profile-search-box:focus {
-  outline: 2px solid #d0d9e8;
-  border-color: #b7c4d8;
+  outline: 2px solid rgba(139, 92, 246, 0.2);
+  border-color: var(--grad-end);
 }
 
 .vol-profile-topbar-user {
@@ -153,13 +145,17 @@
 }
 
 .vol-profile-bell {
-  width: 18px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
   border: 0;
   border-radius: 999px;
-  background: #5f6f87;
-  position: relative;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
 }
 
 .vol-profile-bell::after {
@@ -171,13 +167,13 @@
   height: 8px;
   border-radius: 999px;
   background: #ef4444;
-  border: 2px solid #f9fbfd;
+  border: 2px solid var(--bg-soft);
 }
 
 .vol-profile-topbar-divider {
   width: 1px;
   height: 26px;
-  background: #d4dae5;
+  background: var(--border);
 }
 
 .vol-profile-user-meta {
@@ -191,7 +187,7 @@
 }
 
 .vol-profile-user-meta span {
-  color: #0f8b7d;
+  color: var(--grad-end);
   font-size: 22px;
 }
 
@@ -226,25 +222,25 @@
 
 .vol-profile-page-head p {
   margin: 6px 0 0;
-  color: #7a879a;
+  color: var(--muted);
   font-size: 17px;
 }
 
 .vol-profile-ai-btn {
   border: 0;
-  background: #0d1b3b;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
   color: #ffffff;
   border-radius: 12px;
   padding: 12px 20px;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(12, 24, 49, 0.3);
+  box-shadow: 0 10px 18px rgba(139, 92, 246, 0.25);
 }
 
 .vol-profile-card {
   background: #ffffff;
-  border: 1px solid #e1e7ef;
+  border: 1px solid var(--border);
   border-radius: 18px;
   padding: 20px 24px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
@@ -280,7 +276,7 @@
   height: 32px;
   border-radius: 999px;
   border: 2px solid #ffffff;
-  background: #46556f;
+  background: var(--grad-end);
   color: #ffffff;
   font-size: 9px;
   font-weight: 700;
@@ -310,8 +306,8 @@
 }
 
 .vol-profile-badge-volunteer {
-  background: #d3f2eb;
-  color: #0f7e70;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-badge-gold {
@@ -321,7 +317,7 @@
 
 .vol-profile-bio {
   margin: 8px 0 14px;
-  color: #55657c;
+  color: var(--muted);
   max-width: 68ch;
   font-size: 18px;
   line-height: 1.45;
@@ -337,10 +333,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid #e1e7ef;
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px 14px;
-  background: #f6f9fc;
+  background: var(--bg-soft);
 }
 
 .vol-profile-metric-icon {
@@ -351,20 +347,20 @@
 }
 
 .vol-profile-metric-icon-green {
-  background: #d4f3ec;
+  background: rgba(139, 92, 246, 0.14);
 }
 
 .vol-profile-metric-icon-blue {
-  background: #dce8ff;
+  background: rgba(139, 92, 246, 0.14);
 }
 
 .vol-profile-metric-icon-purple {
-  background: #eadcff;
+  background: rgba(139, 92, 246, 0.14);
 }
 
 .vol-profile-metric-box small {
   display: block;
-  color: #78879d;
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -374,10 +370,10 @@
 }
 
 .vol-profile-hero-action button {
-  border: 1px solid #cfd8e5;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #f8fbff;
-  color: #394b64;
+  background: #ffffff;
+  color: var(--muted);
   padding: 11px 16px;
   font-weight: 700;
   font-size: 16px;
@@ -407,14 +403,14 @@
 .vol-profile-card-head button {
   border: 0;
   background: transparent;
-  color: #70819b;
+  color: var(--muted);
   font-size: 34px;
   line-height: 1;
   cursor: pointer;
 }
 
 .vol-profile-text-link {
-  color: #69809c;
+  color: var(--muted);
   font-size: 14px;
   font-weight: 700;
 }
@@ -430,9 +426,9 @@
   align-items: center;
   gap: 8px;
   border-radius: 10px;
-  border: 1px solid #dde5f0;
-  background: #f5f8fc;
-  color: #394d66;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--muted);
   font-size: 16px;
   padding: 7px 11px;
 }
@@ -441,7 +437,7 @@
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: #a8b6ca;
+  background: rgba(139, 92, 246, 0.32);
   flex: 0 0 auto;
 }
 
@@ -454,39 +450,39 @@
 }
 
 .vol-profile-chip-green .vol-profile-chip-dot {
-  background: #1ba97f;
+  background: var(--grad-end);
 }
 
 .vol-profile-chip-green em {
-  background: #d3f3e6;
-  color: #087d5b;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-chip-blue .vol-profile-chip-dot {
-  background: #3f7de5;
+  background: var(--grad-end);
 }
 
 .vol-profile-chip-blue em {
-  background: #dbe9ff;
-  color: #2a60c3;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-chip-purple .vol-profile-chip-dot {
-  background: #9155ea;
+  background: var(--grad-end);
 }
 
 .vol-profile-chip-purple em {
-  background: #eddfff;
-  color: #7a42d0;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-chip-orange .vol-profile-chip-dot {
-  background: #ec7a1c;
+  background: var(--grad-end);
 }
 
 .vol-profile-chip-orange em {
-  background: #ffe6cf;
-  color: #ca6516;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
 }
 
 .vol-profile-availability-card {
@@ -498,7 +494,7 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   text-align: center;
-  color: #9aa7bb;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -521,11 +517,11 @@
 .vol-profile-bar {
   width: 100%;
   border-radius: 8px;
-  background: #e3e9f0;
+  background: #e7e9f2;
 }
 
 .vol-profile-bar-active {
-  background: #137f71;
+  background: var(--grad-end);
 }
 
 .vol-profile-bar-label {
@@ -536,18 +532,18 @@
 }
 
 .vol-profile-mini-note {
-  border-top: 1px solid #e4e9f2;
+  border-top: 1px solid var(--border);
   margin: 6px 0 0;
   padding-top: 12px;
-  color: #8391a6;
+  color: var(--muted);
   font-size: 14px;
   text-align: center;
 }
 
 .vol-profile-interest-chip {
-  border: 1px solid #e2e8f0;
-  background: #f7f9fc;
-  color: #4a5d77;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--muted);
   border-radius: 10px;
   padding: 8px 14px;
   font-size: 16px;
@@ -556,11 +552,11 @@
 
 .vol-profile-interest-add {
   border-style: dashed;
-  color: #9aa7bd;
+  color: var(--muted);
 }
 
 .vol-profile-upcoming-card {
-  background: radial-gradient(circle at 100% 0, #cdeee8 0 30%, #ffffff 31%);
+  background: radial-gradient(circle at 100% 0, #f7d6eb 0 30%, #ffffff 31%);
 }
 
 .vol-profile-upcoming-card h3 {
@@ -570,7 +566,7 @@
 }
 
 .vol-profile-upcoming-inner {
-  border: 1px solid #e1e7ef;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: #ffffff;
   padding: 12px;
@@ -583,10 +579,10 @@
   width: 42px;
   height: 42px;
   border-radius: 10px;
-  background: #f6e6bc;
+  background: rgba(139, 92, 246, 0.14);
   display: grid;
   place-items: center;
-  color: #9a6705;
+  color: var(--grad-end);
   font-size: 11px;
   font-weight: 700;
 }
@@ -594,8 +590,8 @@
 .vol-profile-tag {
   display: inline-flex;
   border-radius: 8px;
-  background: #eef2f8;
-  color: #60728d;
+  background: var(--bg-soft);
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
   padding: 4px 9px;
@@ -609,7 +605,7 @@
 
 .vol-profile-upcoming-inner p {
   margin: 0;
-  color: #74839a;
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -617,7 +613,7 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid #e3e8f1;
+  border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
@@ -629,7 +625,7 @@
 
 .vol-profile-history-item p {
   margin: 4px 0 0;
-  color: #64768f;
+  color: var(--muted);
   font-size: 17px;
 }
 
@@ -641,13 +637,13 @@
 }
 
 .vol-profile-history-meta span {
-  color: #8d9cb2;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
 .vol-profile-history-meta strong {
-  color: #16a085;
+  color: var(--grad-end);
   font-size: 14px;
 }
 
@@ -658,7 +654,7 @@
 
   .vol-profile-sidebar {
     border-right: 0;
-    border-bottom: 1px solid #d9dee7;
+    border-bottom: 1px solid var(--border);
   }
 
   .vol-profile-grid-two {
@@ -705,3 +701,4 @@
     font-size: 14px;
   }
 }
+
