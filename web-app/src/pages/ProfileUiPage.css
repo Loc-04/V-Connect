@@ -71,12 +71,8 @@
   border-radius: 10px;
   background: transparent;
   text-decoration: none;
-<<<<<<< HEAD
-  color: #3c4f67;
+  color: var(--text);
   cursor: pointer;
-=======
-  color: var(--muted);
->>>>>>> main
   font-size: 16px;
   font-weight: 600;
   font-family: inherit;
