@@ -28,6 +28,12 @@ export function VolunteerShell({ activeNav, pageTitle, pageSubtitle, headerActio
 
   const fullName = profile?.full_name?.trim() || 'Volunteer';
   const roleLabel = getRoleLabel(profile?.role);
+  const initials = fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 
   const handleSignOut = async () => {
     await signOut();
@@ -46,7 +52,22 @@ export function VolunteerShell({ activeNav, pageTitle, pageSubtitle, headerActio
               <input id="vol-shell-search-input" placeholder="Search opportunities..." type="search" />
             </label>
 
-            <NotificationDropdown />
+            <div className="vol-shell-topbar-right">
+              <NotificationDropdown />
+              <span className="vol-shell-topbar-divider" aria-hidden="true" />
+              <div className="vol-shell-topbar-user">
+                <div className="vol-shell-topbar-user-meta">
+                  <strong>{fullName}</strong>
+                  <span>{roleLabel}</span>
+                </div>
+
+                {profile?.avatar_url ? (
+                  <img alt={fullName} className="vol-shell-topbar-avatar" src={profile.avatar_url} />
+                ) : (
+                  <span className="vol-shell-topbar-avatar vol-shell-topbar-avatar-fallback">{initials || 'V'}</span>
+                )}
+              </div>
+            </div>
           </div>
         </header>
 
