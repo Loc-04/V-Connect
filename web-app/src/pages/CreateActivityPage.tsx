@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Activity, ClipboardList, LayoutDashboard, MapPin, Sparkles } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { createActivity } from '../lib/activities';
@@ -129,18 +130,18 @@ export function CreateActivityPage() {
         <div className="create-activity-header__container">
           <div className="create-activity-brand">
             <span className="create-activity-brand__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" role="img">
-                <path d="M12 3.2c-3.7 0-6.8 2.1-6.8 4.7 0 1 .5 1.9 1.3 2.7-.8.8-1.3 1.7-1.3 2.7 0 1.1.6 2.1 1.6 2.9-.6.7-1 1.5-1 2.3 0 2.6 3 4.7 6.8 4.7s6.8-2.1 6.8-4.7c0-.8-.3-1.6-1-2.3 1-.8 1.6-1.8 1.6-2.9 0-1-.5-1.9-1.3-2.7.8-.8 1.3-1.7 1.3-2.7 0-2.6-3-4.7-6.8-4.7Z" />
-              </svg>
+              <Activity size={20} />
             </span>
             <strong>V-Connect</strong>
           </div>
 
           <nav className="create-activity-nav" aria-label="Main">
             <button className="create-activity-nav__item" onClick={() => navigate('/organizer/dashboard')} type="button">
+              <LayoutDashboard className="create-activity-nav-icon" />
               Dashboard
             </button>
             <button className="create-activity-nav__item is-active" type="button">
+              <Activity className="create-activity-nav-icon" />
               Activities
             </button>
           </nav>
@@ -177,7 +178,7 @@ export function CreateActivityPage() {
             <section className="activity-card">
               <div className="activity-card__head">
                 <span className="activity-card__badge is-blue" aria-hidden="true">
-                  B
+                  <Sparkles size={16} />
                 </span>
                 <h2>Basic Information</h2>
               </div>
@@ -206,7 +207,7 @@ export function CreateActivityPage() {
             <section className="activity-card">
               <div className="activity-card__head">
                 <span className="activity-card__badge is-purple" aria-hidden="true">
-                  R
+                  <ClipboardList size={16} />
                 </span>
                 <h2>Requirements</h2>
               </div>
@@ -245,7 +246,7 @@ export function CreateActivityPage() {
             <section className="activity-card">
               <div className="activity-card__head">
                 <span className="activity-card__badge is-orange" aria-hidden="true">
-                  L
+                  <MapPin size={16} />
                 </span>
                 <h2>Logistics</h2>
               </div>

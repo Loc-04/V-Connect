@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Activity, CalendarDays, ChevronDown, Filter, Heart, History, LayoutDashboard, MapPin, Search, User } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { listActivities } from '../lib/activities';
@@ -158,22 +159,31 @@ export function BrowseOpportunitiesPage() {
       <header className="browse-top-nav">
         <div className="browse-container browse-nav-inner">
           <div className="browse-brand">
-            <img
-              alt=""
-              className="browse-brand-logo"
-              src="https://www.figma.com/api/mcp/asset/25df3982-f136-40ef-a70b-1f115f888a93"
-            />
+            <span className="browse-brand-logo" aria-hidden="true">
+              <Activity className="browse-icon" />
+            </span>
             <span>V-Connect</span>
           </div>
 
           <div className="browse-nav-actions">
             <button className="browse-nav-link browse-nav-link-active" type="button">
+              <Search className="browse-icon-sm" />
               Browse
             </button>
-            <button className="browse-nav-link" onClick={() => navigate('/')} type="button">
+            <button className="browse-nav-link" onClick={() => navigate('/volunteer/home')} type="button">
+              <LayoutDashboard className="browse-icon-sm" />
               Home
             </button>
-            <button className="browse-nav-link" onClick={() => navigate('/volunteer/home')} type="button">
+            <button
+              className="browse-nav-link"
+              onClick={() => navigate('/volunteer/participation-history')}
+              type="button"
+            >
+              <History className="browse-icon-sm" />
+              Participation
+            </button>
+            <button className="browse-nav-link" onClick={() => navigate('/volunteer/profile-ui')} type="button">
+              <User className="browse-icon-sm" />
               Profile
             </button>
             <button className="browse-logout-btn" onClick={handleSignOut} type="button">
@@ -194,7 +204,7 @@ export function BrowseOpportunitiesPage() {
 
           <div className="browse-search-wrap">
             <div className="browse-search-input-shell">
-              <SearchIcon />
+              <Search className="browse-icon" />
               <input
                 aria-label="Search opportunities"
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -215,11 +225,11 @@ export function BrowseOpportunitiesPage() {
                   type="button"
                 >
                   {status.label}
-                  <ChevronDownIcon />
+                  <ChevronDown className="browse-icon-sm" />
                 </button>
               ))}
               <button className="browse-filter-icon-btn" type="button">
-                <FilterIcon />
+                <Filter className="browse-icon-sm" />
               </button>
             </div>
           </div>
@@ -236,20 +246,20 @@ export function BrowseOpportunitiesPage() {
                     <img alt={opportunity.title} className="browse-card-image" src={opportunity.imageUrl} />
                     <span className={`browse-category browse-category-${opportunity.categoryTone}`}>{opportunity.category}</span>
                     <button aria-label="Save opportunity" className="browse-favorite-btn" type="button">
-                      <HeartIcon />
+                      <Heart className="browse-icon-sm" />
                     </button>
                   </div>
 
                   <div className="browse-card-body">
                     <div className="browse-meta-line">
-                      <CalendarIcon />
+                      <CalendarDays className="browse-icon-sm" />
                       <span>{opportunity.date}</span>
                     </div>
 
                     <h2>{opportunity.title}</h2>
 
                     <div className="browse-meta-line browse-location-line">
-                      <PinIcon />
+                      <MapPin className="browse-icon-sm" />
                       <span>{opportunity.location}</span>
                     </div>
 
@@ -264,7 +274,11 @@ export function BrowseOpportunitiesPage() {
 
                     <div className="browse-card-footer">
                       <span>{opportunity.spotsLeft} spots</span>
-                      <button className="browse-apply-btn" type="button">
+                      <button
+                        className="browse-apply-btn"
+                        onClick={() => navigate(`/volunteer/activity/${opportunity.id}`)}
+                        type="button"
+                      >
                         Quick Apply
                       </button>
                     </div>
@@ -277,68 +291,5 @@ export function BrowseOpportunitiesPage() {
         </div>
       </section>
     </main>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg aria-hidden="true" className="browse-icon" fill="none" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M20 20L16.65 16.65" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg aria-hidden="true" className="browse-icon-sm" fill="none" viewBox="0 0 24 24">
-      <path d="M7 10L12 15L17 10" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function FilterIcon() {
-  return (
-    <svg aria-hidden="true" className="browse-icon-sm" fill="none" viewBox="0 0 24 24">
-      <path d="M4 7H20" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      <path d="M8 12H16" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-      <path d="M10.5 17H13.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function HeartIcon() {
-  return (
-    <svg aria-hidden="true" className="browse-icon-sm" fill="none" viewBox="0 0 24 24">
-      <path
-        d="M12.05 20.2C11.75 20.2 11.47 20.1 11.25 19.92C8.25 17.46 3.9 13.95 3.9 9.2C3.9 6.58 5.98 4.5 8.6 4.5C10.07 4.5 11.47 5.17 12.4 6.31C13.33 5.17 14.73 4.5 16.2 4.5C18.82 4.5 20.9 6.58 20.9 9.2C20.9 13.95 16.55 17.46 13.55 19.92C13.33 20.1 12.35 20.2 12.05 20.2Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg aria-hidden="true" className="browse-icon-sm" fill="none" viewBox="0 0 24 24">
-      <rect height="15" rx="2" stroke="currentColor" strokeWidth="1.7" width="16" x="4" y="6" />
-      <path d="M8 3V8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-      <path d="M16 3V8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-      <path d="M4 10H20" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
-function PinIcon() {
-  return (
-    <svg aria-hidden="true" className="browse-icon-sm" fill="none" viewBox="0 0 24 24">
-      <path
-        d="M12 21C12 21 18 15.5 18 10.5C18 7.46 15.54 5 12.5 5C9.46 5 7 7.46 7 10.5C7 15.5 12 21 12 21Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
-      <circle cx="12.5" cy="10.5" r="1.6" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
   );
 }

@@ -1,15 +1,15 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
 
 .browse-page {
   min-height: 100vh;
-  background: #f6f7f8;
-  color: #111418;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
 }
 
 .browse-top-nav {
   background: #ffffff;
-  border-bottom: 1px solid #f0f2f4;
+  border-bottom: 1px solid var(--border);
 }
 
 .browse-container {
@@ -37,7 +37,13 @@
 .browse-brand-logo {
   width: 31px;
   height: 31px;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(139, 92, 246, 0.24);
 }
 
 .browse-nav-actions {
@@ -49,7 +55,7 @@
 .browse-nav-link {
   border: 0;
   background: transparent;
-  color: #617289;
+  color: var(--muted);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -57,20 +63,20 @@
 }
 
 .browse-nav-link-active {
-  color: #2b7cee;
+  color: var(--grad-end);
   font-weight: 700;
 }
 
 .browse-logout-btn {
   border: 0;
   border-radius: 999px;
-  background: #2b7cee;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
   color: #ffffff;
   font-size: 0.875rem;
   font-weight: 700;
   padding: 0.7rem 1.05rem;
   cursor: pointer;
-  box-shadow: 0 4px 8px -2px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.28);
 }
 
 .browse-main {
@@ -87,13 +93,13 @@
 
 .browse-hero p {
   margin: 0.7rem 0 1.6rem;
-  color: #617289;
+  color: var(--muted);
   font-size: 1rem;
 }
 
 .browse-search-wrap {
   background: #ffffff;
-  border: 1px solid #f0f2f4;
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 8px 9px;
   display: flex;
@@ -104,14 +110,14 @@
 .browse-search-input-shell {
   height: 48px;
   border-radius: 999px;
-  background: #f6f7f8;
+  background: var(--bg);
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0 0.95rem;
   flex: 1;
   min-width: 0;
-  color: #617289;
+  color: var(--muted);
 }
 
 .browse-search-input-shell input {
@@ -119,7 +125,7 @@
   background: transparent;
   width: 100%;
   font: inherit;
-  color: #617289;
+  color: var(--muted);
 }
 
 .browse-search-input-shell input:focus {
@@ -129,7 +135,7 @@
 .browse-search-divider {
   width: 1px;
   height: 32px;
-  background: #e1e4e8;
+  background: var(--border);
 }
 
 .browse-filters {
@@ -140,13 +146,13 @@
 
 .browse-filter-btn {
   height: 40px;
-  border: 1px solid #e1e4e8;
+  border: 1px solid var(--border);
   background: #ffffff;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: #111418;
+  color: var(--text);
   font-size: 0.875rem;
   font-weight: 500;
   padding: 0 1rem;
@@ -158,12 +164,12 @@
   height: 40px;
   border: 0;
   border-radius: 999px;
-  background: #2b7cee;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 15px -6px rgba(59, 130, 246, 0.45);
+  box-shadow: 0 8px 16px rgba(139, 92, 246, 0.28);
   cursor: pointer;
 }
 
@@ -176,7 +182,7 @@
 
 .browse-card {
   background: #ffffff;
-  border: 1px solid #f0f2f4;
+  border: 1px solid var(--border);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
@@ -208,7 +214,7 @@
 }
 
 .browse-category-blue {
-  color: #2b7cee;
+  color: var(--grad-end);
 }
 
 .browse-category-orange {
@@ -251,7 +257,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: #2b7cee;
+  color: var(--grad-end);
   font-size: 0.96rem;
   line-height: 1.2;
 }
@@ -265,7 +271,7 @@
 
 .browse-location-line {
   margin-top: 0.35rem;
-  color: #617289;
+  color: var(--muted);
   font-size: 0.92rem;
 }
 
@@ -278,8 +284,8 @@
 
 .browse-tag {
   border-radius: 999px;
-  background: #ebf3fe;
-  color: #2b7cee;
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--grad-end);
   font-size: 0.73rem;
   font-weight: 700;
   padding: 0.23rem 0.62rem;
@@ -288,7 +294,7 @@
 .browse-card-footer {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #f0f2f4;
+  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -296,14 +302,14 @@
 }
 
 .browse-card-footer span {
-  color: #617289;
+  color: var(--muted);
   font-size: 0.82rem;
 }
 
 .browse-apply-btn {
   border: 0;
   border-radius: 999px;
-  background: #2b7cee;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
   color: #ffffff;
   font-size: 0.9rem;
   font-weight: 700;
@@ -320,7 +326,7 @@
 .browse-load-more-btn {
   border: 0;
   background: transparent;
-  color: #617289;
+  color: var(--muted);
   font-size: 1rem;
   font-weight: 500;
   display: inline-flex;
@@ -397,6 +403,7 @@
     font-size: 1.2rem;
   }
 }
+
 
 
 

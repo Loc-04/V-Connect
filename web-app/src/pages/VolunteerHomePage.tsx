@@ -18,6 +18,7 @@ export function VolunteerHomePage() {
         <p className="muted">
           Welcome {profile?.full_name ?? 'Volunteer'}.
         </p>
+<<<<<<< HEAD
         <p className="muted">Pick a feature:</p>
 
         <div className="header-actions">
@@ -29,6 +30,18 @@ export function VolunteerHomePage() {
           </button>
         </div>
 
+=======
+        <p className="muted">Use the shortcuts below to move between web pages.</p>
+        <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
+          Browse Opportunities
+        </button>
+        <button className="secondary-btn" onClick={() => navigate('/volunteer/participation-history')} type="button">
+          Participation History
+        </button>
+        <button className="secondary-btn" onClick={() => navigate('/volunteer/profile-ui')} type="button">
+          Profile Settings
+        </button>
+>>>>>>> main
         <button className="danger-btn" onClick={handleSignOut} type="button">
           Logout
         </button>

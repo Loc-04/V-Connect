@@ -5,12 +5,16 @@ import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute, RoleHomeRedirect 
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { ActivityDetailPage } from './pages/ActivityDetailPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
 import { BrowseOpportunitiesPage } from './pages/BrowseOpportunitiesPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+import { ParticipationHistoryPage } from './pages/ParticipationHistoryPage';
 import { ProfileUiPage } from './pages/ProfileUiPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
 
@@ -36,6 +40,8 @@ function App() {
               </PublicOnlyRoute>
             }
           />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             path="/activities/create"
             element={
@@ -49,6 +55,38 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
                 <BrowseOpportunitiesPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/participation-history"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <ParticipationHistoryPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/volunteer/participation-history"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <ParticipationHistoryPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/activity/:id"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+                <ActivityDetailPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/volunteer/activity/:id"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+                <ActivityDetailPage />
               </RequireRoleRoute>
             }
           />

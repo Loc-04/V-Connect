@@ -17,9 +17,33 @@ interface ProfileSeed {
   phone: string;
 }
 
+const PROFILE_FETCH_MAX_ATTEMPTS = 8;
+const PROFILE_FETCH_RETRY_DELAY_MS = 250;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 async function fetchUserProfile(accessToken: string): Promise<UserRecord | null> {
   const response = await apiRequest<MeResponse>('/auth/me', { accessToken });
   return response.profile;
+}
+
+async function fetchUserProfileWithRetry(accessToken: string): Promise<UserRecord | null> {
+  for (let attempt = 1; attempt <= PROFILE_FETCH_MAX_ATTEMPTS; attempt += 1) {
+    const profile = await fetchUserProfile(accessToken);
+    if (profile) {
+      return profile;
+    }
+
+    if (attempt < PROFILE_FETCH_MAX_ATTEMPTS) {
+      await delay(PROFILE_FETCH_RETRY_DELAY_MS);
+    }
+  }
+
+  return null;
 }
 
 function extractProfileSeed(session: Session): ProfileSeed | null {
@@ -36,7 +60,7 @@ function extractProfileSeed(session: Session): ProfileSeed | null {
 }
 
 async function ensureProfile(accessToken: string, session: Session): Promise<UserRecord | null> {
-  let profile = await fetchUserProfile(accessToken);
+  let profile = await fetchUserProfileWithRetry(accessToken);
   if (profile) {
     return profile;
   }
@@ -52,7 +76,7 @@ async function ensureProfile(accessToken: string, session: Session): Promise<Use
     body: seed,
   });
 
-  profile = await fetchUserProfile(accessToken);
+  profile = await fetchUserProfileWithRetry(accessToken);
   return profile;
 }
 
@@ -71,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setLoading(true);
+      setError(null);
       setSession(nextSession);
 
       if (!nextSession) {
@@ -84,6 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) {
           return;
         }
+
+        if (!nextProfile) {
+          setProfile(null);
+          setError('No profile found in public.users for this account.');
+          return;
+        }
+
         setProfile(nextProfile);
         setError(null);
       } catch (syncError) {
@@ -91,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         const message = syncError instanceof Error ? syncError.message : 'Failed to load profile from backend.';
+        setProfile(null);
         setError(message);
       } finally {
         if (active) {

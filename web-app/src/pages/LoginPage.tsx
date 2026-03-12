@@ -1,10 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Activity } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
 import { getRoleHomePath } from '../auth/rolePaths';
 import { useAuth } from '../auth/useAuth';
+
+const heroSlides = [
+  {
+    image: 'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1600',
+    title: 'Connect volunteers to the right activities',
+    description:
+      'Join our community to make a real difference. Experience the joy of giving back with a platform designed for impact.',
+    stat: 'Volunteers joined this week',
+    badges: ['AL', 'DK', '+2k'],
+  },
+  {
+    image: 'https://images.pexels.com/photos/6994985/pexels-photo-6994985.jpeg?auto=compress&cs=tinysrgb&w=1600',
+    title: 'Coordinate events with clarity and speed',
+    description:
+      'Track registrations, assign roles, and monitor participation in one workflow built for organizers and community teams.',
+    stat: 'Events managed this month',
+    badges: ['HQ', 'TN', '+48'],
+  },
+  {
+    image: 'https://images.pexels.com/photos/6646914/pexels-photo-6646914.jpeg?auto=compress&cs=tinysrgb&w=1600',
+    title: 'Turn participation data into community growth',
+    description:
+      'Build trust with transparent reports, real attendance data, and insights that help every activity create stronger outcomes.',
+    stat: 'Hours contributed this quarter',
+    badges: ['BD', 'MP', '+890'],
+  },
+];
+
+const HERO_ROTATE_INTERVAL_MS = 6000;
+const HERO_FADE_MS = 900;
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -16,6 +47,40 @@ export function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [previousSlideIndex, setPreviousSlideIndex] = useState<number | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+
+  const currentSlide = heroSlides[slideIndex];
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setSlideIndex((current) => {
+        setPreviousSlideIndex(current);
+        setTransitioning(true);
+        return (current + 1) % heroSlides.length;
+      });
+    }, HERO_ROTATE_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!transitioning) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setTransitioning(false);
+      setPreviousSlideIndex(null);
+    }, HERO_FADE_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [transitioning]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -43,23 +108,36 @@ export function LoginPage() {
   return (
     <main className="login-shell">
       <section className="login-hero">
-        <div className="login-hero-overlay">
+        {transitioning && previousSlideIndex !== null && (
+          <div
+            className="hero-bg-layer hero-bg-previous"
+            style={{ backgroundImage: `url('${heroSlides[previousSlideIndex].image}')` }}
+          />
+        )}
+        <div
+          className="hero-bg-layer hero-bg-current"
+          key={`hero-bg-${slideIndex}`}
+          style={{ backgroundImage: `url('${currentSlide.image}')` }}
+        />
+
+        <div className="login-hero-overlay" key={`hero-content-${slideIndex}`}>
           <div className="hero-brand">
-            <span className="brand-icon">V</span>
+            <span className="brand-icon">
+              <Activity size={16} />
+            </span>
             <span>V-Connect</span>
           </div>
-          <h1>Connect volunteers to the right activities</h1>
-          <p>
-            Join our community to make a real difference. Experience the joy of giving back with a platform designed
-            for impact.
-          </p>
+          <h1>{currentSlide.title}</h1>
+          <p>{currentSlide.description}</p>
           <div className="hero-footer">
             <div className="avatar-row">
-              <span className="avatar-dot">AL</span>
-              <span className="avatar-dot">DK</span>
-              <span className="avatar-dot">+2k</span>
+              {currentSlide.badges.map((badge) => (
+                <span className="avatar-dot" key={badge}>
+                  {badge}
+                </span>
+              ))}
             </div>
-            <small>Volunteers joined this week</small>
+            <small>{currentSlide.stat}</small>
           </div>
         </div>
       </section>
@@ -67,9 +145,7 @@ export function LoginPage() {
       <section className="login-panel">
         <form className="login-card" onSubmit={handleSubmit}>
           <div className="login-head">
-            <div className="head-icon">
-              <span>VC</span>
-            </div>
+            <div className="login-brand-title">V-Connect</div>
             <h2>Welcome Back</h2>
             <p>Please enter your details to sign in.</p>
           </div>
@@ -121,9 +197,9 @@ export function LoginPage() {
               />
               <span>Remember me</span>
             </label>
-            <button className="link-btn" type="button">
+            <Link className="link-btn" to="/forgot-password">
               Forgot Password?
-            </button>
+            </Link>
           </div>
 
           {(formError || authError) && <p className="form-error">{formError ?? authError}</p>}
