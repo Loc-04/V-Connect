@@ -169,6 +169,12 @@
   outline: none;
 }
 
+.vol-shell-topbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.72rem;
+}
+
 .vol-shell-notify-btn {
   width: 31px;
   height: 31px;
@@ -184,6 +190,55 @@
 .vol-shell-top-icon {
   width: 15px;
   height: 15px;
+}
+
+.vol-shell-topbar-divider {
+  width: 1px;
+  height: 26px;
+  background: #e4e8f0;
+}
+
+.vol-shell-topbar-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.vol-shell-topbar-user-meta {
+  display: grid;
+  justify-items: end;
+  gap: 0.05rem;
+  text-align: right;
+}
+
+.vol-shell-topbar-user-meta strong {
+  font-size: 0.88rem;
+  line-height: 1.2;
+  color: #182033;
+}
+
+.vol-shell-topbar-user-meta span {
+  font-size: 0.74rem;
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.vol-shell-topbar-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: #eef2f7;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.vol-shell-topbar-avatar-fallback {
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
 }
 
 .vol-shell-body {
@@ -256,7 +311,12 @@
     width: 100%;
   }
 
-  .vol-shell-notify-btn {
-    align-self: flex-end;
+  .vol-shell-topbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .vol-shell-topbar-divider {
+    display: none;
   }
 }
