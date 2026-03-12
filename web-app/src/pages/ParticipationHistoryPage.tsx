@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, History, LayoutDashboard, Settings, UserCircle, BriefcaseBusiness } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
-import { mockParticipationHistory } from '../lib/participationMocks';
-import type { ParticipationMockRecord, ParticipationStatus } from '../lib/participationMocks';
+import { listParticipations } from '../lib/participations';
+import type { ParticipationRecord, ParticipationStatus } from '../types/participation';
 import './ParticipationHistoryPage.css';
 
 type StatusFilter = ParticipationStatus | 'all';
@@ -18,7 +18,11 @@ const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
 
 const PAGE_SIZE = 4;
 
-function formatDateLabel(value: string) {
+function formatDateLabel(value: string | null) {
+  if (!value) {
+    return '--';
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return '--';
@@ -44,24 +48,47 @@ function statusLabel(status: ParticipationStatus) {
 
 export function ParticipationHistoryPage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [records, setRecords] = useState<ParticipationMockRecord[]>([]);
+  const [records, setRecords] = useState<ParticipationRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setRecords(mockParticipationHistory);
+    if (!session?.access_token) {
+      setError('No active session token.');
       setLoading(false);
-    }, 450);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    void (async () => {
+      try {
+        const data = await listParticipations(session.access_token);
+        if (!cancelled) {
+          setRecords(data);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load participation history.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
 
     return () => {
-      window.clearTimeout(timer);
+      cancelled = true;
     };
-  }, []);
+  }, [session?.access_token]);
 
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
@@ -222,6 +249,14 @@ export function ParticipationHistoryPage() {
                     </tr>
                   )}
 
+                  {!loading && error && (
+                    <tr>
+                      <td className="history-empty" colSpan={6}>
+                        {error}
+                      </td>
+                    </tr>
+                  )}
+
                   {!loading && pagedRecords.length === 0 && (
                     <tr>
                       <td className="history-empty" colSpan={6}>
@@ -250,7 +285,7 @@ export function ParticipationHistoryPage() {
                         <td>
                           <button
                             className="history-view-btn"
-                            onClick={() => navigate(`/volunteer/activity/${record.id}`)}
+                            onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
                             type="button"
                           >
                             View Details

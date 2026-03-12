@@ -32,6 +32,11 @@ interface AdminUserUpdateResponse {
   user: UserRecord;
 }
 
+interface AdminUserDeleteResponse {
+  success: boolean;
+  userId: string;
+}
+
 type PageItem = number | 'ellipsis';
 
 function formatRelativeDate(date: string | null): string {
@@ -116,6 +121,7 @@ export function AdminUsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
@@ -306,8 +312,42 @@ export function AdminUsersPage() {
   };
 
   const handleDeletePlaceholder = (userId: string) => {
+    if (!session?.access_token) {
+      setError('No active session token.');
+      setMenuUserId(null);
+      return;
+    }
+
+    const target = users.find((user) => user.id === userId);
+    const label = target?.full_name ?? target?.phone ?? target?.id ?? userId;
+    const confirmed = window.confirm(`Delete user ${label}? This will permanently remove data.`);
+    if (!confirmed) {
+      setMenuUserId(null);
+      return;
+    }
+
     setMenuUserId(null);
-    setError(`Delete action is not wired yet for user ${userId.slice(0, 8)}.`);
+    setError(null);
+    setDeletingUserId(userId);
+
+    void (async () => {
+      try {
+        await apiRequest<AdminUserDeleteResponse>(`/admin/users/${userId}`, {
+          method: 'DELETE',
+          accessToken: session.access_token,
+        });
+        setUsers((current) => current.filter((user) => user.id !== userId));
+        setDraftByUserId((current) => {
+          const next = { ...current };
+          delete next[userId];
+          return next;
+        });
+      } catch (deleteError) {
+        setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete user.');
+      } finally {
+        setDeletingUserId(null);
+      }
+    })();
   };
 
   return (
@@ -546,8 +586,13 @@ export function AdminUsersPage() {
                               >
                                 {draft.status === 'active' ? 'Deactivate' : 'Reactivate'}
                               </button>
-                              <button className="row-action-item danger" onClick={() => handleDeletePlaceholder(user.id)} type="button">
-                                Delete
+                              <button
+                                className="row-action-item danger"
+                                disabled={deletingUserId === user.id}
+                                onClick={() => handleDeletePlaceholder(user.id)}
+                                type="button"
+                              >
+                                {deletingUserId === user.id ? 'Deleting...' : 'Delete'}
                               </button>
                             </div>
                           )}

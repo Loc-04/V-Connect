@@ -15,19 +15,25 @@ export function VolunteerHomePage() {
     <main className="page-wrap">
       <section className="card auth-card">
         <h1>Volunteer Workspace</h1>
-        <p className="muted">
-          Welcome {profile?.full_name ?? 'Volunteer'}.
-        </p>
-        <p className="muted">Use the shortcuts below to move between web pages.</p>
-        <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
-          Browse Opportunities
-        </button>
-        <button className="secondary-btn" onClick={() => navigate('/volunteer/participation-history')} type="button">
-          Participation History
-        </button>
-        <button className="secondary-btn" onClick={() => navigate('/volunteer/profile-ui')} type="button">
-          Profile Settings
-        </button>
+        <p className="muted">Welcome {profile?.full_name ?? 'Volunteer'}.</p>
+        <p className="muted">Pick a feature:</p>
+
+        <div className="header-actions">
+          <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
+            Browse opportunities
+          </button>
+          <button
+            className="secondary-btn"
+            onClick={() => navigate('/volunteer/participation-history')}
+            type="button"
+          >
+            Participation history
+          </button>
+          <button className="secondary-btn" onClick={() => navigate('/volunteer/profile-ui')} type="button">
+            Profile settings
+          </button>
+        </div>
+
         <button className="danger-btn" onClick={handleSignOut} type="button">
           Logout
         </button>
