@@ -33,6 +33,7 @@ const userColumns = 'id, role, full_name, phone, avatar_url, status, created_at,
 const volunteerColumns = 'user_id, skills, interests, availability, total_hours, updated_at';
 const activityColumns =
   'id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id, created_at, updated_at, deleted_at';
+const notificationColumns = 'id, user_id, title, message, type, data, created_at, read_at';
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
 const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
 const activityWriteRoles = new Set(['admin', 'organizer']);
@@ -245,6 +246,42 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
   return payload;
 }
 
+function normalizeNotificationPayload(body) {
+  if (!isPlainObject(body)) {
+    throw new Error('Body must be a JSON object.');
+  }
+
+  const userId =
+    typeof body.userId === 'string'
+      ? body.userId.trim()
+      : typeof body.user_id === 'string'
+        ? body.user_id.trim()
+        : '';
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  const type =
+    typeof body.type === 'string' && body.type.trim().length > 0 ? body.type.trim().toLowerCase() : 'info';
+  const data = body.data ?? {};
+
+  if (!title) {
+    throw new Error('title is required.');
+  }
+  if (!message) {
+    throw new Error('message is required.');
+  }
+  if (data !== null && typeof data !== 'object') {
+    throw new Error('data must be an object.');
+  }
+
+  return {
+    userId,
+    title,
+    message,
+    type,
+    data: data ?? {},
+  };
+}
+
 function computeDurationHours(startTime, endTime) {
   if (!startTime || !endTime) {
     return null;
@@ -286,6 +323,125 @@ function mapParticipationStatus(participationStatus, activityStatus) {
 
 function canWriteActivities(role) {
   return activityWriteRoles.has(String(role));
+}
+
+async function handleParticipationHistory(req, res) {
+  const role = String(req.auth?.profile?.role ?? '');
+
+  if (role !== 'volunteer' && role !== 'admin') {
+    res.status(403).json({ message: 'Only volunteers can view participation history.' });
+    return;
+  }
+
+  const requestedLimit = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 200)
+    : 50;
+
+  try {
+    const { data: participations, error } = await supabaseAdmin
+      .from('activity_participations')
+      .select('id, activity_id, status, created_at')
+      .eq('volunteer_id', req.auth.user.id)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
+
+    if (!participations || participations.length === 0) {
+      res.json({ participations: [] });
+      return;
+    }
+
+    const activityIds = Array.from(new Set(participations.map((row) => row.activity_id).filter(Boolean)));
+
+    const { data: activities, error: activityError } = await supabaseAdmin
+      .from('activities')
+      .select('id, title, start_time, end_time, status, organizer_id')
+      .in('id', activityIds)
+      .is('deleted_at', null);
+
+    if (activityError) {
+      res.status(500).json({ message: activityError.message });
+      return;
+    }
+
+    const activitiesById = new Map((activities ?? []).map((activity) => [activity.id, activity]));
+    const organizerIds = Array.from(
+      new Set((activities ?? []).map((activity) => activity.organizer_id).filter(Boolean))
+    );
+
+    let organizersById = new Map();
+    if (organizerIds.length > 0) {
+      const { data: organizers, error: organizerError } = await supabaseAdmin
+        .from('users')
+        .select('id, full_name')
+        .in('id', organizerIds);
+
+      if (organizerError) {
+        res.status(500).json({ message: organizerError.message });
+        return;
+      }
+
+      organizersById = new Map((organizers ?? []).map((user) => [user.id, user]));
+    }
+
+    const records = participations.map((participation) => {
+      const activity = activitiesById.get(participation.activity_id);
+      const organizer = activity ? organizersById.get(activity.organizer_id) : null;
+      const status = mapParticipationStatus(participation.status, activity?.status);
+
+      return {
+        id: activity?.id ?? participation.activity_id ?? participation.id,
+        participationId: participation.id,
+        activityId: activity?.id ?? participation.activity_id,
+        activityName: activity?.title ?? 'Untitled Activity',
+        organization: organizer?.full_name ?? 'Organizer',
+        date: activity?.start_time ?? participation.created_at ?? null,
+        hours: status === 'cancelled' ? null : computeDurationHours(activity?.start_time, activity?.end_time),
+        status,
+      };
+    });
+
+    res.json({ participations: records });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load participation history.';
+    res.status(500).json({ message });
+  }
+}
+
+async function handleActivityDetail(req, res) {
+  const activityId = req.params.id;
+
+  const { data, error } = await supabaseAdmin
+    .from('activities')
+    .select(activityColumns)
+    .eq('id', activityId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const isOwner = data.organizer_id === req.auth.user.id;
+  const canAccess = data.status === 'published' || isOwner || role === 'admin';
+  if (!canAccess) {
+    res.status(403).json({ message: 'You do not have permission to access this activity.' });
+    return;
+  }
+
+  res.json({ activity: data });
 }
 
 async function requireAuth(req, res, next) {
@@ -609,92 +765,88 @@ app.patch('/profile/me', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/participations', requireAuth, async (req, res) => {
-  const role = String(req.auth?.profile?.role ?? '');
+app.get('/participations', requireAuth, handleParticipationHistory);
+app.get('/participation-history', requireAuth, handleParticipationHistory);
 
-  if (role !== 'volunteer' && role !== 'admin') {
-    res.status(403).json({ message: 'Only volunteers can view participation history.' });
-    return;
-  }
-
+app.get('/notifications', requireAuth, async (req, res) => {
   const requestedLimit = Number(req.query.limit ?? 50);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 200)
     : 50;
+  const unreadOnly = String(req.query.unread ?? 'false').toLowerCase() === 'true';
+  const role = String(req.auth?.profile?.role ?? '');
+  const requestedUserId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+  const userId = role === 'admin' && requestedUserId ? requestedUserId : req.auth.user.id;
 
   try {
-    const { data: participations, error } = await supabaseAdmin
-      .from('activity_participations')
-      .select('id, activity_id, status, created_at')
-      .eq('volunteer_id', req.auth.user.id)
+    let query = supabaseAdmin
+      .from('notifications')
+      .select(notificationColumns)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
 
+    if (unreadOnly) {
+      query = query.is('read_at', null);
+    }
+
+    const { data, error } = await query;
     if (error) {
       res.status(500).json({ message: error.message });
       return;
     }
 
-    if (!participations || participations.length === 0) {
-      res.json({ participations: [] });
-      return;
-    }
-
-    const activityIds = Array.from(new Set(participations.map((row) => row.activity_id).filter(Boolean)));
-
-    const { data: activities, error: activityError } = await supabaseAdmin
-      .from('activities')
-      .select('id, title, start_time, end_time, status, organizer_id')
-      .in('id', activityIds)
-      .is('deleted_at', null);
-
-    if (activityError) {
-      res.status(500).json({ message: activityError.message });
-      return;
-    }
-
-    const activitiesById = new Map((activities ?? []).map((activity) => [activity.id, activity]));
-    const organizerIds = Array.from(
-      new Set((activities ?? []).map((activity) => activity.organizer_id).filter(Boolean))
-    );
-
-    let organizersById = new Map();
-    if (organizerIds.length > 0) {
-      const { data: organizers, error: organizerError } = await supabaseAdmin
-        .from('users')
-        .select('id, full_name')
-        .in('id', organizerIds);
-
-      if (organizerError) {
-        res.status(500).json({ message: organizerError.message });
-        return;
-      }
-
-      organizersById = new Map((organizers ?? []).map((user) => [user.id, user]));
-    }
-
-    const records = participations.map((participation) => {
-      const activity = activitiesById.get(participation.activity_id);
-      const organizer = activity ? organizersById.get(activity.organizer_id) : null;
-      const status = mapParticipationStatus(participation.status, activity?.status);
-
-      return {
-        id: activity?.id ?? participation.activity_id ?? participation.id,
-        participationId: participation.id,
-        activityId: activity?.id ?? participation.activity_id,
-        activityName: activity?.title ?? 'Untitled Activity',
-        organization: organizer?.full_name ?? 'Organizer',
-        date: activity?.start_time ?? participation.created_at ?? null,
-        hours: status === 'cancelled' ? null : computeDurationHours(activity?.start_time, activity?.end_time),
-        status,
-      };
-    });
-
-    res.json({ participations: records });
+    res.json({ notifications: data ?? [] });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load participation history.';
+    const message = error instanceof Error ? error.message : 'Failed to load notifications.';
     res.status(500).json({ message });
   }
+});
+
+app.post('/notifications', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const canCreate = role === 'admin' || role === 'organizer';
+  if (!canCreate) {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeNotificationPayload(req.body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  const targetUserId = payload.userId || req.auth.user.id;
+  if (!targetUserId) {
+    res.status(400).json({ message: 'userId is required.' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const insertPayload = {
+    user_id: targetUserId,
+    title: payload.title,
+    message: payload.message,
+    type: payload.type,
+    data: payload.data,
+    created_at: now,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .insert(insertPayload)
+    .select(notificationColumns)
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.status(201).json({ notification: data });
 });
 
 app.get('/activities', requireAuth, async (req, res) => {
@@ -755,36 +907,8 @@ app.get('/activities', requireAuth, async (req, res) => {
   res.json({ activities: data ?? [] });
 });
 
-app.get('/activities/:id', requireAuth, async (req, res) => {
-  const activityId = req.params.id;
-
-  const { data, error } = await supabaseAdmin
-    .from('activities')
-    .select(activityColumns)
-    .eq('id', activityId)
-    .is('deleted_at', null)
-    .maybeSingle();
-
-  if (error) {
-    res.status(500).json({ message: error.message });
-    return;
-  }
-
-  if (!data) {
-    res.status(404).json({ message: 'Activity not found.' });
-    return;
-  }
-
-  const role = String(req.auth?.profile?.role ?? '');
-  const isOwner = data.organizer_id === req.auth.user.id;
-  const canAccess = data.status === 'published' || isOwner || role === 'admin';
-  if (!canAccess) {
-    res.status(403).json({ message: 'You do not have permission to access this activity.' });
-    return;
-  }
-
-  res.json({ activity: data });
-});
+app.get('/activities/:id', requireAuth, handleActivityDetail);
+app.get('/activity/:id', requireAuth, handleActivityDetail);
 
 app.post('/activities', requireAuth, async (req, res) => {
   const role = String(req.auth?.profile?.role ?? '');

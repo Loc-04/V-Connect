@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "migrate:profiles": "node scripts/migrateProfiles.js"
+    "migrate:profiles": "node scripts/migrateProfiles.js",
+    "seed:demo": "node scripts/seedDemoData.js",
+    "db:apply": "node scripts/applySql.js",
+    "db:notifications": "node scripts/applySql.js"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +19,7 @@
     "@supabase/supabase-js": "^2.98.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pg": "^8.16.0"
   }
 }
