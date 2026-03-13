@@ -186,6 +186,9 @@ export function BrowseOpportunitiesPage() {
               <User className="browse-icon-sm" />
               Profile
             </button>
+            <button className="browse-nav-link" onClick={() => navigate('/feedback')} type="button">
+              Feedback
+            </button>
             <button className="browse-logout-btn" onClick={handleSignOut} type="button">
               Log Out
             </button>

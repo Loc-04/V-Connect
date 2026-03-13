@@ -61,6 +61,14 @@ function App() {
             }
           />
           <Route
+            path="/feedback"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+                <FeedbackPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
             path="/participation-history"
             element={
               <RequireRoleRoute allowedRoles={['volunteer']}>

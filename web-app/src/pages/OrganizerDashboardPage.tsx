@@ -130,6 +130,9 @@ export function OrganizerDashboardPage() {
             <button className="secondary-btn" onClick={() => void loadActivities()} type="button">
               Refresh
             </button>
+            <button className="secondary-btn" onClick={() => navigate('/feedback')} type="button">
+              Feedback
+            </button>
             <button className="danger-btn" onClick={handleSignOut} type="button">
               Logout
             </button>

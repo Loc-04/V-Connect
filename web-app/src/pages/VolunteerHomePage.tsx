@@ -20,7 +20,10 @@ export function VolunteerHomePage() {
 
         <div className="header-actions">
           <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
-            Browse opportunities
+            Browse Activities
+          </button>
+          <button className="secondary-btn" onClick={() => navigate('/feedback')} type="button">
+            Feedback
           </button>
           <button
             className="secondary-btn"
@@ -33,7 +36,6 @@ export function VolunteerHomePage() {
             Profile settings
           </button>
         </div>
-
         <button className="danger-btn" onClick={handleSignOut} type="button">
           Logout
         </button>
