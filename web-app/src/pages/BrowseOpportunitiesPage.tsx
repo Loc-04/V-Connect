@@ -220,6 +220,10 @@ export function BrowseOpportunitiesPage() {
     }
   };
 
+  const handleOpenActivity = (activityId: string) => {
+    navigate(`/volunteer/activity/${activityId}`);
+  };
+
   return (
     <main className="browse-page">
       <header className="browse-top-nav">
@@ -311,11 +315,29 @@ export function BrowseOpportunitiesPage() {
             {!loading &&
               !error &&
               opportunities.map((opportunity) => (
-                <article className="browse-card" key={opportunity.id}>
+                <article
+                  className="browse-card"
+                  key={opportunity.id}
+                  onClick={() => handleOpenActivity(opportunity.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleOpenActivity(opportunity.id);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
                   <div className="browse-card-image-wrap">
                     <img alt={opportunity.title} className="browse-card-image" src={opportunity.imageUrl} />
                     <span className={`browse-category browse-category-${opportunity.categoryTone}`}>{opportunity.category}</span>
-                    <button aria-label="Save opportunity" className="browse-favorite-btn" type="button">
+                    <button
+                      aria-label="Save opportunity"
+                      className="browse-favorite-btn"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      type="button"
+                    >
                       <Heart className="browse-icon-sm" />
                     </button>
                   </div>
@@ -351,7 +373,11 @@ export function BrowseOpportunitiesPage() {
                           applyingActivityId === opportunity.id ||
                           Boolean(participationByActivityId[opportunity.id])
                         }
-                        onClick={() => void handleQuickApply(opportunity.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleQuickApply(opportunity.id);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
                         type="button"
                       >
                         {applyingActivityId === opportunity.id

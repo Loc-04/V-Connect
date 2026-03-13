@@ -69,26 +69,10 @@ function App() {
             }
           />
           <Route
-            path="/participation-history"
-            element={
-              <RequireRoleRoute allowedRoles={['volunteer']}>
-                <ParticipationHistoryPage />
-              </RequireRoleRoute>
-            }
-          />
-          <Route
             path="/volunteer/participation-history"
             element={
               <RequireRoleRoute allowedRoles={['volunteer']}>
                 <ParticipationHistoryPage />
-              </RequireRoleRoute>
-            }
-          />
-          <Route
-            path="/activity/:id"
-            element={
-              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
-                <ActivityDetailPage />
               </RequireRoleRoute>
             }
           />
