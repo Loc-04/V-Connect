@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '../auth/useAuth';
+import { Button, Card } from '../components/ui';
 import {
   clearNotificationsForUser,
   getNotificationsForUser,
@@ -176,30 +177,32 @@ export function NotificationsPage() {
       activeNav="notifications"
       headerActions={
         <div className="notifications-head-actions">
-          <button
+          <Button
             className="notifications-action-btn"
             disabled={busy || unreadCount === 0}
             onClick={() => void handleMarkAllAsRead()}
             type="button"
+            variant="secondary"
           >
             <CheckCheck className="notifications-action-icon" />
             Mark all as read
-          </button>
-          <button
+          </Button>
+          <Button
             className="notifications-action-btn danger"
             disabled={busy || notifications.length === 0}
             onClick={() => void handleClearAll()}
             type="button"
+            variant="secondary"
           >
             <Trash2 className="notifications-action-icon" />
             Clear all
-          </button>
+          </Button>
         </div>
       }
       pageSubtitle="Stay updated with your latest volunteer activities and system alerts."
       pageTitle="Notifications"
     >
-      <section className="notifications-page-card">
+      <Card as="section" className="notifications-page-card">
         <div className="notifications-filter-tabs" role="tablist" aria-label="Notification filters">
           <button
             className={filter === 'all' ? 'notifications-tab is-active' : 'notifications-tab'}
@@ -265,17 +268,18 @@ export function NotificationsPage() {
         </div>
 
         <div className="notifications-load-row">
-          <button
+          <Button
             aria-label="Load previous notifications"
             className="notifications-load-btn"
             disabled={!hasMore}
             onClick={() => setVisibleCount((current) => current + PAGE_SIZE)}
             type="button"
+            variant="secondary"
           >
             Load previous notifications
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
     </VolunteerShell>
   );
 }

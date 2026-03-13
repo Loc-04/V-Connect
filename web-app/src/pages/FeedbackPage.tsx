@@ -1,56 +1,132 @@
+import { ArrowRight, Info, Star } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { Button, Card, Select } from '../components/ui';
 import { createFeedback, listFeedbacks } from '../lib/feedback';
+import { listParticipations } from '../lib/participations';
+import { VolunteerShell } from '../layouts/VolunteerShell';
 import type { FeedbackRecord } from '../types/feedback';
+import type { ParticipationRecord } from '../types/participation';
 import './FeedbackPage.css';
 
-const ratingOptions = [5, 4, 3, 2, 1];
+const categoryOptions = ['Organization', 'Activity Quality', 'Venue', 'Management', 'Staff Support'];
 
-function formatTimestamp(value: string | null) {
+const ratingLabels: Record<number, string> = {
+  1: 'Needs major improvement',
+  2: 'Could be better',
+  3: 'Good experience',
+  4: 'Great experience',
+  5: 'Excellent impact',
+};
+
+interface CompletedActivityOption {
+  id: string;
+  title: string;
+  completedAt: string;
+  activityId: string | null;
+  organization: string;
+}
+
+interface FeedbackHistoryItem {
+  id: string;
+  participationId: string;
+  activityId: string | null;
+  activityTitle: string;
+  submittedAt: string;
+  rating: number;
+  details: string;
+}
+
+function formatDateLabel(value: string | null | undefined): string {
   if (!value) {
-    return 'N/A';
+    return '--';
   }
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return 'N/A';
+    return '--';
   }
 
-  return date.toLocaleString();
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function buildPreview(details: string): string {
+  const normalized = details.trim();
+  if (normalized.length <= 110) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 107)}...`;
+}
+
+function buildCompletedActivities(records: ParticipationRecord[]): CompletedActivityOption[] {
+  return records
+    .filter((record) => String(record.status).toLowerCase() === 'completed')
+    .map((record) => ({
+      id: record.participationId,
+      title: record.activityName,
+      completedAt: record.date ?? record.created_at ?? new Date().toISOString(),
+      activityId: record.activityId ?? null,
+      organization: record.organization,
+    }));
+}
+
+function buildFeedbackHistory(
+  feedbacks: FeedbackRecord[],
+  participations: ParticipationRecord[]
+): FeedbackHistoryItem[] {
+  const participationsById = new Map(participations.map((record) => [record.participationId, record]));
+
+  return feedbacks.map((feedback) => {
+    const participation = participationsById.get(feedback.participation_id);
+
+    return {
+      id: feedback.id,
+      participationId: feedback.participation_id,
+      activityId: participation?.activityId ?? null,
+      activityTitle: participation?.activityName ?? `Participation ${feedback.participation_id.slice(0, 8)}`,
+      submittedAt: feedback.created_at ?? new Date().toISOString(),
+      rating: Number(feedback.rating || 0),
+      details: feedback.comment?.trim() || 'No detailed feedback provided.',
+    };
+  });
+}
+
+function StarRow({ rating }: { rating: number }) {
+  return (
+    <div className="feedback-star-row" aria-label={`Rating ${rating} out of 5`}>
+      {Array.from({ length: 5 }, (_, index) => {
+        const isFilled = index < rating;
+        return <Star className={isFilled ? 'feedback-star filled' : 'feedback-star'} key={`${rating}-${index}`} />;
+      })}
+    </div>
+  );
 }
 
 export function FeedbackPage() {
   const navigate = useNavigate();
-  const { profile, session, signOut } = useAuth();
-  const role = String(profile?.role ?? '');
-  const isAdmin = role === 'admin';
-  const canSubmit = role === 'volunteer' || role === 'admin';
+  const { session } = useAuth();
+  const accessToken = session?.access_token ?? '';
 
-  const [feedbacks, setFeedbacks] = useState<FeedbackRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [activities, setActivities] = useState<CompletedActivityOption[]>([]);
+  const [historyItems, setHistoryItems] = useState<FeedbackHistoryItem[]>([]);
 
-  const [participationId, setParticipationId] = useState('');
-  const [rating, setRating] = useState<number>(5);
-  const [comment, setComment] = useState('');
+  const [activityId, setActivityId] = useState('');
+  const [rating, setRating] = useState(0);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [details, setDetails] = useState('');
 
-  const [showMineOnly, setShowMineOnly] = useState(true);
-  const [ratingFilter, setRatingFilter] = useState<number | 'all'>('all');
-  const [participationFilter, setParticipationFilter] = useState('');
-
-  useEffect(() => {
-    if (isAdmin) {
-      setShowMineOnly(false);
-    }
-  }, [isAdmin]);
-
-  const loadFeedbacks = useCallback(async () => {
-    if (!session?.access_token) {
+  const loadData = useCallback(async () => {
+    if (!accessToken) {
       setLoading(false);
       setError('No active session token.');
       return;
@@ -60,76 +136,64 @@ export function FeedbackPage() {
     setError(null);
 
     try {
-      const rows = await listFeedbacks({
-        accessToken: session.access_token,
-        mine: isAdmin ? showMineOnly : true,
-        limit: 100,
-        participationId: participationFilter.trim() || undefined,
-        rating: ratingFilter !== 'all' ? ratingFilter : undefined,
-      });
-      setFeedbacks(rows);
+      const [participations, feedbacks] = await Promise.all([
+        listParticipations(accessToken, 100),
+        listFeedbacks({ accessToken, mine: true, limit: 50 }),
+      ]);
+
+      setActivities(buildCompletedActivities(participations));
+      setHistoryItems(buildFeedbackHistory(feedbacks, participations));
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load feedback.');
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load feedback data.');
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, participationFilter, ratingFilter, session?.access_token, showMineOnly]);
+  }, [accessToken]);
 
   useEffect(() => {
-    void loadFeedbacks();
-  }, [loadFeedbacks]);
+    void loadData();
+  }, [loadData]);
 
-  const averageRating = useMemo(() => {
-    if (feedbacks.length === 0) {
-      return '0.0';
-    }
-
-    const total = feedbacks.reduce((sum, row) => sum + Number(row.rating || 0), 0);
-    return (total / feedbacks.length).toFixed(1);
-  }, [feedbacks]);
-
-  const highRatingCount = useMemo(
-    () => feedbacks.filter((row) => Number(row.rating || 0) >= 4).length,
-    [feedbacks]
+  const selectedActivity = useMemo(
+    () => activities.find((item) => item.id === activityId) ?? null,
+    [activities, activityId]
   );
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!session?.access_token) {
-      setError('No active session token.');
-      return;
-    }
+  const ratingHint = rating === 0 ? 'Select your experience rating.' : ratingLabels[rating] ?? 'Thanks for rating.';
 
-    const normalizedParticipationId = participationId.trim();
-    const normalizedComment = comment.trim();
+  const canSubmit = Boolean(selectedActivity && rating > 0 && details.trim().length >= 10 && !submitting);
 
-    if (!normalizedParticipationId) {
-      setError('Participation ID is required.');
-      return;
-    }
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((current) =>
+      current.includes(category) ? current.filter((item) => item !== category) : [...current, category]
+    );
+  };
 
-    if (!normalizedComment) {
-      setError('Comment is required.');
+  const handleSubmit = async () => {
+    if (!accessToken || !selectedActivity || rating <= 0 || details.trim().length < 10) {
+      setError('Please choose an activity, rating, and at least 10 characters of detailed feedback.');
       return;
     }
 
     setSubmitting(true);
     setError(null);
-    setNotice(null);
+    setSuccess(null);
 
     try {
       await createFeedback(
         {
-          participationId: normalizedParticipationId,
+          participationId: selectedActivity.id,
           rating,
-          comment: normalizedComment,
+          comment: details.trim(),
         },
-        session.access_token
+        accessToken
       );
 
-      setComment('');
-      setNotice('Feedback submitted.');
-      await loadFeedbacks();
+      setRating(0);
+      setSelectedCategories([]);
+      setDetails('');
+      setSuccess('Feedback submitted successfully. Thank you for helping us improve.');
+      await loadData();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to submit feedback.');
     } finally {
@@ -137,182 +201,144 @@ export function FeedbackPage() {
     }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login', { replace: true });
-  };
-
   return (
-    <main className="app-shell feedback-page">
-      <section className="card feedback-hero">
-        <div className="section-head">
-          <div>
-            <p className="badge">V-Connect Insight Hub</p>
-            <h2>Participation Feedback Center</h2>
-            <p className="muted">
-              {isAdmin && !showMineOnly
-                ? 'Review participation feedback from all users.'
-                : 'Review participation feedback linked to your account.'}
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="secondary-btn" onClick={() => navigate('/')} type="button">
-              Home
-            </button>
-            <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
-              Browse
-            </button>
-            <button className="secondary-btn" onClick={() => void loadFeedbacks()} type="button">
-              Refresh
-            </button>
-            <button className="danger-btn" onClick={handleSignOut} type="button">
-              Logout
-            </button>
-          </div>
-        </div>
-
-        <div className="feedback-metric-grid">
-          <article className="feedback-metric-card">
-            <p>Total Feedback</p>
-            <strong>{feedbacks.length}</strong>
-          </article>
-          <article className="feedback-metric-card">
-            <p>Average Rating</p>
-            <strong>{averageRating}</strong>
-          </article>
-          <article className="feedback-metric-card">
-            <p>Positive (4-5)</p>
-            <strong>{highRatingCount}</strong>
-          </article>
-        </div>
-      </section>
-
-      {error && <p className="form-error">{error}</p>}
-      {notice && <p className="form-success">{notice}</p>}
-
-      <section className="feedback-content-grid">
-        <article className="card feedback-compose-card">
-          <h3>Submit Feedback</h3>
-          <p className="muted">
-            {canSubmit
-              ? 'Provide the Participation ID to create/update feedback.'
-              : 'Your role can view feedback only.'}
-          </p>
-
-          {canSubmit && (
-            <form className="feedback-form" onSubmit={(event) => void handleSubmit(event)}>
-              <label className="field-label" htmlFor="feedback-participation-id">
-                Participation ID
-              </label>
-              <input
-                className="text-input"
-                id="feedback-participation-id"
-                onChange={(event) => setParticipationId(event.target.value)}
-                placeholder="UUID from activity_participations.id"
-                value={participationId}
-              />
-
-              <label className="field-label">Rating</label>
-              <div className="feedback-rating-row" role="radiogroup" aria-label="Feedback rating">
-                {ratingOptions.map((option) => (
-                  <button
-                    aria-checked={rating === option}
-                    className={rating === option ? 'feedback-rating-btn active' : 'feedback-rating-btn'}
-                    key={option}
-                    onClick={() => setRating(option)}
-                    role="radio"
-                    type="button"
-                  >
-                    {option} / 5
-                  </button>
-                ))}
-              </div>
-
-              <label className="field-label" htmlFor="feedback-comment">
-                Comment
-              </label>
-              <textarea
-                className="text-input feedback-textarea"
-                id="feedback-comment"
-                maxLength={2000}
-                onChange={(event) => setComment(event.target.value)}
-                placeholder="Share what happened in this participation."
-                value={comment}
-              />
-              <p className="muted feedback-char-count">{comment.trim().length}/2000</p>
-
-              <button className="primary-btn" disabled={submitting} type="submit">
-                {submitting ? 'Submitting...' : 'Submit Feedback'}
-              </button>
-            </form>
-          )}
-        </article>
-
-        <article className="card feedback-feed-card">
-          <div className="feedback-feed-head">
-            <h3>Feedback Stream</h3>
-            <button className="secondary-btn" onClick={() => void loadFeedbacks()} type="button">
-              Refresh
-            </button>
-          </div>
-
-          {isAdmin && (
-            <label className="feedback-toggle">
-              <input
-                checked={showMineOnly}
-                onChange={(event) => setShowMineOnly(event.target.checked)}
-                type="checkbox"
-              />
-              Show only my feedback
+    <VolunteerShell
+      activeNav="feedback"
+      pageSubtitle="Help us improve the volunteer experience by sharing your thoughts."
+      pageTitle="Submit Feedback"
+    >
+      <div className="feedback-grid">
+        <Card as="section" className="feedback-card feedback-form-card">
+          <div className="feedback-form-fields">
+            <label className="feedback-label" htmlFor="feedback-activity-select">
+              Select Recently Completed Activity
             </label>
-          )}
-
-          <div className="feedback-filter-row">
-            <input
-              className="text-input"
-              onChange={(event) => setParticipationFilter(event.target.value)}
-              placeholder="Filter by participation ID"
-              value={participationFilter}
-            />
-            <select
-              className="text-input"
-              onChange={(event) =>
-                setRatingFilter(event.target.value === 'all' ? 'all' : Number(event.target.value))
-              }
-              value={ratingFilter}
+            <Select
+              className="feedback-select"
+              disabled={loading || activities.length === 0}
+              id="feedback-activity-select"
+              onChange={(event) => setActivityId(event.target.value)}
+              value={activityId}
             >
-              <option value="all">All ratings</option>
-              {ratingOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option} / 5
+              <option value="">
+                {activities.length === 0 ? 'No completed activities available' : 'Choose a completed activity'}
+              </option>
+              {activities.map((activity) => (
+                <option key={activity.id} value={activity.id}>
+                  {`${activity.title} - ${formatDateLabel(activity.completedAt)}`}
                 </option>
               ))}
-            </select>
-            <p className="muted feedback-user-tag">{profile?.full_name ?? profile?.id ?? 'User'}</p>
+            </Select>
+
+            <div>
+              <p className="feedback-label">Overall Experience Rating</p>
+              <div className="feedback-rating-picker" role="radiogroup" aria-label="Overall experience rating">
+                {Array.from({ length: 5 }, (_, index) => {
+                  const value = index + 1;
+                  const active = value <= rating;
+                  return (
+                    <Button
+                      aria-label={`Rate ${value} star${value > 1 ? 's' : ''}`}
+                      className={active ? 'feedback-rate-btn is-active' : 'feedback-rate-btn'}
+                      key={value}
+                      onClick={() => setRating(value)}
+                      type="button"
+                      variant="secondary"
+                    >
+                      <Star />
+                    </Button>
+                  );
+                })}
+              </div>
+              <p className="feedback-rating-hint">{ratingHint}</p>
+            </div>
+
+            <div>
+              <p className="feedback-label">Highlight Categories</p>
+              <div className="feedback-category-wrap">
+                {categoryOptions.map((category) => {
+                  const isSelected = selectedCategories.includes(category);
+                  return (
+                    <Button
+                      className={isSelected ? 'feedback-category-pill is-selected' : 'feedback-category-pill'}
+                      key={category}
+                      onClick={() => toggleCategory(category)}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {category}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label className="feedback-label" htmlFor="feedback-details">
+              Detailed Feedback
+            </label>
+            <textarea
+              className="feedback-textarea"
+              id="feedback-details"
+              onChange={(event) => setDetails(event.target.value)}
+              placeholder="Tell us more about your experience, what went well, and what could be improved."
+              rows={6}
+              value={details}
+            />
           </div>
 
-          {loading ? (
-            <p className="muted">Loading feedback...</p>
-          ) : (
-            <div className="feedback-list">
-              {feedbacks.map((feedback) => (
-                <article className="feedback-item" key={feedback.id}>
-                  <div className="feedback-item-top">
-                    <p className="feedback-item-user mono">Participation: {feedback.participation_id}</p>
-                    <span className="feedback-item-rating">{feedback.rating} / 5</span>
+          {error && <p className="form-error">{error}</p>}
+          {success && <p className="form-success">{success}</p>}
+
+          <Button className="feedback-submit-btn" disabled={!canSubmit} onClick={() => void handleSubmit()} type="button">
+            {submitting ? 'Submitting...' : 'Submit Feedback'}
+            <ArrowRight className="feedback-btn-icon" />
+          </Button>
+
+          {loading && <p className="feedback-inline-note">Loading feedback data...</p>}
+        </Card>
+
+        <aside className="feedback-side-column">
+          <Card as="section" className="feedback-card feedback-history-card">
+            <div className="feedback-history-head">
+              <h2>Previous Feedback</h2>
+            </div>
+
+            <div className="feedback-history-list">
+              {!loading && historyItems.length === 0 && <p className="muted">No feedback submitted yet.</p>}
+              {historyItems.map((item) => (
+                <article className="feedback-history-item" key={item.id}>
+                  <div className="feedback-history-top">
+                    <h3>{item.activityTitle}</h3>
+                    <span>{formatDateLabel(item.submittedAt)}</span>
                   </div>
-                  <p className="feedback-item-message">{feedback.comment ?? 'No comment.'}</p>
-                  <div className="feedback-item-bottom">
-                    <span className="feedback-item-category mono">Volunteer: {feedback.volunteer_id}</span>
-                    <span className="muted">{formatTimestamp(feedback.created_at)}</span>
-                  </div>
+                  <StarRow rating={item.rating} />
+                  <p>{buildPreview(item.details)}</p>
+                  <Button
+                    className="feedback-inline-link"
+                    onClick={() =>
+                      navigate(item.activityId ? `/volunteer/activity/${item.activityId}` : '/volunteer/participation-history')
+                    }
+                    type="button"
+                    variant="secondary"
+                  >
+                    View Full Details
+                  </Button>
                 </article>
               ))}
-              {feedbacks.length === 0 && <p className="muted">No feedback found.</p>}
             </div>
-          )}
-        </article>
-      </section>
-    </main>
+          </Card>
+
+          <Card as="section" className="feedback-card feedback-impact-card">
+            <div className="feedback-impact-icon">
+              <Info size={16} />
+            </div>
+            <h2>Impact Tracker</h2>
+            <p>
+              Your feedback helps us allocate resources and improve the safety standards for all student volunteers.
+            </p>
+          </Card>
+        </aside>
+      </div>
+    </VolunteerShell>
   );
 }

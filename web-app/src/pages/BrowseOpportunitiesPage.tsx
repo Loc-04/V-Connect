@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, CalendarDays, ChevronDown, Filter, Heart, History, LayoutDashboard, MapPin, Search, User } from 'lucide-react';
+import { CalendarDays, Heart, MapPin, Search } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { Badge, Button, Card, Input } from '../components/ui';
+import { VolunteerShell } from '../layouts/VolunteerShell';
 import { listActivities } from '../lib/activities';
 import { createParticipation, listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
 
-type CategoryTone = 'blue' | 'orange' | 'green' | 'purple' | 'red';
+type CategoryTone = 'accent' | 'neutral' | 'success' | 'danger' | 'info';
 
 interface OpportunityViewModel {
   id: string;
@@ -42,15 +44,15 @@ const statusFilters: Array<{ label: string; value: ActivityStatus | 'all' }> = [
 function mapStatusToTone(status: string): CategoryTone {
   switch (status) {
     case 'completed':
-      return 'green';
+      return 'success';
     case 'cancelled':
-      return 'red';
+      return 'danger';
     case 'draft':
-      return 'purple';
+      return 'neutral';
     case 'published':
-      return 'blue';
+      return 'accent';
     default:
-      return 'orange';
+      return 'info';
   }
 }
 
@@ -103,7 +105,7 @@ function toOpportunity(activity: ActivityRecord, index: number): OpportunityView
 
 export function BrowseOpportunitiesPage() {
   const navigate = useNavigate();
-  const { session, signOut, profile } = useAuth();
+  const { session, profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ActivityStatus | 'all'>('published');
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
@@ -191,11 +193,6 @@ export function BrowseOpportunitiesPage() {
 
   const opportunities = useMemo(() => activities.map((activity, index) => toOpportunity(activity, index)), [activities]);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login', { replace: true });
-  };
-
   const handleQuickApply = async (activityId: string) => {
     if (!session?.access_token) {
       setError('No active session token.');
@@ -225,176 +222,159 @@ export function BrowseOpportunitiesPage() {
   };
 
   return (
-    <main className="browse-page">
-      <header className="browse-top-nav">
-        <div className="browse-container browse-nav-inner">
-          <div className="browse-brand">
-            <span className="browse-brand-logo" aria-hidden="true">
-              <Activity className="browse-icon" />
-            </span>
-            <span>V-Connect</span>
-          </div>
-
-          <div className="browse-nav-actions">
-            <button className="browse-nav-link browse-nav-link-active" type="button">
-              <Search className="browse-icon-sm" />
-              Browse
-            </button>
-            <button className="browse-nav-link" onClick={() => navigate('/volunteer/home')} type="button">
-              <LayoutDashboard className="browse-icon-sm" />
-              Home
-            </button>
-            <button
-              className="browse-nav-link"
-              onClick={() => navigate('/volunteer/participation-history')}
-              type="button"
-            >
-              <History className="browse-icon-sm" />
-              Participation
-            </button>
-            <button className="browse-nav-link" onClick={() => navigate('/volunteer/profile-ui')} type="button">
-              <User className="browse-icon-sm" />
-              Profile
-            </button>
-            <button className="browse-nav-link" onClick={() => navigate('/feedback')} type="button">
-              Feedback
-            </button>
-            <button className="browse-logout-btn" onClick={handleSignOut} type="button">
-              Log Out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <section className="browse-main">
-        <div className="browse-container">
-          <div className="browse-hero">
-            <h1>Find your next impact</h1>
-            <p>
-              Browse volunteer opportunities from Supabase. Signed in as {profile?.full_name ?? profile?.id ?? 'User'}.
-            </p>
+    <VolunteerShell
+      activeNav="activities"
+      headerActions={
+        canApply ? (
+          <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
+            My Activities
+          </Button>
+        ) : undefined
+      }
+      pageSubtitle="Search published opportunities, review requirements, and quickly join the activities that fit you best."
+      pageTitle="Browse Opportunities"
+    >
+      <section className="browse-page">
+        <Card as="section" className="browse-toolbar-card">
+          <div className="browse-toolbar-copy">
+            <h2>Find your next impact</h2>
+            <p>Browse volunteer opportunities from Supabase and apply directly from the list.</p>
           </div>
 
           <div className="browse-search-wrap">
-            <div className="browse-search-input-shell">
+            <label className="browse-search-input-shell" htmlFor="browse-search-input">
               <Search className="browse-icon" />
-              <input
+              <Input
                 aria-label="Search opportunities"
+                className="browse-search-input"
+                id="browse-search-input"
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search by keyword, skill, or cause..."
-                type="text"
+                type="search"
                 value={searchTerm}
               />
-            </div>
+            </label>
 
-            <div className="browse-search-divider" />
-
-            <div className="browse-filters">
+            <div className="browse-filters" role="tablist" aria-label="Activity status filters">
               {statusFilters.map((status) => (
-                <button
-                  className="browse-filter-btn"
+                <Button
+                  aria-pressed={statusFilter === status.value}
+                  className={statusFilter === status.value ? 'browse-filter-btn is-active' : 'browse-filter-btn'}
                   key={status.value}
                   onClick={() => setStatusFilter(status.value)}
                   type="button"
+                  variant="secondary"
                 >
                   {status.label}
-                  <ChevronDown className="browse-icon-sm" />
-                </button>
+                </Button>
               ))}
-              <button className="browse-filter-icon-btn" type="button">
-                <Filter className="browse-icon-sm" />
-              </button>
             </div>
           </div>
+        </Card>
 
-          {error && <p className="form-error">{error}</p>}
-          {message && <p className="form-success">{message}</p>}
-          {loading && <p className="muted">Loading activities...</p>}
+        {error && <p className="form-error">{error}</p>}
+        {message && <p className="form-success">{message}</p>}
 
+        {loading && (
+          <Card className="browse-empty-card">
+            <p className="muted">Loading activities...</p>
+          </Card>
+        )}
+
+        {!loading && !error && (
           <section className="browse-grid" aria-label="Volunteer opportunities">
-            {!loading &&
-              !error &&
-              opportunities.map((opportunity) => (
-                <article
-                  className="browse-card"
-                  key={opportunity.id}
-                  onClick={() => handleOpenActivity(opportunity.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      handleOpenActivity(opportunity.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="browse-card-image-wrap">
-                    <img alt={opportunity.title} className="browse-card-image" src={opportunity.imageUrl} />
-                    <span className={`browse-category browse-category-${opportunity.categoryTone}`}>{opportunity.category}</span>
-                    <button
-                      aria-label="Save opportunity"
-                      className="browse-favorite-btn"
-                      onClick={(event) => event.stopPropagation()}
+            {opportunities.map((opportunity) => (
+              <Card
+                as="article"
+                className="browse-card"
+                key={opportunity.id}
+                onClick={() => handleOpenActivity(opportunity.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleOpenActivity(opportunity.id);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="browse-card-image-wrap">
+                  <img alt={opportunity.title} className="browse-card-image" src={opportunity.imageUrl} />
+                  <Badge className="browse-category" tone={opportunity.categoryTone}>
+                    {opportunity.category}
+                  </Badge>
+                  <button
+                    aria-label="Save opportunity"
+                    className="browse-favorite-btn"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    type="button"
+                  >
+                    <Heart className="browse-icon-sm" />
+                  </button>
+                </div>
+
+                <div className="browse-card-body">
+                  <div className="browse-meta-line">
+                    <CalendarDays className="browse-icon-sm" />
+                    <span>{opportunity.date}</span>
+                  </div>
+
+                  <h2>{opportunity.title}</h2>
+
+                  <div className="browse-meta-line browse-location-line">
+                    <MapPin className="browse-icon-sm" />
+                    <span>{opportunity.location}</span>
+                  </div>
+
+                  <div className="browse-tags">
+                    {opportunity.tags.length === 0 && (
+                      <Badge className="browse-tag" tone="neutral">
+                        General
+                      </Badge>
+                    )}
+                    {opportunity.tags.map((tag) => (
+                      <Badge className="browse-tag" key={`${opportunity.id}-${tag}`} tone="accent">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <div className="browse-card-footer">
+                    <span>{opportunity.spotsLeft} spots</span>
+                    <Button
+                      className="browse-apply-btn"
+                      disabled={
+                        !canApply ||
+                        applyingActivityId === opportunity.id ||
+                        Boolean(participationByActivityId[opportunity.id])
+                      }
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleQuickApply(opportunity.id);
+                      }}
                       onKeyDown={(event) => event.stopPropagation()}
                       type="button"
                     >
-                      <Heart className="browse-icon-sm" />
-                    </button>
+                      {applyingActivityId === opportunity.id
+                        ? 'Applying...'
+                        : participationByActivityId[opportunity.id]
+                          ? `Applied (${participationByActivityId[opportunity.id].status})`
+                          : 'Quick Apply'}
+                    </Button>
                   </div>
-
-                  <div className="browse-card-body">
-                    <div className="browse-meta-line">
-                      <CalendarDays className="browse-icon-sm" />
-                      <span>{opportunity.date}</span>
-                    </div>
-
-                    <h2>{opportunity.title}</h2>
-
-                    <div className="browse-meta-line browse-location-line">
-                      <MapPin className="browse-icon-sm" />
-                      <span>{opportunity.location}</span>
-                    </div>
-
-                    <div className="browse-tags">
-                      {opportunity.tags.length === 0 && <span className="browse-tag">General</span>}
-                      {opportunity.tags.map((tag) => (
-                        <span className="browse-tag" key={`${opportunity.id}-${tag}`}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="browse-card-footer">
-                      <span>{opportunity.spotsLeft} spots</span>
-                      <button
-                        className="browse-apply-btn"
-                        disabled={
-                          !canApply ||
-                          applyingActivityId === opportunity.id ||
-                          Boolean(participationByActivityId[opportunity.id])
-                        }
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleQuickApply(opportunity.id);
-                        }}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        type="button"
-                      >
-                        {applyingActivityId === opportunity.id
-                          ? 'Applying...'
-                          : participationByActivityId[opportunity.id]
-                            ? `Applied (${participationByActivityId[opportunity.id].status})`
-                            : 'Quick Apply'}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                </div>
+              </Card>
+            ))}
           </section>
+        )}
 
-          {!loading && !error && opportunities.length === 0 && <p className="muted">No activities found.</p>}
-        </div>
+        {!loading && !error && opportunities.length === 0 && (
+          <Card className="browse-empty-card">
+            <p className="muted">No activities found.</p>
+          </Card>
+        )}
       </section>
-    </main>
+    </VolunteerShell>
   );
 }

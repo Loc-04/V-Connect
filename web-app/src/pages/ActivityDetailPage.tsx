@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CalendarClock, Heart, MapPin, Share2, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { Badge, Button, Card } from '../components/ui';
+import { VolunteerShell } from '../layouts/VolunteerShell';
 import { getActivityById } from '../lib/activities';
 import { getMockActivityDetailById } from '../lib/participationMocks';
 import type { ActivityDetailMock } from '../lib/participationMocks';
@@ -172,6 +174,19 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
   };
 }
 
+function getStatusTone(status: ViewStatus) {
+  if (status === 'completed') {
+    return 'success' as const;
+  }
+  if (status === 'cancelled') {
+    return 'danger' as const;
+  }
+  if (status === 'published') {
+    return 'accent' as const;
+  }
+  return 'info' as const;
+}
+
 export function ActivityDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -244,43 +259,42 @@ export function ActivityDetailPage() {
   }, [activity]);
 
   return (
-    <main className="activity-detail-page">
-      <header className="activity-detail-topbar">
-        <button
-          className="activity-detail-brand"
-          onClick={() => navigate('/volunteer/participation-history')}
-          type="button"
-        >
-          V-Connect
-        </button>
-        <div className="activity-detail-top-actions">
-          <button aria-label="Share activity" type="button">
-            <Share2 className="activity-detail-top-icon" />
-          </button>
-          <button aria-label="Save activity" type="button">
-            <Heart className="activity-detail-top-icon" />
-          </button>
+    <VolunteerShell
+      activeNav="activities"
+      headerActions={
+        <div className="activity-detail-head-actions">
+          <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
+            Back to History
+          </Button>
+          <Button aria-label="Share activity" type="button" variant="secondary">
+            <Share2 size={16} />
+          </Button>
+          <Button aria-label="Save activity" type="button" variant="secondary">
+            <Heart size={16} />
+          </Button>
         </div>
-      </header>
-
-      <section className="activity-detail-shell">
+      }
+      pageSubtitle={
+        activity
+          ? `${activity.organization} · ${activity.dateLabel}`
+          : 'Review the schedule, requirements, and participation details before joining.'
+      }
+      pageTitle={activity?.title ?? 'Activity Details'}
+    >
+      <section className="activity-detail-page">
         {loading && (
-          <div className="activity-detail-state-card">
+          <Card className="activity-detail-state-card">
             <p>Loading activity detail...</p>
-          </div>
+          </Card>
         )}
 
         {!loading && error && (
-          <div className="activity-detail-state-card">
+          <Card className="activity-detail-state-card">
             <p className="form-error">{error}</p>
-            <button
-              className="secondary-btn"
-              onClick={() => navigate('/volunteer/participation-history')}
-              type="button"
-            >
+            <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
               Back to Participation History
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
         {!loading && !error && activity && (
@@ -292,14 +306,17 @@ export function ActivityDetailPage() {
             )}
 
             <div className="activity-detail-grid">
-              <section className="activity-detail-main">
+              <Card as="section" className="activity-detail-main">
                 <img alt={activity.title} className="activity-detail-hero-image" src={activity.heroImageUrl} />
 
                 <div className="activity-detail-tags">
+                  <Badge className="activity-detail-tag" tone={getStatusTone(activity.status)}>
+                    {titleCase(activity.status)}
+                  </Badge>
                   {activity.categories.map((category) => (
-                    <span className="activity-detail-tag" key={category}>
+                    <Badge className="activity-detail-tag" key={category} tone="accent">
                       {category}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
 
@@ -313,7 +330,9 @@ export function ActivityDetailPage() {
                     <p>{activity.organization}</p>
                     <small>Verified Organizer</small>
                   </div>
-                  <button type="button">Follow</button>
+                  <Button type="button" variant="secondary">
+                    Follow
+                  </Button>
                 </article>
 
                 <section className="activity-detail-section">
@@ -325,9 +344,9 @@ export function ActivityDetailPage() {
                   <h3>Volunteer Requirements</h3>
                   <div>
                     {activity.requirements.map((requirement) => (
-                      <span className="activity-detail-pill" key={requirement}>
+                      <Badge className="activity-detail-pill" key={requirement} tone="neutral">
                         {requirement}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </section>
@@ -346,10 +365,10 @@ export function ActivityDetailPage() {
                     <strong>{activity.level}</strong>
                   </div>
                 </div>
-              </section>
+              </Card>
 
               <aside className="activity-detail-aside">
-                <article className="activity-detail-side-card">
+                <Card as="article" className="activity-detail-side-card">
                   <div className="activity-detail-side-block">
                     <small>
                       <CalendarClock className="activity-detail-side-icon" /> Date &amp; Time
@@ -380,23 +399,23 @@ export function ActivityDetailPage() {
                     </div>
                   </div>
 
-                  <button className="activity-detail-join-btn" type="button">
+                  <Button className="activity-detail-join-btn" type="button">
                     Join Activity
-                  </button>
+                  </Button>
                   <small className="activity-detail-guideline">By joining, you agree to our community guideline.</small>
-                </article>
+                </Card>
 
-                <article className="activity-detail-map-card">
+                <Card as="article" className="activity-detail-map-card">
                   <img alt="Activity location map" src={activity.mapImageUrl} />
-                  <button type="button">Open in Map</button>
-                </article>
+                  <Button className="activity-detail-map-btn" type="button" variant="secondary">
+                    Open in Map
+                  </Button>
+                </Card>
               </aside>
             </div>
           </>
         )}
       </section>
-
-      <footer className="activity-detail-footer">(c) 2023 V-Connect Community Platform. All rights reserved.</footer>
-    </main>
+    </VolunteerShell>
   );
 }

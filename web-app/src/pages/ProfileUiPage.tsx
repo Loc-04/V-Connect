@@ -19,7 +19,7 @@ import { useAuth } from '../auth/useAuth';
 import { ProfileEmptyState, ProfileSectionCard } from '../components/profile/ProfileSectionCard';
 import { ProfileInterestsCard } from '../components/profile/ProfileInterestsCard';
 import { ProfileSkillsCard } from '../components/profile/ProfileSkillsCard';
-import { Button } from '../components/ui/Button';
+import { Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { listParticipations } from '../lib/participations';
 import { getProfileMe, patchProfileMe } from '../lib/profile';
@@ -416,23 +416,23 @@ export function ProfileUiPage() {
     >
       <section className="vol-profile-dashboard">
         {loading && (
-          <article className="vol-profile-card">
+          <Card as="article" className="vol-profile-card">
             <p className="muted">Loading profile...</p>
-          </article>
+          </Card>
         )}
 
         {loadError && (
-          <article className="vol-profile-card vol-profile-feedback-card">
+          <Card as="article" className="vol-profile-card vol-profile-feedback-card">
             <p className="form-error">{loadError}</p>
             <Button onClick={() => void loadProfile()} type="button" variant="secondary">
               Retry
             </Button>
-          </article>
+          </Card>
         )}
 
         {!loading && !loadError && (
           <>
-            <article className="vol-profile-card vol-profile-hero-card">
+            <Card as="article" className="vol-profile-card vol-profile-hero-card">
               <div className="vol-profile-hero-grid">
                 <div className="vol-profile-avatar-wrap">
                   <img alt={displayName} className="vol-profile-avatar-lg" src={avatarUrl} />
@@ -506,10 +506,10 @@ export function ProfileUiPage() {
                   </Button>
                 </div>
               </div>
-            </article>
+            </Card>
 
             {editorPanel && (
-              <article className="vol-profile-card vol-profile-edit-card">
+              <Card as="article" className="vol-profile-card vol-profile-edit-card">
                 <div className="vol-profile-section-head">
                   <div className="vol-profile-section-title">
                     <span className="vol-profile-section-icon" aria-hidden="true">
@@ -536,8 +536,7 @@ export function ProfileUiPage() {
                         <label className="field-label" htmlFor="editFullName">
                           Full name
                         </label>
-                        <input
-                          className="text-input"
+                        <Input
                           id="editFullName"
                           onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
                           required
@@ -549,8 +548,7 @@ export function ProfileUiPage() {
                         <label className="field-label" htmlFor="editPhone">
                           Phone
                         </label>
-                        <input
-                          className="text-input"
+                        <Input
                           id="editPhone"
                           onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
                           required
@@ -562,8 +560,7 @@ export function ProfileUiPage() {
                         <label className="field-label" htmlFor="editAvatarUrl">
                           Avatar URL
                         </label>
-                        <input
-                          className="text-input"
+                        <Input
                           id="editAvatarUrl"
                           onChange={(event) => setForm((current) => ({ ...current, avatarUrl: event.target.value }))}
                           placeholder="https://..."
@@ -639,7 +636,7 @@ export function ProfileUiPage() {
                     </Button>
                   </div>
                 </form>
-              </article>
+              </Card>
             )}
 
             <div className="vol-profile-content-grid">

@@ -32,7 +32,7 @@ export function AdminLayout() {
             <Users className="sidebar-link-icon" />
             User Management
           </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/feedback">
+          <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/feedback">
             <Activity className="sidebar-link-icon" />
             Feedback
           </NavLink>
@@ -67,3 +67,4 @@ export function AdminLayout() {
     </main>
   );
 }
+
