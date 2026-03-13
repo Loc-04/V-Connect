@@ -1,0 +1,20 @@
+export type ParticipationStatus = 'pending' | 'approved' | 'rejected' | 'checked_in' | string;
+
+export interface ParticipationVolunteerSummary {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+}
+
+export interface ParticipationRecord {
+  id: string;
+  activity_id: string;
+  volunteer_id: string;
+  status: ParticipationStatus;
+  ai_match_score?: number | null;
+  checked_in_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  volunteer?: ParticipationVolunteerSummary | null;
+}

@@ -1,15 +1,15 @@
 export interface FeedbackRecord {
   id: string;
-  user_id: string;
+  participation_id: string;
+  volunteer_id: string;
+  organizer_id: string | null;
   rating: number;
-  category: string;
-  message: string;
+  comment: string | null;
   created_at: string | null;
-  updated_at: string | null;
 }
 
 export interface FeedbackPayload {
+  participationId: string;
   rating: number;
-  category?: string;
-  message: string;
+  comment: string;
 }

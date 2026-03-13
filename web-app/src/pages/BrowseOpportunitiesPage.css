@@ -311,6 +311,11 @@
   cursor: pointer;
 }
 
+.browse-apply-btn:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
 .browse-load-more-row {
   padding: 1.35rem 0 2.2rem;
   display: flex;

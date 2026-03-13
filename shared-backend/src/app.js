@@ -33,9 +33,11 @@ const userColumns = 'id, role, full_name, phone, avatar_url, status, created_at,
 const volunteerColumns = 'user_id, skills, interests, availability, total_hours, updated_at';
 const activityColumns =
   'id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id, created_at, updated_at, deleted_at';
-const feedbackColumns = 'id, user_id, rating, category, message, created_at, updated_at';
+const participationColumns = '*';
+const feedbackColumns = 'id, participation_id, volunteer_id, organizer_id, rating, comment, created_at';
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
 const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
+const validParticipationStatuses = new Set(['pending', 'approved', 'rejected', 'checked_in']);
 const activityWriteRoles = new Set(['admin', 'organizer']);
 
 function extractBearerToken(req) {
@@ -75,6 +77,21 @@ async function getVolunteerProfileByUserId(userId) {
   return data ?? null;
 }
 
+async function getActivityById(activityId) {
+  const { data, error } = await supabaseAdmin
+    .from('activities')
+    .select(activityColumns)
+    .eq('id', activityId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? null;
+}
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -94,6 +111,10 @@ function normalizeStringArray(value, fieldName) {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function normalizeActivityLocation(value) {
@@ -251,12 +272,26 @@ function normalizeFeedbackPayload(body) {
     throw new Error('Body must be a JSON object.');
   }
 
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
-  if (!message) {
-    throw new Error('message is required.');
+  const participationId = typeof body.participationId === 'string' ? body.participationId.trim() : '';
+  if (!participationId) {
+    throw new Error('participationId is required.');
   }
-  if (message.length > 2000) {
-    throw new Error('message must be 2000 characters or fewer.');
+  if (!isUuid(participationId)) {
+    throw new Error('participationId must be a valid UUID.');
+  }
+
+  const commentRaw =
+    typeof body.comment === 'string'
+      ? body.comment
+      : typeof body.message === 'string'
+        ? body.message
+        : '';
+  const comment = commentRaw.trim();
+  if (!comment) {
+    throw new Error('comment is required.');
+  }
+  if (comment.length > 2000) {
+    throw new Error('comment must be 2000 characters or fewer.');
   }
 
   const rating = Number(body.rating);
@@ -264,19 +299,63 @@ function normalizeFeedbackPayload(body) {
     throw new Error('rating must be an integer between 1 and 5.');
   }
 
-  const category = typeof body.category === 'string' ? body.category.trim().toLowerCase() : 'general';
-  if (!category) {
-    throw new Error('category cannot be empty.');
+  return {
+    participation_id: participationId,
+    rating,
+    comment,
+  };
+}
+
+function normalizeParticipationCreatePayload(body) {
+  if (!isPlainObject(body)) {
+    throw new Error('Body must be a JSON object.');
   }
-  if (category.length > 40) {
-    throw new Error('category must be 40 characters or fewer.');
+
+  const activityId = typeof body.activityId === 'string' ? body.activityId.trim() : '';
+  if (!activityId) {
+    throw new Error('activityId is required.');
+  }
+  if (!isUuid(activityId)) {
+    throw new Error('activityId must be a valid UUID.');
   }
 
   return {
-    message,
-    rating,
-    category,
+    activity_id: activityId,
   };
+}
+
+async function attachVolunteerSummaries(participations) {
+  if (!Array.isArray(participations) || participations.length === 0) {
+    return [];
+  }
+
+  const volunteerIds = Array.from(
+    new Set(
+      participations
+        .map((row) => (typeof row.volunteer_id === 'string' ? row.volunteer_id : ''))
+        .filter((id) => id.length > 0)
+    )
+  );
+
+  if (volunteerIds.length === 0) {
+    return participations.map((row) => ({ ...row, volunteer: null }));
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id, full_name, phone, avatar_url')
+    .in('id', volunteerIds);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const byId = new Map((data ?? []).map((user) => [user.id, user]));
+
+  return participations.map((row) => ({
+    ...row,
+    volunteer: byId.get(row.volunteer_id) ?? null,
+  }));
 }
 
 function canWriteActivities(role) {
@@ -855,6 +934,330 @@ app.delete('/activities/:id', requireAuth, async (req, res) => {
   res.json({ success: true, message: 'Activity deleted successfully.' });
 });
 
+app.get('/participations', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const activityId = typeof req.query.activityId === 'string' ? req.query.activityId.trim() : '';
+  const statusFilter =
+    typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'all';
+  const requestedLimit = Number(req.query.limit ?? 100);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 300)
+    : 100;
+
+  let mine = role !== 'admin';
+  if (typeof req.query.mine === 'string') {
+    const normalizedMine = req.query.mine.trim().toLowerCase();
+    if (normalizedMine === 'true') {
+      mine = true;
+    } else if (normalizedMine === 'false') {
+      mine = false;
+    } else {
+      res.status(400).json({ message: 'mine must be true or false.' });
+      return;
+    }
+  }
+
+  if (activityId && !isUuid(activityId)) {
+    res.status(400).json({ message: 'activityId must be a valid UUID.' });
+    return;
+  }
+
+  if (statusFilter !== 'all' && !validParticipationStatuses.has(statusFilter)) {
+    res.status(400).json({
+      message: `Invalid status filter. Allowed: all, ${Array.from(validParticipationStatuses).join(', ')}`,
+    });
+    return;
+  }
+
+  if (role === 'volunteer' && !mine) {
+    res.status(403).json({ message: 'Volunteers can only view their own participations.' });
+    return;
+  }
+
+  if (role === 'organizer' && !mine) {
+    res.status(403).json({ message: 'Organizers can only view participations from their own activities.' });
+    return;
+  }
+
+  if (role !== 'admin' && role !== 'organizer' && role !== 'volunteer') {
+    res.status(403).json({ message: 'Invalid role for participation queries.' });
+    return;
+  }
+
+  try {
+    let query = supabaseAdmin
+      .from('activity_participations')
+      .select(participationColumns)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (role === 'volunteer') {
+      query = query.eq('volunteer_id', req.auth.user.id);
+    } else if (role === 'organizer') {
+      if (activityId) {
+        const activity = await getActivityById(activityId);
+        if (!activity) {
+          res.status(404).json({ message: 'Activity not found.' });
+          return;
+        }
+        if (activity.organizer_id !== req.auth.user.id) {
+          res.status(403).json({ message: 'You can access participations only for your own activities.' });
+          return;
+        }
+      } else {
+        const { data: ownedActivities, error: ownedActivitiesError } = await supabaseAdmin
+          .from('activities')
+          .select('id')
+          .eq('organizer_id', req.auth.user.id)
+          .is('deleted_at', null)
+          .limit(500);
+
+        if (ownedActivitiesError) {
+          res.status(500).json({ message: ownedActivitiesError.message });
+          return;
+        }
+
+        const ownedActivityIds = (ownedActivities ?? []).map((row) => row.id).filter((id) => Boolean(id));
+        if (ownedActivityIds.length === 0) {
+          res.json({ participations: [] });
+          return;
+        }
+
+        query = query.in('activity_id', ownedActivityIds);
+      }
+    } else if (role === 'admin' && mine) {
+      query = query.eq('volunteer_id', req.auth.user.id);
+    }
+
+    if (activityId) {
+      query = query.eq('activity_id', activityId);
+    }
+
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
+
+    const participations = await attachVolunteerSummaries(data ?? []);
+    res.json({ participations });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load participations.';
+    res.status(500).json({ message });
+  }
+});
+
+app.post('/participations', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'volunteer' && role !== 'admin') {
+    res.status(403).json({ message: 'Only volunteers/admin can create participations.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeParticipationCreatePayload(req.body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  try {
+    const activity = await getActivityById(payload.activity_id);
+    if (!activity) {
+      res.status(404).json({ message: 'Activity not found.' });
+      return;
+    }
+
+    if (role !== 'admin' && activity.status !== 'published') {
+      res.status(403).json({ message: 'You can join only published activities.' });
+      return;
+    }
+
+    const { data: existingParticipation, error: existingParticipationError } = await supabaseAdmin
+      .from('activity_participations')
+      .select(participationColumns)
+      .eq('activity_id', payload.activity_id)
+      .eq('volunteer_id', req.auth.user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingParticipationError) {
+      res.status(500).json({ message: existingParticipationError.message });
+      return;
+    }
+
+    if (existingParticipation) {
+      const [participation] = await attachVolunteerSummaries([existingParticipation]);
+      res.json({
+        participation,
+        created: false,
+        message: 'You already applied for this activity.',
+      });
+      return;
+    }
+
+    const { count: activeCount, error: capacityError } = await supabaseAdmin
+      .from('activity_participations')
+      .select('*', { head: true, count: 'exact' })
+      .eq('activity_id', payload.activity_id)
+      .in('status', ['pending', 'approved', 'checked_in']);
+
+    if (capacityError) {
+      res.status(500).json({ message: capacityError.message });
+      return;
+    }
+
+    if ((activeCount ?? 0) >= Number(activity.capacity ?? 0)) {
+      res.status(400).json({ message: 'Activity is full.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseAdmin
+      .from('activity_participations')
+      .insert({
+        activity_id: payload.activity_id,
+        volunteer_id: req.auth.user.id,
+        status: 'pending',
+        updated_at: now,
+      })
+      .select(participationColumns)
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === '23514' || error.code === '22P02' || error.code === '23502' || error.code === '23503') {
+        res.status(400).json({ message: error.message });
+        return;
+      }
+      res.status(500).json({ message: error.message });
+      return;
+    }
+
+    const [participation] = await attachVolunteerSummaries(data ? [data] : []);
+    res.status(201).json({
+      participation: participation ?? data,
+      created: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create participation.';
+    res.status(500).json({ message });
+  }
+});
+
+app.post('/participations/:id/check-in', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'organizer' && role !== 'admin') {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  const participationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!isUuid(participationId)) {
+    res.status(400).json({ message: 'Participation id must be a valid UUID.' });
+    return;
+  }
+
+  const { data: participation, error: participationError } = await supabaseAdmin
+    .from('activity_participations')
+    .select(participationColumns)
+    .eq('id', participationId)
+    .maybeSingle();
+
+  if (participationError) {
+    res.status(500).json({ message: participationError.message });
+    return;
+  }
+
+  if (!participation) {
+    res.status(404).json({ message: 'Participation not found.' });
+    return;
+  }
+
+  let activity;
+  try {
+    activity = await getActivityById(participation.activity_id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load activity.';
+    res.status(500).json({ message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found for this participation.' });
+    return;
+  }
+
+  if (role !== 'admin' && activity.organizer_id !== req.auth.user.id) {
+    res.status(403).json({ message: 'You can check in participations only for your own activities.' });
+    return;
+  }
+
+  if (participation.status === 'checked_in') {
+    const [alreadyCheckedIn] = await attachVolunteerSummaries([participation]);
+    res.json({
+      participation: alreadyCheckedIn ?? participation,
+      message: 'Participant already checked in.',
+    });
+    return;
+  }
+
+  if (participation.status === 'rejected') {
+    res.status(400).json({ message: 'Rejected participation cannot be checked in.' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  let updatePayload = {
+    status: 'checked_in',
+    checked_in_at: now,
+    updated_at: now,
+  };
+
+  let updateResult = await supabaseAdmin
+    .from('activity_participations')
+    .update(updatePayload)
+    .eq('id', participationId)
+    .select(participationColumns)
+    .maybeSingle();
+
+  if (updateResult.error?.code === '42703') {
+    updatePayload = {
+      status: 'checked_in',
+      updated_at: now,
+    };
+    updateResult = await supabaseAdmin
+      .from('activity_participations')
+      .update(updatePayload)
+      .eq('id', participationId)
+      .select(participationColumns)
+      .maybeSingle();
+  }
+
+  const { data, error } = updateResult;
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502' || error.code === '23503') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Participation not found.' });
+    return;
+  }
+
+  const [updatedParticipation] = await attachVolunteerSummaries([data]);
+  res.json({ participation: updatedParticipation ?? data });
+});
+
 app.get('/feedback', requireAuth, async (req, res) => {
   const role = String(req.auth?.profile?.role ?? '');
   const mineDefault = role !== 'admin';
@@ -882,10 +1285,15 @@ app.get('/feedback', requireAuth, async (req, res) => {
     ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 200)
     : 50;
 
-  const category =
-    typeof req.query.category === 'string' ? req.query.category.trim().toLowerCase() : '';
+  const participationId =
+    typeof req.query.participationId === 'string' ? req.query.participationId.trim() : '';
   const ratingFilterRaw = req.query.rating;
   let ratingFilter = null;
+
+  if (participationId && !isUuid(participationId)) {
+    res.status(400).json({ message: 'participationId must be a valid UUID.' });
+    return;
+  }
 
   if (typeof ratingFilterRaw === 'string' && ratingFilterRaw.trim().length > 0) {
     const parsedRating = Number(ratingFilterRaw);
@@ -896,16 +1304,22 @@ app.get('/feedback', requireAuth, async (req, res) => {
     ratingFilter = parsedRating;
   }
 
-  let query = supabaseAdmin.from('feedbacks').select(feedbackColumns).order('created_at', {
+  let query = supabaseAdmin.from('participation_feedback').select(feedbackColumns).order('created_at', {
     ascending: false,
   });
 
-  if (mine) {
-    query = query.eq('user_id', req.auth.user.id);
+  if (role === 'admin') {
+    if (mine) {
+      query = query.eq('volunteer_id', req.auth.user.id);
+    }
+  } else if (role === 'organizer') {
+    query = query.eq('organizer_id', req.auth.user.id);
+  } else {
+    query = query.eq('volunteer_id', req.auth.user.id);
   }
 
-  if (category) {
-    query = query.eq('category', category);
+  if (participationId) {
+    query = query.eq('participation_id', participationId);
   }
 
   if (ratingFilter !== null) {
@@ -924,6 +1338,12 @@ app.get('/feedback', requireAuth, async (req, res) => {
 });
 
 app.post('/feedback', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'volunteer' && role !== 'admin') {
+    res.status(403).json({ message: 'Only volunteers/admin can submit feedback.' });
+    return;
+  }
+
   let payload;
   try {
     payload = normalizeFeedbackPayload(req.body);
@@ -932,16 +1352,56 @@ app.post('/feedback', requireAuth, async (req, res) => {
     return;
   }
 
-  const now = new Date().toISOString();
+  const { data: participation, error: participationError } = await supabaseAdmin
+    .from('activity_participations')
+    .select('id, volunteer_id, activity_id')
+    .eq('id', payload.participation_id)
+    .maybeSingle();
+
+  if (participationError) {
+    res.status(500).json({ message: participationError.message });
+    return;
+  }
+
+  if (!participation) {
+    res.status(404).json({ message: 'Participation not found.' });
+    return;
+  }
+
+  if (role !== 'admin' && participation.volunteer_id !== req.auth.user.id) {
+    res.status(403).json({ message: 'You can submit feedback only for your own participation.' });
+    return;
+  }
+
+  const { data: activity, error: activityError } = await supabaseAdmin
+    .from('activities')
+    .select('id, organizer_id')
+    .eq('id', participation.activity_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (activityError) {
+    res.status(500).json({ message: activityError.message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found for this participation.' });
+    return;
+  }
 
   const { data, error } = await supabaseAdmin
-    .from('feedbacks')
-    .insert({
-      ...payload,
-      user_id: req.auth.user.id,
-      created_at: now,
-      updated_at: now,
-    })
+    .from('participation_feedback')
+    .upsert(
+      {
+        participation_id: payload.participation_id,
+        volunteer_id: participation.volunteer_id,
+        organizer_id: activity.organizer_id ?? null,
+        rating: payload.rating,
+        comment: payload.comment,
+      },
+      { onConflict: 'participation_id' }
+    )
     .select(feedbackColumns)
     .maybeSingle();
 
