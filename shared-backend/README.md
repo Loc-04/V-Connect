@@ -33,11 +33,29 @@ shared-backend listening on http://localhost:3000
 - `POST /activities`
 - `PATCH /activities/:id`
 - `DELETE /activities/:id`
+- `GET /participations`
+- `POST /participations`
+- `POST /participations/:id/check-in`
 - `GET /feedback`
 - `POST /feedback`
 - `GET /admin/users`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
+
+### Attendance / Check-in API
+
+- `GET /participations`
+  - Query: `mine=true|false`, `activityId=<uuid>`, `status=all|pending|approved|rejected|checked_in`, `limit=1..300`
+  - Role behavior:
+    - `volunteer`: only own participations
+    - `organizer`: only participations from own activities
+    - `admin`: all (or own with `mine=true`)
+- `POST /participations`
+  - Body: `{ "activityId": "<activity_uuid>" }`
+  - Creates a participation record for the authenticated volunteer/admin account (`status = pending`).
+- `POST /participations/:id/check-in`
+  - Organizer/admin only.
+  - Marks a participation as checked in (`status = checked_in` and `checked_in_at` when the column exists).
 
 ### Feedback API
 

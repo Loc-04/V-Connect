@@ -13,7 +13,7 @@ export interface ListFeedbackOptions {
   accessToken: string;
   mine?: boolean;
   rating?: number;
-  category?: string;
+  participationId?: string;
   limit?: number;
 }
 
@@ -28,8 +28,8 @@ function createQueryString(options: Omit<ListFeedbackOptions, 'accessToken'>) {
     params.set('rating', String(options.rating));
   }
 
-  if (options.category) {
-    params.set('category', options.category);
+  if (options.participationId) {
+    params.set('participationId', options.participationId);
   }
 
   if (typeof options.limit === 'number' && Number.isFinite(options.limit)) {
@@ -44,7 +44,7 @@ export async function listFeedbacks(options: ListFeedbackOptions): Promise<Feedb
   const query = createQueryString({
     mine: options.mine,
     rating: options.rating,
-    category: options.category,
+    participationId: options.participationId,
     limit: options.limit,
   });
 

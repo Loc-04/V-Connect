@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -7,7 +7,6 @@ import { createFeedback, listFeedbacks } from '../lib/feedback';
 import type { FeedbackRecord } from '../types/feedback';
 import './FeedbackPage.css';
 
-const categoryOptions = ['general', 'bug', 'feature', 'ui', 'other'];
 const ratingOptions = [5, 4, 3, 2, 1];
 
 function formatTimestamp(value: string | null) {
@@ -28,6 +27,7 @@ export function FeedbackPage() {
   const { profile, session, signOut } = useAuth();
   const role = String(profile?.role ?? '');
   const isAdmin = role === 'admin';
+  const canSubmit = role === 'volunteer' || role === 'admin';
 
   const [feedbacks, setFeedbacks] = useState<FeedbackRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,13 +35,13 @@ export function FeedbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const [participationId, setParticipationId] = useState('');
   const [rating, setRating] = useState<number>(5);
-  const [category, setCategory] = useState('general');
-  const [message, setMessage] = useState('');
+  const [comment, setComment] = useState('');
 
   const [showMineOnly, setShowMineOnly] = useState(true);
   const [ratingFilter, setRatingFilter] = useState<number | 'all'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [participationFilter, setParticipationFilter] = useState('');
 
   useEffect(() => {
     if (isAdmin) {
@@ -64,7 +64,7 @@ export function FeedbackPage() {
         accessToken: session.access_token,
         mine: isAdmin ? showMineOnly : true,
         limit: 100,
-        category: categoryFilter !== 'all' ? categoryFilter : undefined,
+        participationId: participationFilter.trim() || undefined,
         rating: ratingFilter !== 'all' ? ratingFilter : undefined,
       });
       setFeedbacks(rows);
@@ -73,7 +73,7 @@ export function FeedbackPage() {
     } finally {
       setLoading(false);
     }
-  }, [categoryFilter, isAdmin, ratingFilter, session?.access_token, showMineOnly]);
+  }, [isAdmin, participationFilter, ratingFilter, session?.access_token, showMineOnly]);
 
   useEffect(() => {
     void loadFeedbacks();
@@ -93,15 +93,6 @@ export function FeedbackPage() {
     [feedbacks]
   );
 
-  const categoryBreakdown = useMemo(() => {
-    const acc: Record<string, number> = {};
-    for (const row of feedbacks) {
-      const key = String(row.category ?? 'general').toLowerCase();
-      acc[key] = (acc[key] ?? 0) + 1;
-    }
-    return Object.entries(acc).sort((a, b) => b[1] - a[1]);
-  }, [feedbacks]);
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!session?.access_token) {
@@ -109,9 +100,16 @@ export function FeedbackPage() {
       return;
     }
 
-    const normalizedMessage = message.trim();
-    if (!normalizedMessage) {
-      setError('Message is required.');
+    const normalizedParticipationId = participationId.trim();
+    const normalizedComment = comment.trim();
+
+    if (!normalizedParticipationId) {
+      setError('Participation ID is required.');
+      return;
+    }
+
+    if (!normalizedComment) {
+      setError('Comment is required.');
       return;
     }
 
@@ -122,14 +120,14 @@ export function FeedbackPage() {
     try {
       await createFeedback(
         {
+          participationId: normalizedParticipationId,
           rating,
-          category,
-          message: normalizedMessage,
+          comment: normalizedComment,
         },
         session.access_token
       );
 
-      setMessage('');
+      setComment('');
       setNotice('Feedback submitted.');
       await loadFeedbacks();
     } catch (submitError) {
@@ -150,9 +148,11 @@ export function FeedbackPage() {
         <div className="section-head">
           <div>
             <p className="badge">V-Connect Insight Hub</p>
-            <h2>Feedback Center</h2>
+            <h2>Participation Feedback Center</h2>
             <p className="muted">
-              Share product feedback and review signals from {isAdmin && !showMineOnly ? 'all users' : 'your account'}.
+              {isAdmin && !showMineOnly
+                ? 'Review participation feedback from all users.'
+                : 'Review participation feedback linked to your account.'}
             </p>
           </div>
           <div className="header-actions">
@@ -193,58 +193,59 @@ export function FeedbackPage() {
       <section className="feedback-content-grid">
         <article className="card feedback-compose-card">
           <h3>Submit Feedback</h3>
-          <p className="muted">Use clear, specific notes so organizers and admins can act quickly.</p>
+          <p className="muted">
+            {canSubmit
+              ? 'Provide the Participation ID to create/update feedback.'
+              : 'Your role can view feedback only.'}
+          </p>
 
-          <form className="feedback-form" onSubmit={(event) => void handleSubmit(event)}>
-            <label className="field-label">Rating</label>
-            <div className="feedback-rating-row" role="radiogroup" aria-label="Feedback rating">
-              {ratingOptions.map((option) => (
-                <button
-                  aria-checked={rating === option}
-                  className={rating === option ? 'feedback-rating-btn active' : 'feedback-rating-btn'}
-                  key={option}
-                  onClick={() => setRating(option)}
-                  role="radio"
-                  type="button"
-                >
-                  {option} / 5
-                </button>
-              ))}
-            </div>
+          {canSubmit && (
+            <form className="feedback-form" onSubmit={(event) => void handleSubmit(event)}>
+              <label className="field-label" htmlFor="feedback-participation-id">
+                Participation ID
+              </label>
+              <input
+                className="text-input"
+                id="feedback-participation-id"
+                onChange={(event) => setParticipationId(event.target.value)}
+                placeholder="UUID from activity_participations.id"
+                value={participationId}
+              />
 
-            <label className="field-label" htmlFor="feedback-category">
-              Category
-            </label>
-            <select
-              className="text-input"
-              id="feedback-category"
-              onChange={(event) => setCategory(event.target.value)}
-              value={category}
-            >
-              {categoryOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              <label className="field-label">Rating</label>
+              <div className="feedback-rating-row" role="radiogroup" aria-label="Feedback rating">
+                {ratingOptions.map((option) => (
+                  <button
+                    aria-checked={rating === option}
+                    className={rating === option ? 'feedback-rating-btn active' : 'feedback-rating-btn'}
+                    key={option}
+                    onClick={() => setRating(option)}
+                    role="radio"
+                    type="button"
+                  >
+                    {option} / 5
+                  </button>
+                ))}
+              </div>
 
-            <label className="field-label" htmlFor="feedback-message">
-              Message
-            </label>
-            <textarea
-              className="text-input feedback-textarea"
-              id="feedback-message"
-              maxLength={2000}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder="Tell us what works well and what should improve."
-              value={message}
-            />
-            <p className="muted feedback-char-count">{message.trim().length}/2000</p>
+              <label className="field-label" htmlFor="feedback-comment">
+                Comment
+              </label>
+              <textarea
+                className="text-input feedback-textarea"
+                id="feedback-comment"
+                maxLength={2000}
+                onChange={(event) => setComment(event.target.value)}
+                placeholder="Share what happened in this participation."
+                value={comment}
+              />
+              <p className="muted feedback-char-count">{comment.trim().length}/2000</p>
 
-            <button className="primary-btn" disabled={submitting} type="submit">
-              {submitting ? 'Submitting...' : 'Submit Feedback'}
-            </button>
-          </form>
+              <button className="primary-btn" disabled={submitting} type="submit">
+                {submitting ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+            </form>
+          )}
         </article>
 
         <article className="card feedback-feed-card">
@@ -267,18 +268,12 @@ export function FeedbackPage() {
           )}
 
           <div className="feedback-filter-row">
-            <select
+            <input
               className="text-input"
-              onChange={(event) => setCategoryFilter(event.target.value)}
-              value={categoryFilter}
-            >
-              <option value="all">All categories</option>
-              {categoryOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={(event) => setParticipationFilter(event.target.value)}
+              placeholder="Filter by participation ID"
+              value={participationFilter}
+            />
             <select
               className="text-input"
               onChange={(event) =>
@@ -296,16 +291,6 @@ export function FeedbackPage() {
             <p className="muted feedback-user-tag">{profile?.full_name ?? profile?.id ?? 'User'}</p>
           </div>
 
-          {categoryBreakdown.length > 0 && (
-            <div className="feedback-breakdown-row">
-              {categoryBreakdown.map(([name, count]) => (
-                <span className="feedback-breakdown-chip" key={name}>
-                  {name}: {count}
-                </span>
-              ))}
-            </div>
-          )}
-
           {loading ? (
             <p className="muted">Loading feedback...</p>
           ) : (
@@ -313,12 +298,12 @@ export function FeedbackPage() {
               {feedbacks.map((feedback) => (
                 <article className="feedback-item" key={feedback.id}>
                   <div className="feedback-item-top">
-                    <p className="feedback-item-user mono">{feedback.user_id}</p>
+                    <p className="feedback-item-user mono">Participation: {feedback.participation_id}</p>
                     <span className="feedback-item-rating">{feedback.rating} / 5</span>
                   </div>
-                  <p className="feedback-item-message">{feedback.message}</p>
+                  <p className="feedback-item-message">{feedback.comment ?? 'No comment.'}</p>
                   <div className="feedback-item-bottom">
-                    <span className="feedback-item-category">{feedback.category}</span>
+                    <span className="feedback-item-category mono">Volunteer: {feedback.volunteer_id}</span>
                     <span className="muted">{formatTimestamp(feedback.created_at)}</span>
                   </div>
                 </article>
@@ -331,4 +316,3 @@ export function FeedbackPage() {
     </main>
   );
 }
-
