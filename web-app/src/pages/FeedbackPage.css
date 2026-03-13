@@ -1,8 +1,10 @@
 .feedback-grid {
   display: grid;
   grid-template-columns: minmax(0, 2.7fr) minmax(300px, 1fr);
-  gap: 1rem;
+  gap: 0.86rem;
   align-items: start;
+  align-content: start;
+  align-self: start;
 }
 
 .feedback-card {
@@ -13,14 +15,15 @@
 }
 
 .feedback-form-card {
-  padding: 1.16rem;
+  padding: 1rem;
   display: grid;
-  gap: 1rem;
+  gap: 0.82rem;
+  align-content: start;
 }
 
 .feedback-form-fields {
   display: grid;
-  gap: 1rem;
+  gap: 0.82rem;
 }
 
 .feedback-label {
@@ -156,13 +159,14 @@
 
 .feedback-side-column {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.78rem;
   align-content: start;
 }
 
 .feedback-history-card,
 .feedback-impact-card {
-  padding: 1rem;
+  padding: 0.9rem;
+  align-self: start;
 }
 
 .feedback-history-head h2,

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { Button, Card, Select } from '../components/ui';
 import { createFeedback, listFeedbacks } from '../lib/feedback';
 import { listParticipations } from '../lib/participations';
 import { VolunteerShell } from '../layouts/VolunteerShell';
@@ -207,12 +208,12 @@ export function FeedbackPage() {
       pageTitle="Submit Feedback"
     >
       <div className="feedback-grid">
-        <section className="feedback-card feedback-form-card">
+        <Card as="section" className="feedback-card feedback-form-card">
           <div className="feedback-form-fields">
             <label className="feedback-label" htmlFor="feedback-activity-select">
               Select Recently Completed Activity
             </label>
-            <select
+            <Select
               className="feedback-select"
               disabled={loading || activities.length === 0}
               id="feedback-activity-select"
@@ -227,7 +228,7 @@ export function FeedbackPage() {
                   {`${activity.title} - ${formatDateLabel(activity.completedAt)}`}
                 </option>
               ))}
-            </select>
+            </Select>
 
             <div>
               <p className="feedback-label">Overall Experience Rating</p>
@@ -236,15 +237,16 @@ export function FeedbackPage() {
                   const value = index + 1;
                   const active = value <= rating;
                   return (
-                    <button
+                    <Button
                       aria-label={`Rate ${value} star${value > 1 ? 's' : ''}`}
                       className={active ? 'feedback-rate-btn is-active' : 'feedback-rate-btn'}
                       key={value}
                       onClick={() => setRating(value)}
                       type="button"
+                      variant="secondary"
                     >
                       <Star />
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -257,14 +259,15 @@ export function FeedbackPage() {
                 {categoryOptions.map((category) => {
                   const isSelected = selectedCategories.includes(category);
                   return (
-                    <button
+                    <Button
                       className={isSelected ? 'feedback-category-pill is-selected' : 'feedback-category-pill'}
                       key={category}
                       onClick={() => toggleCategory(category)}
                       type="button"
+                      variant="secondary"
                     >
                       {category}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -286,16 +289,16 @@ export function FeedbackPage() {
           {error && <p className="form-error">{error}</p>}
           {success && <p className="form-success">{success}</p>}
 
-          <button className="feedback-submit-btn" disabled={!canSubmit} onClick={() => void handleSubmit()} type="button">
+          <Button className="feedback-submit-btn" disabled={!canSubmit} onClick={() => void handleSubmit()} type="button">
             {submitting ? 'Submitting...' : 'Submit Feedback'}
             <ArrowRight className="feedback-btn-icon" />
-          </button>
+          </Button>
 
           {loading && <p className="feedback-inline-note">Loading feedback data...</p>}
-        </section>
+        </Card>
 
         <aside className="feedback-side-column">
-          <section className="feedback-card feedback-history-card">
+          <Card as="section" className="feedback-card feedback-history-card">
             <div className="feedback-history-head">
               <h2>Previous Feedback</h2>
             </div>
@@ -310,21 +313,22 @@ export function FeedbackPage() {
                   </div>
                   <StarRow rating={item.rating} />
                   <p>{buildPreview(item.details)}</p>
-                  <button
+                  <Button
                     className="feedback-inline-link"
                     onClick={() =>
                       navigate(item.activityId ? `/volunteer/activity/${item.activityId}` : '/volunteer/participation-history')
                     }
                     type="button"
+                    variant="secondary"
                   >
                     View Full Details
-                  </button>
+                  </Button>
                 </article>
               ))}
             </div>
-          </section>
+          </Card>
 
-          <section className="feedback-card feedback-impact-card">
+          <Card as="section" className="feedback-card feedback-impact-card">
             <div className="feedback-impact-icon">
               <Info size={16} />
             </div>
@@ -332,7 +336,7 @@ export function FeedbackPage() {
             <p>
               Your feedback helps us allocate resources and improve the safety standards for all student volunteers.
             </p>
-          </section>
+          </Card>
         </aside>
       </div>
     </VolunteerShell>

@@ -1,8 +1,10 @@
+import { BriefcaseBusiness, Clock3, History, TrendingUp } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, History, LayoutDashboard, Settings, UserCircle, BriefcaseBusiness } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { Badge, Button, Card, Input, Table } from '../components/ui';
+import { VolunteerShell } from '../layouts/VolunteerShell';
 import { listParticipations } from '../lib/participations';
 import type { ParticipationRecord, ParticipationStatus } from '../types/participation';
 import './ParticipationHistoryPage.css';
@@ -46,9 +48,19 @@ function statusLabel(status: ParticipationStatus) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+function getStatusTone(status: ParticipationStatus) {
+  if (status === 'completed') {
+    return 'success' as const;
+  }
+  if (status === 'cancelled') {
+    return 'danger' as const;
+  }
+  return 'info' as const;
+}
+
 export function ParticipationHistoryPage() {
   const navigate = useNavigate();
-  const { profile, session } = useAuth();
+  const { session } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<ParticipationRecord[]>([]);
@@ -136,193 +148,180 @@ export function ParticipationHistoryPage() {
   const impactScore = Math.max(70, Math.min(100, Math.round(70 + totalHours / 2)));
 
   return (
-    <main className="history-page">
-      <aside className="history-sidebar">
-        <div className="history-brand">V-Connect</div>
-        <nav className="history-nav">
-          <button className="history-nav-item" onClick={() => navigate('/volunteer/home')} type="button">
-            <LayoutDashboard className="history-nav-icon" />
-            Dashboard
-          </button>
-          <button className="history-nav-item is-active" type="button">
-            <History className="history-nav-icon" />
-            Participation
-          </button>
-          <button className="history-nav-item" onClick={() => navigate('/browse')} type="button">
-            <BriefcaseBusiness className="history-nav-icon" />
-            Opportunities
-          </button>
-          <button className="history-nav-item" onClick={() => navigate('/volunteer/profile-ui')} type="button">
-            <Settings className="history-nav-icon" />
-            Settings
-          </button>
-        </nav>
-
-        <div className="history-sidebar-footer">
-          <span className="history-avatar">{(profile?.full_name ?? 'V').slice(0, 2).toUpperCase()}</span>
-          <div>
-            <p>{profile?.full_name ?? 'Volunteer'}</p>
-            <small>Volunteer</small>
-          </div>
-        </div>
-      </aside>
-
-      <section className="history-content">
-        <header className="history-topbar">
-          <strong>Participation History</strong>
-          <div className="history-top-icons">
-            <button type="button">
-              <Bell className="history-top-icon" />
-            </button>
-            <button type="button">
-              <UserCircle className="history-top-icon" />
-            </button>
-          </div>
-        </header>
-
-        <div className="history-main">
-          <div className="history-head">
-            <h1>Your Volunteering Journey</h1>
-            <p>Track your past impacts and upcoming commitments in one place.</p>
-          </div>
-
-          <section className="history-metrics">
-            <article className="history-metric-card">
-              <p>Activities Joined</p>
-              <strong>{records.length}</strong>
-              <small>{completedCount} completed</small>
-            </article>
-            <article className="history-metric-card">
-              <p>Total Hours</p>
-              <strong>{totalHours.toFixed(1)}</strong>
-              <small>this month contribution</small>
-            </article>
-            <article className="history-metric-card">
-              <p>Impact Score</p>
-              <strong>{impactScore}</strong>
-              <small>Community Guardian</small>
-            </article>
-          </section>
-
-          <section className="history-table-shell">
-            <div className="history-table-tools">
-              <div className="history-tabs">
-                {STATUS_TABS.map((tab) => (
-                  <button
-                    className={statusFilter === tab.value ? 'history-tab is-active' : 'history-tab'}
-                    key={tab.value}
-                    onClick={() => handleStatusFilterChange(tab.value)}
-                    type="button"
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+    <VolunteerShell
+      activeNav="my-activities"
+      headerActions={
+        <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+          <BriefcaseBusiness size={16} />
+          <span>Browse Opportunities</span>
+        </Button>
+      }
+      pageSubtitle="Track your past impacts and upcoming commitments in one place."
+      pageTitle="Participation History"
+    >
+      <section className="history-page">
+        <div className="history-metrics">
+          <Card as="article" className="history-metric-card">
+            <div className="history-metric-copy">
+              <span className="history-metric-icon-wrap" aria-hidden="true">
+                <History size={16} />
+              </span>
+              <div>
+                <p>Activities Joined</p>
+                <strong>{records.length}</strong>
+                <small>{completedCount} completed</small>
               </div>
+            </div>
+          </Card>
 
-              <input
-                className="history-search"
-                onChange={(event) => handleQueryChange(event.target.value)}
-                placeholder="Search activities..."
-                type="search"
-                value={query}
-              />
+          <Card as="article" className="history-metric-card">
+            <div className="history-metric-copy">
+              <span className="history-metric-icon-wrap accent" aria-hidden="true">
+                <Clock3 size={16} />
+              </span>
+              <div>
+                <p>Total Hours</p>
+                <strong>{totalHours.toFixed(1)}</strong>
+                <small>Community contribution logged</small>
+              </div>
+            </div>
+          </Card>
+
+          <Card as="article" className="history-metric-card">
+            <div className="history-metric-copy">
+              <span className="history-metric-icon-wrap success" aria-hidden="true">
+                <TrendingUp size={16} />
+              </span>
+              <div>
+                <p>Impact Score</p>
+                <strong>{impactScore}</strong>
+                <small>Momentum from recent activity</small>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card as="section" className="history-table-shell">
+          <div className="history-table-tools">
+            <div className="history-tabs">
+              {STATUS_TABS.map((tab) => (
+                <button
+                  className={statusFilter === tab.value ? 'history-tab is-active' : 'history-tab'}
+                  key={tab.value}
+                  onClick={() => handleStatusFilterChange(tab.value)}
+                  type="button"
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            <div className="history-table-wrap">
-              <table className="history-table">
-                <thead>
-                  <tr>
-                    <th>Activity Name</th>
-                    <th>Organization</th>
-                    <th>Date</th>
-                    <th>Hours</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+            <Input
+              className="history-search"
+              onChange={(event) => handleQueryChange(event.target.value)}
+              placeholder="Search activities or organizations..."
+              type="search"
+              value={query}
+            />
+          </div>
+
+          <Table className="history-table" wrapperClassName="history-table-wrap">
+            <thead>
+              <tr>
+                <th>Activity Name</th>
+                <th>Organization</th>
+                <th>Date</th>
+                <th>Hours</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td className="history-empty" colSpan={6}>
+                    Loading participation history...
+                  </td>
+                </tr>
+              )}
+
+              {!loading && error && (
+                <tr>
+                  <td className="history-empty" colSpan={6}>
+                    {error}
+                  </td>
+                </tr>
+              )}
+
+              {!loading && pagedRecords.length === 0 && (
+                <tr>
+                  <td className="history-empty" colSpan={6}>
+                    No participation records found.
+                  </td>
+                </tr>
+              )}
+
+              {!loading &&
+                pagedRecords.map((record) => (
+                  <tr key={record.id}>
+                    <td>
+                      <div className="history-activity-cell">
+                        <span className="history-activity-icon" aria-hidden="true">
+                          <History size={14} />
+                        </span>
+                        <span>{record.activityName}</span>
+                      </div>
+                    </td>
+                    <td>{record.organization}</td>
+                    <td>{formatDateLabel(record.date)}</td>
+                    <td>{formatHours(record.hours)}</td>
+                    <td>
+                      <Badge className="history-status" tone={getStatusTone(record.status)}>
+                        {statusLabel(record.status)}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Button
+                        className="history-view-btn"
+                        onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
+                        type="button"
+                        variant="secondary"
+                      >
+                        View Details
+                      </Button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {loading && (
-                    <tr>
-                      <td className="history-empty" colSpan={6}>
-                        Loading participation history...
-                      </td>
-                    </tr>
-                  )}
+                ))}
+            </tbody>
+          </Table>
 
-                  {!loading && error && (
-                    <tr>
-                      <td className="history-empty" colSpan={6}>
-                        {error}
-                      </td>
-                    </tr>
-                  )}
+          <div className="history-pagination">
+            <small>
+              Showing {filteredRecords.length === 0 ? 0 : startIndex + 1} to{' '}
+              {Math.min(startIndex + PAGE_SIZE, filteredRecords.length)} of {filteredRecords.length} results
+            </small>
 
-                  {!loading && pagedRecords.length === 0 && (
-                    <tr>
-                      <td className="history-empty" colSpan={6}>
-                        No participation records found.
-                      </td>
-                    </tr>
-                  )}
-
-                  {!loading &&
-                    pagedRecords.map((record) => (
-                      <tr key={record.id}>
-                        <td>
-                          <div className="history-activity-cell">
-                            <History className="history-activity-icon" />
-                            <span>{record.activityName}</span>
-                          </div>
-                        </td>
-                        <td>{record.organization}</td>
-                        <td>{formatDateLabel(record.date)}</td>
-                        <td>{formatHours(record.hours)}</td>
-                        <td>
-                          <span className={`history-status history-status-${record.status}`}>
-                            {statusLabel(record.status)}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="history-view-btn"
-                            onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
-                            type="button"
-                          >
-                            View Details
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+            <div className="history-pagination-actions">
+              <Button
+                disabled={safePage <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                type="button"
+                variant="secondary"
+              >
+                Previous
+              </Button>
+              <Button
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                type="button"
+                variant="secondary"
+              >
+                Next
+              </Button>
             </div>
-
-            <div className="history-pagination">
-              <small>
-                Showing {filteredRecords.length === 0 ? 0 : startIndex + 1} to{' '}
-                {Math.min(startIndex + PAGE_SIZE, filteredRecords.length)} of {filteredRecords.length} results
-              </small>
-
-              <div className="history-pagination-actions">
-                <button
-                  disabled={safePage <= 1}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  type="button"
-                >
-                  Previous
-                </button>
-                <button
-                  disabled={safePage >= totalPages}
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                  type="button"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
+          </div>
+        </Card>
       </section>
-    </main>
+    </VolunteerShell>
   );
 }

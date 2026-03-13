@@ -51,6 +51,8 @@
   max-width: 1020px;
   width: 100%;
   margin: 0 auto;
+  align-self: start;
+  align-content: start;
 }
 
 .notifications-filter-tabs {

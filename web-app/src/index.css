@@ -321,6 +321,43 @@ th {
   font-size: 0.78rem;
 }
 
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.22rem 0.58rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ui-badge-neutral {
+  background: var(--bg-soft);
+  color: var(--muted);
+}
+
+.ui-badge-accent {
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--grad-end);
+}
+
+.ui-badge-success {
+  background: #d1fadf;
+  color: #13795b;
+}
+
+.ui-badge-danger {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+.ui-badge-info {
+  background: rgba(59, 130, 246, 0.12);
+  color: #175cd3;
+}
+
 .muted {
   color: var(--muted);
 }
