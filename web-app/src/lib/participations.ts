@@ -75,7 +75,7 @@ export async function listParticipations(
   arg2?: number
 ): Promise<ParticipationRecord[]> {
   if (typeof arg1 === 'string') {
-    const query = Number.isFinite(arg2) ? `?limit=${Math.trunc(arg2)}` : '';
+    const query = typeof arg2 === 'number' && Number.isFinite(arg2) ? `?limit=${Math.trunc(arg2)}` : '';
     const response = await apiRequest<ParticipationListResponse>(`/participation-history${query}`, {
       accessToken: arg1,
     });
