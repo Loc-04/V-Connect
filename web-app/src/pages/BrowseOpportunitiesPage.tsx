@@ -4,7 +4,9 @@ import { Activity, CalendarDays, ChevronDown, Filter, Heart, History, LayoutDash
 
 import { useAuth } from '../auth/useAuth';
 import { listActivities } from '../lib/activities';
+import { createParticipation, listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
+import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
 
 type CategoryTone = 'blue' | 'orange' | 'green' | 'purple' | 'red';
@@ -107,6 +109,10 @@ export function BrowseOpportunitiesPage() {
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [applyingActivityId, setApplyingActivityId] = useState<string | null>(null);
+  const [participationByActivityId, setParticipationByActivityId] = useState<Record<string, ParticipationRecord>>({});
+  const canApply = profile?.role === 'volunteer';
 
   useEffect(() => {
     if (!session?.access_token) {
@@ -147,11 +153,71 @@ export function BrowseOpportunitiesPage() {
     };
   }, [searchTerm, session?.access_token, statusFilter]);
 
+  useEffect(() => {
+    if (!session?.access_token || !canApply) {
+      setParticipationByActivityId({});
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const participations = await listParticipations({
+          accessToken: session.access_token,
+          mine: true,
+          limit: 250,
+        });
+
+        if (!cancelled) {
+          setParticipationByActivityId(
+            Object.fromEntries(
+              participations
+                .filter((participation) => Boolean(participation.activity_id))
+                .map((participation) => [participation.activity_id, participation])
+            )
+          );
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load your participation list.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canApply, session?.access_token]);
+
   const opportunities = useMemo(() => activities.map((activity, index) => toOpportunity(activity, index)), [activities]);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/login', { replace: true });
+  };
+
+  const handleQuickApply = async (activityId: string) => {
+    if (!session?.access_token) {
+      setError('No active session token.');
+      return;
+    }
+
+    setApplyingActivityId(activityId);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const result = await createParticipation(activityId, session.access_token);
+      setParticipationByActivityId((current) => ({
+        ...current,
+        [activityId]: result.participation,
+      }));
+      setMessage(result.message ?? (result.created ? 'Applied successfully.' : 'Participation already exists.'));
+    } catch (applyError) {
+      setError(applyError instanceof Error ? applyError.message : 'Failed to apply for this activity.');
+    } finally {
+      setApplyingActivityId(null);
+    }
   };
 
   return (
@@ -185,6 +251,9 @@ export function BrowseOpportunitiesPage() {
             <button className="browse-nav-link" onClick={() => navigate('/volunteer/profile-ui')} type="button">
               <User className="browse-icon-sm" />
               Profile
+            </button>
+            <button className="browse-nav-link" onClick={() => navigate('/feedback')} type="button">
+              Feedback
             </button>
             <button className="browse-logout-btn" onClick={handleSignOut} type="button">
               Log Out
@@ -235,6 +304,7 @@ export function BrowseOpportunitiesPage() {
           </div>
 
           {error && <p className="form-error">{error}</p>}
+          {message && <p className="form-success">{message}</p>}
           {loading && <p className="muted">Loading activities...</p>}
 
           <section className="browse-grid" aria-label="Volunteer opportunities">
@@ -276,10 +346,19 @@ export function BrowseOpportunitiesPage() {
                       <span>{opportunity.spotsLeft} spots</span>
                       <button
                         className="browse-apply-btn"
-                        onClick={() => navigate(`/volunteer/activity/${opportunity.id}`)}
+                        disabled={
+                          !canApply ||
+                          applyingActivityId === opportunity.id ||
+                          Boolean(participationByActivityId[opportunity.id])
+                        }
+                        onClick={() => void handleQuickApply(opportunity.id)}
                         type="button"
                       >
-                        Quick Apply
+                        {applyingActivityId === opportunity.id
+                          ? 'Applying...'
+                          : participationByActivityId[opportunity.id]
+                            ? `Applied (${participationByActivityId[opportunity.id].status})`
+                            : 'Quick Apply'}
                       </button>
                     </div>
                   </div>

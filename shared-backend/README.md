@@ -33,9 +33,66 @@ shared-backend listening on http://localhost:3000
 - `POST /activities`
 - `PATCH /activities/:id`
 - `DELETE /activities/:id`
+- `GET /participations`
+- `POST /participations`
+- `POST /participations/:id/check-in`
+- `GET /feedback`
+- `POST /feedback`
 - `GET /admin/users`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
+
+### Attendance / Check-in API
+
+- `GET /participations`
+  - Query: `mine=true|false`, `activityId=<uuid>`, `status=all|pending|approved|rejected|checked_in`, `limit=1..300`
+  - Role behavior:
+    - `volunteer`: only own participations
+    - `organizer`: only participations from own activities
+    - `admin`: all (or own with `mine=true`)
+- `POST /participations`
+  - Body: `{ "activityId": "<activity_uuid>" }`
+  - Creates a participation record for the authenticated volunteer/admin account (`status = pending`).
+- `POST /participations/:id/check-in`
+  - Organizer/admin only.
+  - Marks a participation as checked in (`status = checked_in` and `checked_in_at` when the column exists).
+
+### Feedback API
+
+`POST /feedback` request body:
+
+```json
+{
+  "rating": 5,
+  "category": "general",
+  "message": "Great onboarding flow. Please keep the quick filters."
+}
+```
+
+`GET /feedback` query params:
+
+- `mine=true|false` (non-admin users can only query their own feedback)
+- `rating=1..5` (optional filter)
+- `category=<string>` (optional filter)
+- `limit=1..200` (optional, default `50`)
+
+Required Supabase table:
+
+```sql
+create table if not exists public.feedbacks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  rating int not null check (rating between 1 and 5),
+  category text not null default 'general',
+  message text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+You can run the ready-made SQL file in this repo:
+
+- `shared-backend/scripts/createFeedbackTable.sql`
 
 ### Profile Migration
 

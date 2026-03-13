@@ -32,6 +32,10 @@ export function AdminLayout() {
             <Users className="sidebar-link-icon" />
             User Management
           </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/feedback">
+            <Activity className="sidebar-link-icon" />
+            Feedback
+          </NavLink>
           <button className="sidebar-link placeholder" type="button">
             <Activity className="sidebar-link-icon" />
             Volunteer Opportunities
