@@ -24,7 +24,7 @@ import { VolunteerHomePage } from './pages/VolunteerHomePage';
 
 function FeedbackRouteEntry() {
   const { profile } = useAuth();
-  const role = String(profile?.role ?? '');
+  const role = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
 
   if (role === 'admin') {
     return <Navigate replace to="/admin/feedback" />;
