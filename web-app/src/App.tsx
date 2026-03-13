@@ -1,9 +1,11 @@
-﻿import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthProvider } from './auth/AuthContext';
 import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute, RoleHomeRedirect } from './auth/RouteGuards';
+import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { AdminFeedbackPage } from './pages/AdminFeedbackPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { ActivityDetailPage } from './pages/ActivityDetailPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
@@ -19,6 +21,16 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
+
+function FeedbackRouteEntry() {
+  const { profile } = useAuth();
+
+  if (String(profile?.role) === 'admin') {
+    return <Navigate replace to="/admin/feedback" />;
+  }
+
+  return <FeedbackPage />;
+}
 
 function App() {
   return (
@@ -64,7 +76,7 @@ function App() {
             path="/feedback"
             element={
               <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
-                <FeedbackPage />
+                <FeedbackRouteEntry />
               </RequireRoleRoute>
             }
           />
@@ -139,6 +151,7 @@ function App() {
             }
           >
             <Route path="dashboard" element={<AdminDashboardPage />} />
+            <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
