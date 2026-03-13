@@ -5,6 +5,10 @@ import { useAuth } from '../auth/useAuth';
 export function UnauthorizedPage() {
   const navigate = useNavigate();
   const { profile, signOut, session, error } = useAuth();
+  const normalizedRole =
+    typeof profile?.role === 'string' && profile.role.trim().length > 0
+      ? profile.role.trim().toLowerCase()
+      : 'unverified';
 
   const handleSignOut = async () => {
     await signOut();
@@ -16,7 +20,7 @@ export function UnauthorizedPage() {
       <section className="card auth-card">
         <h1>Access Restricted</h1>
         <p className="muted">
-          You do not have access to this page. Your role: {profile?.role ?? 'unknown'}.
+          You do not have access to this page. Your role: {normalizedRole}.
         </p>
 
         {error && <p className="form-error">{error}</p>}

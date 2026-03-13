@@ -12,8 +12,8 @@ interface AdminFeedbackItem {
   id: string;
   participationId: string;
   activityTitle: string;
-  organization: string;
   volunteerName: string;
+  volunteerRole: string;
   rating: number;
   comment: string;
   submittedAt: string | null;
@@ -36,6 +36,17 @@ function formatDateLabel(value: string | null): string {
   });
 }
 
+function formatRoleLabel(role: string | null | undefined): string {
+  const normalized = typeof role === 'string' ? role.trim().toLowerCase() : '';
+  if (normalized === 'admin') {
+    return 'Admin';
+  }
+  if (normalized === 'organizer') {
+    return 'Organizer';
+  }
+  return 'Volunteer';
+}
+
 function buildFeedbackItems(
   feedbacks: FeedbackRecord[],
   participations: ParticipationRecord[]
@@ -51,8 +62,8 @@ function buildFeedbackItems(
       id: feedback.id,
       participationId: feedback.participation_id,
       activityTitle: participation?.activityName ?? `Participation ${feedback.participation_id.slice(0, 8)}`,
-      organization: participation?.organization ?? 'Organizer',
       volunteerName: participation?.volunteer?.full_name?.trim() || 'Volunteer',
+      volunteerRole: formatRoleLabel(participation?.volunteer?.role),
       rating: Number(feedback.rating || 0),
       comment: feedback.comment?.trim() || 'No written feedback provided.',
       submittedAt: feedback.created_at ?? null,
@@ -77,7 +88,7 @@ export function AdminFeedbackPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const isAdmin = String(profile?.role ?? '') === 'admin';
+  const isAdmin = typeof profile?.role === 'string' && profile.role.trim().toLowerCase() === 'admin';
 
   const loadFeedback = useCallback(async () => {
     if (!session?.access_token) {
@@ -92,7 +103,7 @@ export function AdminFeedbackPage() {
     try {
       const [feedbacks, participations] = await Promise.all([
         listFeedbacks({ accessToken: session.access_token, limit: 50 }),
-        listParticipations({ accessToken: session.access_token, limit: 100 }),
+        listParticipations({ accessToken: session.access_token, limit: 300 }),
       ]);
 
       setItems(buildFeedbackItems(feedbacks, participations));
@@ -187,7 +198,7 @@ export function AdminFeedbackPage() {
                   <div>
                     <h3>{item.activityTitle}</h3>
                     <p className="muted">
-                      {item.volunteerName} - {item.organization}
+                      {item.volunteerName} - {item.volunteerRole}
                     </p>
                   </div>
                   <span className="admin-feedback-date">{formatDateLabel(item.submittedAt)}</span>

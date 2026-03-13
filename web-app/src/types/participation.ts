@@ -2,6 +2,7 @@ export type ParticipationStatus = 'pending' | 'approved' | 'rejected' | 'checked
 
 export interface ParticipationVolunteerSummary {
   id: string;
+  role?: string | null;
   full_name: string | null;
   phone: string | null;
   avatar_url: string | null;
