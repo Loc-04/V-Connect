@@ -72,11 +72,12 @@ function RatingStars({ rating }: { rating: number }) {
 }
 
 export function AdminFeedbackPage() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const [items, setItems] = useState<AdminFeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const isAdmin = String(profile?.role ?? '') === 'admin';
 
   const loadFeedback = useCallback(async () => {
     if (!session?.access_token) {
@@ -122,12 +123,16 @@ export function AdminFeedbackPage() {
 
   return (
     <section className="admin-feedback-page">
-      <p className="users-caption">Admin feedback oversight</p>
+      <p className="users-caption">{isAdmin ? 'Admin feedback oversight' : 'Organizer feedback overview'}</p>
 
       <div className="users-page-head admin-feedback-head">
         <div>
-          <h2>Feedback</h2>
-          <p className="muted">Review volunteer feedback submissions without leaving the admin workspace.</p>
+          <h2>{isAdmin ? 'Feedback' : 'Activity Feedback'}</h2>
+          <p className="muted">
+            {isAdmin
+              ? 'Review volunteer feedback submissions without leaving the admin workspace.'
+              : 'Review volunteer feedback for activities you organize.'}
+          </p>
         </div>
         <button className="secondary-btn dashboard-refresh-btn" onClick={() => void loadFeedback()} type="button">
           <RefreshCw className="admin-feedback-refresh-icon" />
@@ -182,7 +187,7 @@ export function AdminFeedbackPage() {
                   <div>
                     <h3>{item.activityTitle}</h3>
                     <p className="muted">
-                      {item.volunteerName} • {item.organization}
+                      {item.volunteerName} - {item.organization}
                     </p>
                   </div>
                   <span className="admin-feedback-date">{formatDateLabel(item.submittedAt)}</span>

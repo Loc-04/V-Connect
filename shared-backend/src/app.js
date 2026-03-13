@@ -38,8 +38,9 @@ const participationColumns = '*';
 const feedbackColumns = 'id, participation_id, volunteer_id, organizer_id, rating, comment, created_at';
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
 const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
-const validParticipationStatuses = new Set(['pending', 'approved', 'rejected', 'checked_in']);
+const validParticipationStatuses = new Set(['pending', 'approved', 'rejected', 'checked_in', 'cancelled']);
 const activityWriteRoles = new Set(['admin', 'organizer']);
+const feedbackEligibleParticipationStatuses = new Set(['approved', 'checked_in']);
 
 function extractBearerToken(req) {
   const authorization = req.headers.authorization;
@@ -273,7 +274,12 @@ function normalizeFeedbackPayload(body) {
     throw new Error('Body must be a JSON object.');
   }
 
-  const participationId = typeof body.participationId === 'string' ? body.participationId.trim() : '';
+  const participationId =
+    typeof body.participationId === 'string'
+      ? body.participationId.trim()
+      : typeof body.participation_id === 'string'
+        ? body.participation_id.trim()
+        : '';
   if (!participationId) {
     throw new Error('participationId is required.');
   }
@@ -1535,7 +1541,11 @@ app.get('/feedback', requireAuth, async (req, res) => {
     : 50;
 
   const participationId =
-    typeof req.query.participationId === 'string' ? req.query.participationId.trim() : '';
+    typeof req.query.participationId === 'string'
+      ? req.query.participationId.trim()
+      : typeof req.query.participation_id === 'string'
+        ? req.query.participation_id.trim()
+        : '';
   const ratingFilterRaw = req.query.rating;
   let ratingFilter = null;
 
@@ -1603,7 +1613,7 @@ app.post('/feedback', requireAuth, async (req, res) => {
 
   const { data: participation, error: participationError } = await supabaseAdmin
     .from('activity_participations')
-    .select('id, volunteer_id, activity_id')
+    .select('id, volunteer_id, activity_id, status')
     .eq('id', payload.participation_id)
     .maybeSingle();
 
@@ -1622,9 +1632,15 @@ app.post('/feedback', requireAuth, async (req, res) => {
     return;
   }
 
+  const participationStatus = String(participation.status ?? '').toLowerCase();
+  if (!feedbackEligibleParticipationStatuses.has(participationStatus)) {
+    res.status(400).json({ message: 'Feedback can be submitted only for approved or checked-in participations.' });
+    return;
+  }
+
   const { data: activity, error: activityError } = await supabaseAdmin
     .from('activities')
-    .select('id, organizer_id')
+    .select('id, organizer_id, status')
     .eq('id', participation.activity_id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -1636,6 +1652,12 @@ app.post('/feedback', requireAuth, async (req, res) => {
 
   if (!activity) {
     res.status(404).json({ message: 'Activity not found for this participation.' });
+    return;
+  }
+
+  const activityStatus = String(activity.status ?? '').toLowerCase();
+  if (participationStatus !== 'checked_in' && activityStatus !== 'completed') {
+    res.status(400).json({ message: 'Feedback can be submitted only after the activity is completed.' });
     return;
   }
 

@@ -63,9 +63,9 @@ shared-backend listening on http://localhost:3000
 
 ```json
 {
+  "participationId": "<participation_uuid>",
   "rating": 5,
-  "category": "general",
-  "message": "Great onboarding flow. Please keep the quick filters."
+  "comment": "Great onboarding flow. Please keep the quick filters."
 }
 ```
 
@@ -73,20 +73,20 @@ shared-backend listening on http://localhost:3000
 
 - `mine=true|false` (non-admin users can only query their own feedback)
 - `rating=1..5` (optional filter)
-- `category=<string>` (optional filter)
+- `participationId=<uuid>` (optional filter)
 - `limit=1..200` (optional, default `50`)
 
 Required Supabase table:
 
 ```sql
-create table if not exists public.feedbacks (
+create table if not exists public.participation_feedback (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  rating int not null check (rating between 1 and 5),
-  category text not null default 'general',
-  message text not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  participation_id uuid not null unique references public.activity_participations(id),
+  volunteer_id uuid not null references public.users(id),
+  organizer_id uuid references public.users(id),
+  rating smallint not null check (rating between 1 and 5),
+  comment text,
+  created_at timestamptz not null default now()
 );
 ```
 
