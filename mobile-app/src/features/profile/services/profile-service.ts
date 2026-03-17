@@ -2,6 +2,9 @@ import { supabase } from '@/src/data/clients';
 import type {
   AvailabilityMap,
   CoreSkillOption,
+  OrganizerManagedActivityItem,
+  OrganizerProfileView,
+  OrganizerRecommendedVolunteerItem,
   ProfileStats,
   ProfileRole,
   RecentParticipationItem,
@@ -24,6 +27,12 @@ interface VolunteerProfileRow {
   availability_note: string | null;
   total_hours: number | null;
   impact_score: number | null;
+}
+
+interface VolunteerProfileLiteRow {
+  user_id: string;
+  skills: string[] | null;
+  availability_note: string | null;
 }
 
 interface ParticipationRow {
@@ -49,6 +58,29 @@ interface FeedbackRow {
 interface CoreSkillRow {
   id: string;
   skill_name: string;
+}
+
+interface OrganizerActivityRow {
+  id: string;
+  title: string;
+  capacity: number | null;
+  status: string | null;
+  created_at: string;
+}
+
+interface OrganizerParticipationCountRow {
+  activity_id: string | null;
+}
+
+interface RecommendationSeedRow {
+  volunteer_id: string | null;
+  ai_match_score: number | null;
+}
+
+interface OrganizerVolunteerUserRow {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
 }
 
 const DEFAULT_AVAILABILITY: AvailabilityMap = {
@@ -133,6 +165,10 @@ function formatHoursLabel(start: string, end: string): string {
   const diffMs = Math.max(0, endDate.getTime() - startDate.getTime());
   const hours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10;
   return `${hours} Hours`;
+}
+
+function mapOrganizerActivityBadge(status: string | null): 'open' | 'closed' {
+  return status === 'published' ? 'open' : 'closed';
 }
 
 export async function getCoreSkills(): Promise<CoreSkillOption[]> {
@@ -323,4 +359,168 @@ export async function getRecentParticipations(
       isTopRated: topRatedMap.get(item.id) === true,
     };
   });
+}
+
+export async function getOrganizerProfile(userId: string): Promise<OrganizerProfileView | null> {
+  const result = await supabase
+    .from('users')
+    .select('id, full_name, avatar_url, role')
+    .eq('id', userId)
+    .maybeSingle<Pick<UserRow, 'id' | 'full_name' | 'avatar_url' | 'role'>>();
+
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+  if (!result.data) {
+    return null;
+  }
+
+  return {
+    userId: result.data.id,
+    fullName: result.data.full_name,
+    avatarUrl: result.data.avatar_url,
+    role: toRole(result.data.role),
+  };
+}
+
+export async function getOrganizerManagedActivities(
+  organizerId: string,
+  limit = 5,
+): Promise<OrganizerManagedActivityItem[]> {
+  const activitiesResult = await supabase
+    .from('activities')
+    .select('id, title, capacity, status, created_at')
+    .eq('organizer_id', organizerId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+    .returns<OrganizerActivityRow[]>();
+
+  if (activitiesResult.error) {
+    throw new Error(activitiesResult.error.message);
+  }
+
+  const activities = activitiesResult.data ?? [];
+  if (activities.length === 0) {
+    return [];
+  }
+
+  const activityIds = activities.map((activity) => activity.id);
+  const countsResult = await supabase
+    .from('activity_participations')
+    .select('activity_id')
+    .in('activity_id', activityIds)
+    .in('status', ['approved', 'checked_in'])
+    .returns<OrganizerParticipationCountRow[]>();
+
+  if (countsResult.error) {
+    throw new Error(countsResult.error.message);
+  }
+
+  const joinedCountMap = new Map<string, number>();
+  for (const row of countsResult.data ?? []) {
+    if (!row.activity_id) continue;
+    const prev = joinedCountMap.get(row.activity_id) ?? 0;
+    joinedCountMap.set(row.activity_id, prev + 1);
+  }
+
+  return activities.map((activity) => ({
+    activityId: activity.id,
+    title: activity.title,
+    joinedVolunteers: joinedCountMap.get(activity.id) ?? 0,
+    capacity: activity.capacity ?? 0,
+    badge: mapOrganizerActivityBadge(activity.status),
+  }));
+}
+
+export async function getOrganizerRecommendedVolunteers(
+  organizerId: string,
+  limit = 6,
+): Promise<OrganizerRecommendedVolunteerItem[]> {
+  const seedResult = await supabase
+    .from('activity_participations')
+    .select(
+      `
+        volunteer_id,
+        ai_match_score,
+        activities!inner (
+          organizer_id
+        )
+      `,
+    )
+    .eq('activities.organizer_id', organizerId)
+    .not('volunteer_id', 'is', null)
+    .not('ai_match_score', 'is', null)
+    .order('ai_match_score', { ascending: false })
+    .limit(30)
+    .returns<RecommendationSeedRow[]>();
+
+  if (seedResult.error) {
+    throw new Error(seedResult.error.message);
+  }
+
+  const scoredByUser = new Map<string, number>();
+  for (const row of seedResult.data ?? []) {
+    if (!row.volunteer_id || typeof row.ai_match_score !== 'number') continue;
+    const prev = scoredByUser.get(row.volunteer_id);
+    if (prev === undefined || row.ai_match_score > prev) {
+      scoredByUser.set(row.volunteer_id, row.ai_match_score);
+    }
+  }
+
+  const volunteerIds = Array.from(scoredByUser.keys()).slice(0, limit);
+  if (volunteerIds.length === 0) {
+    return [];
+  }
+
+  const [usersResult, profilesResult] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, full_name, avatar_url')
+      .in('id', volunteerIds)
+      .returns<OrganizerVolunteerUserRow[]>(),
+    supabase
+      .from('volunteer_profiles')
+      .select('user_id, skills, availability_note')
+      .in('user_id', volunteerIds)
+      .returns<VolunteerProfileLiteRow[]>(),
+  ]);
+
+  if (usersResult.error) {
+    throw new Error(usersResult.error.message);
+  }
+  if (profilesResult.error) {
+    throw new Error(profilesResult.error.message);
+  }
+
+  const userMap = new Map<string, OrganizerVolunteerUserRow>();
+  for (const user of usersResult.data ?? []) {
+    userMap.set(user.id, user);
+  }
+
+  const profileMap = new Map<string, VolunteerProfileLiteRow>();
+  for (const profile of profilesResult.data ?? []) {
+    profileMap.set(profile.user_id, profile);
+  }
+
+  return volunteerIds
+    .map((volunteerId) => {
+      const user = userMap.get(volunteerId);
+      if (!user) return null;
+
+      const profile = profileMap.get(volunteerId);
+      const rawScore = scoredByUser.get(volunteerId) ?? 0;
+      const boundedScore = Math.max(0, Math.min(100, Math.round(rawScore * 100)));
+      const tags = (profile?.skills ?? []).slice(0, 2);
+      const availabilityLabel = profile?.availability_note ?? 'Available';
+
+      return {
+        userId: volunteerId,
+        fullName: user.full_name,
+        avatarUrl: user.avatar_url,
+        matchPercent: boundedScore,
+        tags,
+        availabilityLabel,
+      };
+    })
+    .filter((item): item is OrganizerRecommendedVolunteerItem => item !== null);
 }

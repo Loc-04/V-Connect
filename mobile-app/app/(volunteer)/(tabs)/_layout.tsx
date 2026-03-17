@@ -1,12 +1,32 @@
 import { Tabs } from 'expo-router';
+import { Image } from 'react-native';
 
 import { HapticTab } from '@/src/shared/ui/haptic-tab';
-import { IconSymbol } from '@/src/shared/ui/icon-symbol';
 import { Colors } from '@/src/shared/constants/theme';
 import { useColorScheme } from '@/src/shared/hooks/use-color-scheme';
 
+const homeIcon = require('@/assets/home_icon.png');
+const exploreIcon = require('@/assets/Explore_Icon.png');
+const aiMatchIcon = require('@/assets/AI_icon.png');
+const activityIcon = require('@/assets/activity_icon.png');
+const profileIcon = require('@/assets/pro5_icon.png');
+
 export default function VolunteerTabLayout() {
   const colorScheme = useColorScheme();
+
+  function renderTabIcon(source: number, color: string) {
+    return (
+      <Image
+        source={source}
+        style={{
+          width: 28,
+          height: 28,
+          tintColor: color,
+        }}
+        resizeMode="contain"
+      />
+    );
+  }
 
   return (
     <Tabs
@@ -19,35 +39,35 @@ export default function VolunteerTabLayout() {
         name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => renderTabIcon(homeIcon, color),
         }}
       />
       <Tabs.Screen
-        name="activities"
+        name="explore"
         options={{
-          title: 'Activities',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Explore',
+          tabBarIcon: ({ color }) => renderTabIcon(exploreIcon, color),
         }}
       />
       <Tabs.Screen
-        name="my-activities"
+        name="ai-match"
         options={{
-          title: 'My Activities',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'AI Match',
+          tabBarIcon: ({ color }) => renderTabIcon(aiMatchIcon, color),
         }}
       />
       <Tabs.Screen
-        name="notifications"
+        name="activity"
         options={{
-          title: 'Notifications',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Activity',
+          tabBarIcon: ({ color }) => renderTabIcon(activityIcon, color),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarIcon: ({ color }) => renderTabIcon(profileIcon, color),
         }}
       />
     </Tabs>
