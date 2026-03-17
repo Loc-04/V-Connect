@@ -9,6 +9,7 @@ import './VolunteerShell.css';
 
 interface VolunteerShellProps {
   activeNav: VolunteerNavKey;
+  pageEyebrow?: string;
   pageTitle: string;
   pageSubtitle: string;
   headerActions?: ReactNode;
@@ -22,7 +23,14 @@ function getRoleLabel(role: string | null | undefined): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-export function VolunteerShell({ activeNav, pageTitle, pageSubtitle, headerActions, children }: VolunteerShellProps) {
+export function VolunteerShell({
+  activeNav,
+  pageEyebrow,
+  pageTitle,
+  pageSubtitle,
+  headerActions,
+  children,
+}: VolunteerShellProps) {
   const navigate = useNavigate();
   const { profile, signOut } = useAuth();
 
@@ -74,6 +82,7 @@ export function VolunteerShell({ activeNav, pageTitle, pageSubtitle, headerActio
         <div className="vol-shell-body">
           <div className="vol-shell-page-head">
             <div>
+              {pageEyebrow && <p className="vol-shell-page-eyebrow">{pageEyebrow}</p>}
               <h1>{pageTitle}</h1>
               <p>{pageSubtitle}</p>
             </div>

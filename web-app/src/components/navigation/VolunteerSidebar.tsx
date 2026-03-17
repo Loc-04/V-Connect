@@ -7,6 +7,7 @@ import {
   LogOut,
   MessageSquare,
   Settings,
+  Sparkles,
   User,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -14,6 +15,7 @@ import { NavLink } from 'react-router-dom';
 export type VolunteerNavKey =
   | 'dashboard'
   | 'activities'
+  | 'ai-recommendations'
   | 'my-activities'
   | 'feedback'
   | 'notifications'
@@ -30,6 +32,12 @@ interface SidebarItem {
 const sidebarItems: SidebarItem[] = [
   { key: 'dashboard', label: 'Dashboard', to: '/volunteer/home', icon: LayoutDashboard },
   { key: 'activities', label: 'Activities / Opportunities', to: '/browse', icon: Activity },
+  {
+    key: 'ai-recommendations',
+    label: 'AI Recommended Activities',
+    to: '/volunteer/ai-recommended-activities',
+    icon: Sparkles,
+  },
   { key: 'my-activities', label: 'My Activities', to: '/volunteer/participation-history', icon: Calendar },
   { key: 'feedback', label: 'Feedback', to: '/volunteer/feedback', icon: MessageSquare },
   { key: 'notifications', label: 'Notifications', to: '/volunteer/notifications', icon: Bell },
