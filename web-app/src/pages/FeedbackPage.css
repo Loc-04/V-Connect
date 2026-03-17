@@ -64,10 +64,23 @@
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
 }
 
+.feedback-select.is-invalid,
+.feedback-textarea.is-invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
 .feedback-rating-picker {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.feedback-rating-picker.is-invalid {
+  padding: 0.22rem;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fef2f2;
 }
 
 .feedback-rate-btn {
@@ -103,6 +116,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.38rem;
+}
+
+.feedback-category-wrap.is-invalid {
+  padding: 0.24rem;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
 }
 
 .feedback-category-pill {
@@ -155,6 +175,32 @@
   margin: 0;
   font-size: 0.74rem;
   color: var(--muted);
+}
+
+.feedback-field-error {
+  margin: 0.36rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #dc2626;
+}
+
+.feedback-details-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.feedback-word-count {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.feedback-word-count.is-invalid {
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .feedback-side-column {
