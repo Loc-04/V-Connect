@@ -14,7 +14,9 @@ import { FeedbackPage } from './pages/FeedbackPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { OrganizerActivityManagementPage } from './pages/OrganizerActivityManagementPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+import { OrganizerRegistrationApprovalPage } from './pages/OrganizerRegistrationApprovalPage';
 import { ParticipationHistoryPage } from './pages/ParticipationHistoryPage';
 import { ProfileUiPage } from './pages/ProfileUiPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -143,6 +145,22 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['organizer']}>
                 <OrganizerDashboardPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/organizer/activities"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerActivityManagementPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/organizer/registrations"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerRegistrationApprovalPage />
               </RequireRoleRoute>
             }
           />

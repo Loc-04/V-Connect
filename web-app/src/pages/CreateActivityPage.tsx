@@ -37,6 +37,7 @@ export function CreateActivityPage() {
 
   const role = normalizeRole(profile?.role);
   const canManageActivities = role === 'organizer' || role === 'admin';
+  const organizerHomePath = role === 'admin' ? '/admin/dashboard' : '/organizer/activities';
 
   const addSkill = () => {
     const nextSkill = skillDraft.trim();
@@ -115,7 +116,7 @@ export function CreateActivityPage() {
 
       setSuccess(`Activity "${createdActivity.title}" saved as ${createdActivity.status}.`);
       if (status === 'published') {
-        navigate('/organizer/dashboard');
+        navigate(organizerHomePath);
       }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save activity.');
@@ -136,7 +137,7 @@ export function CreateActivityPage() {
           </div>
 
           <nav className="create-activity-nav" aria-label="Main">
-            <button className="create-activity-nav__item" onClick={() => navigate('/organizer/dashboard')} type="button">
+            <button className="create-activity-nav__item" onClick={() => navigate(organizerHomePath)} type="button">
               <LayoutDashboard className="create-activity-nav-icon" />
               Dashboard
             </button>
@@ -293,7 +294,7 @@ export function CreateActivityPage() {
             </section>
 
             <div className="activity-action-bar">
-              <button className="action-btn is-ghost" onClick={() => navigate('/organizer/dashboard')} type="button">
+              <button className="action-btn is-ghost" onClick={() => navigate(organizerHomePath)} type="button">
                 Cancel
               </button>
               <div className="activity-action-bar__right">
