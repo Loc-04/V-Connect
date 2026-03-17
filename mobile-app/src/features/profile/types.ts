@@ -40,3 +40,35 @@ export interface CoreSkillOption {
   id: string;
   skillName: string;
 }
+
+export interface OrganizerProfileView {
+  userId: string;
+  fullName: string;
+  avatarUrl: string | null;
+  role: ProfileRole;
+}
+
+export interface OrganizerTopStats {
+  totalEvents: string;
+  volunteers: string;
+  successRate: string;
+}
+
+export type OrganizerActivityBadge = 'open' | 'closed';
+
+export interface OrganizerManagedActivityItem {
+  activityId: string;
+  title: string;
+  joinedVolunteers: number;
+  capacity: number;
+  badge: OrganizerActivityBadge;
+}
+
+export interface OrganizerRecommendedVolunteerItem {
+  userId: string;
+  fullName: string;
+  avatarUrl: string | null;
+  matchPercent: number;
+  tags: string[];
+  availabilityLabel: string;
+}
