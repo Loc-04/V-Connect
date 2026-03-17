@@ -1,1 +1,26 @@
-export type { UserProfile, VolunteerProfile, Availability } from './types';
+export type {
+  ProfileRole,
+  AvailabilityDay,
+  AvailabilityMap,
+  VolunteerAvailability,
+  VolunteerProfileView,
+  ProfileStats,
+  RecentParticipationItem,
+  CoreSkillOption,
+  OrganizerProfileView,
+  OrganizerTopStats,
+  OrganizerActivityBadge,
+  OrganizerManagedActivityItem,
+  OrganizerRecommendedVolunteerItem,
+} from './types';
+
+export {
+  getCoreSkills,
+  updateVolunteerSkills,
+  getVolunteerProfile,
+  getVolunteerStats,
+  getRecentParticipations,
+  getOrganizerProfile,
+  getOrganizerManagedActivities,
+  getOrganizerRecommendedVolunteers,
+} from './services/profile-service';

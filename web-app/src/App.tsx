@@ -23,6 +23,7 @@ import { ProfileUiPage } from './pages/ProfileUiPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { VolunteerAiRecommendedActivitiesPage } from './pages/VolunteerAiRecommendedActivitiesPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
 
 function FeedbackRouteEntry() {
@@ -129,6 +130,14 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['volunteer']}>
                 <FeedbackPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/volunteer/ai-recommended-activities"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <VolunteerAiRecommendedActivitiesPage />
               </RequireRoleRoute>
             }
           />

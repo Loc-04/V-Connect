@@ -13,7 +13,8 @@ export const ROUTES = {
     ACTIVITY_CHECK_IN: '/(volunteer)/activity/check-in',
   },
   ORGANIZER: {
-    DASHBOARD: '/(organizer)/dashboard',
+    HOME: '/(organizer)/(tabs)/home',
+    PROFILE: '/(organizer)/(tabs)/profile',
   },
 } as const;
 

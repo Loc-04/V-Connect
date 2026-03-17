@@ -22,6 +22,13 @@ export function VolunteerHomePage() {
           <button className="secondary-btn" onClick={() => navigate('/browse')} type="button">
             Browse Activities
           </button>
+          <button
+            className="secondary-btn"
+            onClick={() => navigate('/volunteer/ai-recommended-activities')}
+            type="button"
+          >
+            AI Recommended Activities
+          </button>
           <button className="secondary-btn" onClick={() => navigate('/feedback')} type="button">
             Feedback
           </button>
