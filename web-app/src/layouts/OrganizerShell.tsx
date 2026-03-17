@@ -9,7 +9,8 @@ import './OrganizerShell.css';
 interface OrganizerShellProps {
   activeNav: OrganizerNavKey;
   pageTitle: string;
-  pageSubtitle: string;
+  pageSubtitle?: string;
+  pageContext?: ReactNode;
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
@@ -28,6 +29,7 @@ export function OrganizerShell({
   activeNav,
   pageTitle,
   pageSubtitle,
+  pageContext,
   searchPlaceholder = 'Search organizer workspace...',
   searchValue,
   onSearchChange,
@@ -98,9 +100,10 @@ export function OrganizerShell({
 
         <div className="org-shell-body">
           <div className="org-shell-page-head">
-            <div>
+            <div className="org-shell-page-copy">
+              {pageContext && <div className="org-shell-page-context">{pageContext}</div>}
               <h1>{pageTitle}</h1>
-              <p>{pageSubtitle}</p>
+              {pageSubtitle && <p>{pageSubtitle}</p>}
             </div>
             {headerActions && <div className="org-shell-page-actions">{headerActions}</div>}
           </div>

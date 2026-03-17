@@ -303,6 +303,16 @@
   flex-wrap: wrap;
 }
 
+.org-shell-page-copy {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.org-shell-page-context {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
 .org-shell-page-head h1 {
   margin: 0;
   font-size: clamp(1.45rem, 2.6vw, 2rem);

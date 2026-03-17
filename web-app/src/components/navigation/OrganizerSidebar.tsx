@@ -30,7 +30,7 @@ const menuItems: SidebarItem[] = [
   { key: 'activities', label: 'Activities', icon: CalendarCheck2, to: '/organizer/activities' },
   { key: 'volunteers', label: 'Volunteers', icon: Users, to: '/organizer/registrations' },
   { key: 'assignments', label: 'Assignments', icon: ClipboardList },
-  { key: 'reports', label: 'Reports', icon: BarChart3 },
+  { key: 'reports', label: 'Reports', icon: BarChart3, to: '/organizer/reports' },
 ];
 
 const preferenceItems: SidebarItem[] = [{ key: 'settings', label: 'Settings', icon: Settings }];
