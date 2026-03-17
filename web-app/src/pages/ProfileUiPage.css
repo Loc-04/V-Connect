@@ -3,6 +3,10 @@
   gap: 1rem;
 }
 
+.vol-profile-file-input {
+  display: none;
+}
+
 .vol-profile-ai-btn {
   min-height: 46px;
   border-radius: 14px;
@@ -68,6 +72,11 @@
   place-items: center;
   cursor: pointer;
   box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+}
+
+.vol-profile-camera-btn:hover {
+  background: #ffffff;
+  color: #182033;
 }
 
 .vol-profile-hero-copy {
