@@ -222,10 +222,18 @@
   font-weight: 800;
 }
 
-.activity-detail-join-btn.primary-btn {
+.activity-detail-registration-action {
   width: 100%;
-  min-height: 38px;
-  border-radius: 999px;
+  justify-content: stretch;
+}
+
+.activity-detail-registration-action .registration-action-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.activity-detail-registration-action .registration-action-badge {
+  width: 100%;
 }
 
 .activity-detail-guideline {

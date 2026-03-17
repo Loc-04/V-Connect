@@ -1,0 +1,23 @@
+.registration-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.registration-action--full {
+  justify-content: flex-end;
+}
+
+.registration-action-badge.ui-badge {
+  min-width: 86px;
+  justify-content: center;
+}
+
+.registration-action-btn.primary-btn,
+.registration-action-btn.secondary-btn {
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0.38rem 0.86rem;
+  font-size: 0.75rem;
+}
