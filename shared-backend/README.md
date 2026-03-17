@@ -1,9 +1,15 @@
 ## Shared Backend
 
-### Unified Architecture
+### Module Architecture
 
-- `src/app.js`: single API application (routes + middleware + Supabase admin client)
+- `src/app.js`: express bootstrap only (cors/json/error handler + router mount)
 - `src/server.js`: bootstrap only (`app.listen`)
+- `src/routes/index.js`: API route aggregator
+- `src/config`: env + shared constants
+- `src/database`: database client init
+- `src/common`: shared utilities
+- `src/auth`, `src/users`, `src/activities`, `src/participations`, `src/feedback`, `src/notifications`, `src/admin`:
+  each domain contains dedicated `*.routes.js`, `*.service.js`, and `*.validation.js` (when needed)
 
 All active endpoints are mounted directly at root path (no `/api` prefix).
 
