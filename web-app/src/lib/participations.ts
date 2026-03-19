@@ -57,6 +57,8 @@ export function normalizeParticipationRecord(record: ParticipationRecord): Parti
   const date = record.date ?? record.created_at ?? null;
   const hours = typeof record.hours === 'number' ? record.hours : null;
   const status = String(record.status ?? 'upcoming');
+  const activityDeleted = Boolean(record.activityDeleted);
+  const activityDeletedAt = record.activityDeletedAt ?? null;
 
   return {
     ...record,
@@ -67,6 +69,8 @@ export function normalizeParticipationRecord(record: ParticipationRecord): Parti
     organization,
     date,
     hours,
+    activityDeleted,
+    activityDeletedAt,
     activity_id: record.activity_id ?? activityId ?? undefined,
   };
 }

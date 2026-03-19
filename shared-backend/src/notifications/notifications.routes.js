@@ -1,8 +1,13 @@
 import { Router } from 'express';
-import { notificationColumns } from '../config/constants.js';
-import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { normalizeNotificationPayload } from './notifications.validation.js';
+import {
+  clearNotifications,
+  createNotificationRecord,
+  listNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from './notifications.service.js';
 
 const router = Router();
 
@@ -17,24 +22,12 @@ router.get('/notifications', requireAuth, async (req, res) => {
   const userId = role === 'admin' && requestedUserId ? requestedUserId : req.auth.user.id;
 
   try {
-    let query = supabaseAdmin
-      .from('notifications')
-      .select(notificationColumns)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (unreadOnly) {
-      query = query.is('read_at', null);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      res.status(500).json({ message: error.message });
-      return;
-    }
-
-    res.json({ notifications: data ?? [] });
+    const notifications = await listNotifications({
+      userId,
+      limit,
+      unreadOnly,
+    });
+    res.json({ notifications });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load notifications.';
     res.status(500).json({ message });
@@ -63,28 +56,69 @@ router.post('/notifications', requireAuth, async (req, res) => {
     return;
   }
 
-  const now = new Date().toISOString();
-  const insertPayload = {
-    user_id: targetUserId,
-    title: payload.title,
-    message: payload.message,
-    type: payload.type,
-    data: payload.data,
-    created_at: now,
-  };
+  try {
+    const notification = await createNotificationRecord({
+      userId: targetUserId,
+      title: payload.title,
+      message: payload.message,
+      type: payload.type,
+      data: payload.data,
+    });
 
-  const { data, error } = await supabaseAdmin
-    .from('notifications')
-    .insert(insertPayload)
-    .select(notificationColumns)
-    .maybeSingle();
+    res.status(201).json({ notification });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create notification.';
+    res.status(500).json({ message });
+  }
+});
 
-  if (error) {
-    res.status(500).json({ message: error.message });
+router.patch('/notifications/read-all', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const requestedUserId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+  const userId = role === 'admin' && requestedUserId ? requestedUserId : req.auth.user.id;
+
+  try {
+    const count = await markAllNotificationsAsRead({ userId });
+    res.json({ count });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to mark all notifications as read.';
+    res.status(500).json({ message });
+  }
+});
+
+router.patch('/notifications/:id/read', requireAuth, async (req, res) => {
+  const notificationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!notificationId) {
+    res.status(400).json({ message: 'Notification id is required.' });
     return;
   }
 
-  res.status(201).json({ notification: data });
+  try {
+    const notification = await markNotificationAsRead({
+      notificationId,
+      userId: req.auth.user.id,
+      isAdmin: String(req.auth?.profile?.role ?? '') === 'admin',
+    });
+    res.json({ notification });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to mark notification as read.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.delete('/notifications', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const requestedUserId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+  const userId = role === 'admin' && requestedUserId ? requestedUserId : req.auth.user.id;
+
+  try {
+    const count = await clearNotifications({ userId });
+    res.json({ count });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to clear notifications.';
+    res.status(500).json({ message });
+  }
 });
 
 export default router;

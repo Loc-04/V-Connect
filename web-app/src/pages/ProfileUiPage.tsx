@@ -743,7 +743,11 @@ export function ProfileUiPage() {
                           className="vol-profile-history-item"
                           key={record.id}
                           onClick={() =>
-                            navigate(record.activityId ? `/volunteer/activity/${record.activityId}` : '/volunteer/participation-history')
+                            navigate(
+                              record.activityDeleted || !record.activityId
+                                ? '/volunteer/participation-history'
+                                : `/volunteer/activity/${record.activityId}`
+                            )
                           }
                           type="button"
                         >

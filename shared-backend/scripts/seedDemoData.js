@@ -87,9 +87,9 @@ async function ensureDemoActivity(organizerId) {
     .insert({
       organizer_id: organizerId,
       title: DEMO_TITLE,
-      description: 'Demo activity for Sprint 2 backend APIs.',
+      description: 'Activity 2.',
       location: {
-        address: 'Demo Community Center',
+        address: 'Community Center',
         city: 'Ho Chi Minh City',
         lat: 10.8231,
         lng: 106.6297,

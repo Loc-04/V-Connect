@@ -52,8 +52,8 @@ async function attachActivitySummaries(participations) {
     return participations.map((row) => ({
       ...row,
       activityId: null,
-      activityName: 'Untitled Activity',
-      organization: 'Organizer',
+      activityName: 'Removed Activity',
+      organization: 'Organizer unavailable',
       date: row.created_at ?? null,
       hours: null,
     }));
@@ -98,8 +98,8 @@ async function attachActivitySummaries(participations) {
     return {
       ...row,
       activityId: activity?.id ?? row.activity_id ?? null,
-      activityName: activity?.title ?? 'Untitled Activity',
-      organization: organizer?.full_name ?? 'Organizer',
+      activityName: activity?.title ?? 'Removed Activity',
+      organization: organizer?.full_name ?? 'Organizer unavailable',
       date: activity?.start_time ?? row.created_at ?? null,
       hours: computeDurationHours(activity?.start_time, activity?.end_time),
     };
@@ -132,9 +132,8 @@ async function getParticipationHistoryForUser({ userId, role, limit = 50 }) {
 
   const { data: activities, error: activityError } = await supabaseAdmin
     .from('activities')
-    .select('id, title, start_time, end_time, status, organizer_id')
-    .in('id', activityIds)
-    .is('deleted_at', null);
+    .select('id, title, start_time, end_time, status, organizer_id, deleted_at')
+    .in('id', activityIds);
 
   if (activityError) {
     throw new Error(activityError.message);
@@ -160,17 +159,21 @@ async function getParticipationHistoryForUser({ userId, role, limit = 50 }) {
   return participations.map((participation) => {
     const activity = activitiesById.get(participation.activity_id);
     const organizer = activity ? organizersById.get(activity.organizer_id) : null;
-    const status = mapParticipationStatus(participation.status, activity?.status);
+    const activityDeleted = Boolean(activity?.deleted_at);
+    const baseStatus = mapParticipationStatus(participation.status, activity?.status);
+    const status = activityDeleted && baseStatus === 'upcoming' ? 'cancelled' : baseStatus;
 
     return {
       id: activity?.id ?? participation.activity_id ?? participation.id,
       participationId: participation.id,
       activityId: activity?.id ?? participation.activity_id,
-      activityName: activity?.title ?? 'Untitled Activity',
-      organization: organizer?.full_name ?? 'Organizer',
+      activityName: activity?.title ?? 'Removed Activity',
+      organization: organizer?.full_name ?? 'Organizer unavailable',
       date: activity?.start_time ?? participation.created_at ?? null,
       hours: status === 'cancelled' ? null : computeDurationHours(activity?.start_time, activity?.end_time),
       status,
+      activityDeleted,
+      activityDeletedAt: activity?.deleted_at ?? null,
     };
   });
 }

@@ -5,12 +5,14 @@ import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { getActivityById } from '../activities/activities.service.js';
 import { normalizeParticipationCreatePayload } from './participations.validation.js';
+import { getProfileByUserId } from '../users/users.service.js';
 import {
   attachActivitySummaries,
   attachVolunteerSummaries,
   getParticipationHistoryForUser,
 } from './participations.service.js';
 import { calculateActivityMatchForVolunteer } from '../recommendations/recommendations.service.js';
+import { createNotificationRecord } from '../notifications/notifications.service.js';
 
 const router = Router();
 
@@ -36,6 +38,25 @@ async function getParticipationRecord(participationId) {
   }
 
   return data ?? null;
+}
+
+async function tryCreateNotification(payload) {
+  try {
+    await createNotificationRecord(payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Notification create failed: ${message}`);
+  }
+}
+
+async function getUserDisplayName(userId, fallback = 'A volunteer') {
+  try {
+    const profile = await getProfileByUserId(userId);
+    const fullName = String(profile?.full_name ?? '').trim();
+    return fullName || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function getActiveRegistrationCount(activityId, excludeParticipationId = null) {
@@ -198,6 +219,34 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
     data = insertResult.data;
   }
 
+  await tryCreateNotification({
+    userId: volunteerId,
+    title: 'Registration Submitted',
+    message: `Your registration for "${activity.title}" is now pending review.`,
+    type: 'opportunity',
+    data: {
+      activityId: activity.id,
+      registrationId: data?.id ?? null,
+      status: 'pending',
+    },
+  });
+
+  if (activity.organizer_id && activity.organizer_id !== volunteerId) {
+    const volunteerName = await getUserDisplayName(volunteerId);
+    await tryCreateNotification({
+      userId: activity.organizer_id,
+      title: 'New Registration Received',
+      message: `${volunteerName} registered for "${activity.title}".`,
+      type: 'message',
+      data: {
+        activityId: activity.id,
+        registrationId: data?.id ?? null,
+        volunteerId,
+        status: 'pending',
+      },
+    });
+  }
+
   return {
     registration: await enrichParticipation(data),
     created: true,
@@ -252,6 +301,43 @@ async function cancelRegistration({ activityId, volunteerId }) {
     throw new Error(error.message);
   }
 
+  let activity = null;
+  try {
+    activity = await getActivityById(activityId);
+  } catch {
+    activity = null;
+  }
+
+  await tryCreateNotification({
+    userId: volunteerId,
+    title: 'Registration Cancelled',
+    message: activity
+      ? `Your registration for "${activity.title}" has been cancelled.`
+      : 'Your registration has been cancelled.',
+    type: 'message',
+    data: {
+      activityId,
+      registrationId: data?.id ?? null,
+      status: 'cancelled',
+    },
+  });
+
+  if (activity?.organizer_id && activity.organizer_id !== volunteerId) {
+    const volunteerName = await getUserDisplayName(volunteerId);
+    await tryCreateNotification({
+      userId: activity.organizer_id,
+      title: 'Registration Cancelled',
+      message: `${volunteerName} cancelled registration for "${activity.title}".`,
+      type: 'message',
+      data: {
+        activityId,
+        registrationId: data?.id ?? null,
+        volunteerId,
+        status: 'cancelled',
+      },
+    });
+  }
+
   return {
     registration: await enrichParticipation(data),
     message: 'Registration cancelled successfully.',
@@ -303,6 +389,43 @@ async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  const notificationTitle = nextStatus === 'approved' ? 'Registration Approved' : 'Registration Rejected';
+  const notificationMessage =
+    nextStatus === 'approved'
+      ? `Your registration for "${activity.title}" has been approved.`
+      : `Your registration for "${activity.title}" has been rejected.`;
+  const volunteerName = await getUserDisplayName(participation.volunteer_id);
+
+  await tryCreateNotification({
+    userId: participation.volunteer_id,
+    title: notificationTitle,
+    message: notificationMessage,
+    type: 'approval',
+    data: {
+      activityId: activity.id,
+      registrationId: participation.id,
+      status: nextStatus,
+    },
+  });
+
+  if (activity.organizer_id) {
+    await tryCreateNotification({
+      userId: activity.organizer_id,
+      title: notificationTitle,
+      message:
+        nextStatus === 'approved'
+          ? `${volunteerName} was approved for "${activity.title}".`
+          : `${volunteerName} was rejected for "${activity.title}".`,
+      type: 'approval',
+      data: {
+        activityId: activity.id,
+        registrationId: participation.id,
+        volunteerId: participation.volunteer_id,
+        status: nextStatus,
+      },
+    });
   }
 
   return {
@@ -745,6 +868,33 @@ router.post('/participations/:id/check-in', requireAuth, async (req, res) => {
   }
 
   const updatedParticipation = await enrichParticipation(data);
+  await tryCreateNotification({
+    userId: participation.volunteer_id,
+    title: 'Check-in Confirmed',
+    message: `Your attendance for "${activity.title}" has been checked in successfully.`,
+    type: 'message',
+    data: {
+      activityId: activity.id,
+      registrationId: participation.id,
+      status: 'checked_in',
+    },
+  });
+
+  if (activity.organizer_id) {
+    const volunteerName = await getUserDisplayName(participation.volunteer_id);
+    await tryCreateNotification({
+      userId: activity.organizer_id,
+      title: 'Check-in Recorded',
+      message: `${volunteerName} was checked in for "${activity.title}".`,
+      type: 'message',
+      data: {
+        activityId: activity.id,
+        registrationId: participation.id,
+        volunteerId: participation.volunteer_id,
+        status: 'checked_in',
+      },
+    });
+  }
   res.json({ participation: updatedParticipation ?? data });
 });
 

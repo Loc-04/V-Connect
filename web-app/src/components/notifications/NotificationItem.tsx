@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Award, BriefcaseBusiness, CheckCircle2, Mail, MessageSquare, Shield } from 'lucide-react';
 
-import type { NotificationEntry, NotificationType } from '../../lib/engagement';
+import type { NotificationEntry, NotificationType } from '../../lib/notifications';
 
 const iconByType: Record<NotificationType, LucideIcon> = {
   opportunity: BriefcaseBusiness,

@@ -1,9 +1,10 @@
-import { Bell, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { OrganizerSidebar, type OrganizerNavKey } from '../components/navigation/OrganizerSidebar';
+import { NotificationDropdown } from '../components/notifications/NotificationDropdown';
 import './OrganizerShell.css';
 
 interface OrganizerShellProps {
@@ -78,9 +79,7 @@ export function OrganizerShell({
             </label>
 
             <div className="org-shell-topbar-right">
-              <button aria-label="Notifications" className="org-shell-notify-btn" type="button">
-                <Bell className="org-shell-top-icon" />
-              </button>
+              <NotificationDropdown triggerClassName="org-shell-notify-btn" viewAllPath="/organizer/notifications" />
               <span className="org-shell-topbar-divider" aria-hidden="true" />
               <div className="org-shell-topbar-user">
                 <div className="org-shell-topbar-user-meta">
