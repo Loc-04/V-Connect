@@ -1,302 +1,447 @@
-import { CalendarDays, LoaderCircle, MapPin, Star } from 'lucide-react';
+import { ArrowRight, CalendarDays, LoaderCircle, MapPin, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
+import { createParticipation } from '../lib/participations';
+import { getRecommendedActivitiesForVolunteer } from '../lib/recommendations';
+import type { ActivityLocation } from '../types/activity';
+import type { RecommendedActivityRecord } from '../types/recommendation';
 import './VolunteerAiRecommendedActivitiesPage.css';
 
-interface RecommendationItem {
-  id: string;
+type MatchFilter = 'all' | 'high' | 'weekend' | 'skill-based';
+type SortMode = 'best-match' | 'soonest';
+
+interface RecommendationViewModel {
+  activityId: string;
   title: string;
-  organizer: string;
-  startAt: string;
-  dateLabel: string;
-  location: string;
-  imageUrl: string;
+  organizerName: string;
   matchScore: number;
-  matchLabel: string;
-  categories: string[];
-  whyMatches: string;
+  explanation: string;
   reasons: string[];
-  activityId: string | null;
+  locationLabel: string;
+  dateLabel: string;
+  timeLabel: string;
+  hoursLabel: string;
+  categories: string[];
+  heroImageUrl: string;
+  startTime: string;
 }
 
-const mockRecommendations: RecommendationItem[] = [
-  {
-    id: 'rec-tech-literacy',
-    title: 'Tech Literacy for Seniors',
-    organizer: 'Downtown Community Center',
-    startAt: '2024-10-12T10:00:00.000Z',
-    dateLabel: 'Oct 12, 2024 - 10:00 AM - 1:00 PM',
-    location: 'Central Library, Learning Wing',
-    imageUrl:
-      'https://images.pexels.com/photos/3861969/pexels-photo-3861969.jpeg?auto=compress&cs=tinysrgb&w=1200',
-    matchScore: 98,
-    matchLabel: 'Excellent Match',
-    categories: ['Education', 'Senior Care'],
-    whyMatches: 'Matches your teaching skills and weekend availability.',
-    reasons: ['Skill Match', 'Interest Match', 'Availability Match'],
-    activityId: null,
-  },
-  {
-    id: 'rec-river-cleanup',
-    title: 'River Cleanup Sprint',
-    organizer: 'Greenline Youth Network',
-    startAt: '2024-10-18T07:30:00.000Z',
-    dateLabel: 'Oct 18, 2024 - 7:30 AM - 11:30 AM',
-    location: 'Riverside Public Park',
-    imageUrl:
-      'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1200',
-    matchScore: 93,
-    matchLabel: 'Strong Match',
-    categories: ['Environment', 'Community'],
-    whyMatches: 'Aligned with your eco-volunteering history and preferred morning schedule.',
-    reasons: ['Interest Match', 'Historical Match', 'Availability Match'],
-    activityId: null,
-  },
-  {
-    id: 'rec-food-drive',
-    title: 'Weekend Food Drive Logistics',
-    organizer: 'City Relief Coalition',
-    startAt: '2024-11-02T13:00:00.000Z',
-    dateLabel: 'Nov 02, 2024 - 1:00 PM - 5:00 PM',
-    location: 'Community Hall B',
-    imageUrl:
-      'https://images.pexels.com/photos/6995268/pexels-photo-6995268.jpeg?auto=compress&cs=tinysrgb&w=1200',
-    matchScore: 89,
-    matchLabel: 'Good Match',
-    categories: ['Logistics', 'Community'],
-    whyMatches: 'Recommended based on your coordination experience and teamwork preference.',
-    reasons: ['Skill Match', 'Availability Match'],
-    activityId: null,
-  },
+const FALLBACK_IMAGES = [
+  'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1400',
+  'https://images.pexels.com/photos/6647043/pexels-photo-6647043.jpeg?auto=compress&cs=tinysrgb&w=1400',
+  'https://images.pexels.com/photos/5731866/pexels-photo-5731866.jpeg?auto=compress&cs=tinysrgb&w=1400',
+  'https://images.pexels.com/photos/7656740/pexels-photo-7656740.jpeg?auto=compress&cs=tinysrgb&w=1400',
 ];
 
-function monthIndex(dateValue: string): number | null {
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    return null;
+function hashString(input: string) {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(index);
+    hash |= 0;
   }
-  return date.getMonth();
+  return Math.abs(hash);
+}
+
+function formatLocation(location: ActivityLocation | string | null): string {
+  if (!location) {
+    return 'Location TBD';
+  }
+
+  if (typeof location === 'string') {
+    return location.trim() || 'Location TBD';
+  }
+
+  const addressParts = [location.address, location.city].filter(Boolean);
+  return addressParts.join(', ') || 'Location TBD';
+}
+
+function formatDateTime(startTime: string, endTime: string) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return {
+      dateLabel: 'Date TBD',
+      timeLabel: 'Time TBD',
+    };
+  }
+
+  return {
+    dateLabel: start.toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+    }),
+    timeLabel: `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString(
+      [],
+      { hour: '2-digit', minute: '2-digit' }
+    )}`,
+  };
+}
+
+function toCategoryList(record: RecommendedActivityRecord): string[] {
+  const skills = Array.isArray(record.requiredSkills) ? record.requiredSkills.filter(Boolean) : [];
+  if (skills.length > 0) {
+    return skills.slice(0, 3);
+  }
+  return ['Community', 'General'];
+}
+
+function toHoursLabel(hours: number | null | undefined): string {
+  if (typeof hours !== 'number' || Number.isNaN(hours) || hours <= 0) {
+    return 'Flexible duration';
+  }
+
+  const rounded = Number(hours.toFixed(1));
+  return `${rounded} volunteer hours`;
+}
+
+function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel {
+  const { dateLabel, timeLabel } = formatDateTime(record.startTime, record.endTime);
+  return {
+    activityId: record.activityId,
+    title: record.title,
+    organizerName: record.organizerName || 'Organizer',
+    matchScore: Math.max(0, Math.min(100, Math.round(record.matchScore))),
+    explanation: record.explanation,
+    reasons: Array.isArray(record.reasons) ? record.reasons.slice(0, 4) : [],
+    locationLabel: formatLocation(record.location),
+    dateLabel,
+    timeLabel,
+    hoursLabel: toHoursLabel(record.hours),
+    categories: toCategoryList(record),
+    heroImageUrl: FALLBACK_IMAGES[hashString(record.activityId || record.title) % FALLBACK_IMAGES.length],
+    startTime: record.startTime,
+  };
+}
+
+function hasWeekendSignal(item: RecommendationViewModel) {
+  return item.reasons.some((reason) => reason.toLowerCase().includes('weekend'));
+}
+
+function hasSkillSignal(item: RecommendationViewModel) {
+  return item.reasons.some((reason) => reason.toLowerCase().includes('skill'));
 }
 
 export function VolunteerAiRecommendedActivitiesPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('this-month');
-  const [matchFilter, setMatchFilter] = useState('high-low');
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const { profile, session } = useAuth();
 
-  // Recommendation API is not available in the current backend, so this page uses mock fallback data.
-  const usingMockFallback = true;
+  const [recommendations, setRecommendations] = useState<RecommendationViewModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [joiningActivityId, setJoiningActivityId] = useState<string | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState('');
+  const [matchFilter, setMatchFilter] = useState<MatchFilter>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('best-match');
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setRecommendations(mockRecommendations);
+    if (!profile?.id || !session?.access_token) {
       setLoading(false);
-    }, 360);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, []);
-
-  const categoryOptions = useMemo(() => {
-    const dynamic = new Set<string>();
-    recommendations.forEach((item) => {
-      item.categories.forEach((category) => dynamic.add(category));
-    });
-
-    return ['all', ...Array.from(dynamic)];
-  }, [recommendations]);
-
-  const filteredRecommendations = useMemo(() => {
-    const currentMonth = new Date().getMonth();
-    const nextMonth = (currentMonth + 1) % 12;
-
-    const filtered = recommendations.filter((item) => {
-      if (categoryFilter !== 'all' && !item.categories.includes(categoryFilter)) {
-        return false;
-      }
-
-      const month = monthIndex(item.startAt);
-      if (dateFilter === 'this-month' && month !== currentMonth) {
-        return false;
-      }
-      if (dateFilter === 'next-month' && month !== nextMonth) {
-        return false;
-      }
-
-      return true;
-    });
-
-    return filtered.sort((left, right) =>
-      matchFilter === 'high-low' ? right.matchScore - left.matchScore : left.matchScore - right.matchScore
-    );
-  }, [categoryFilter, dateFilter, matchFilter, recommendations]);
-
-  const featuredRecommendation = filteredRecommendations[0] ?? null;
-
-  const handleViewDetails = () => {
-    if (!featuredRecommendation?.activityId) {
-      setActionNotice('Detailed activity endpoint is not connected for fallback recommendations yet.');
+      setError('No active volunteer session.');
       return;
     }
 
-    navigate(`/volunteer/activity/${featuredRecommendation.activityId}`);
+    let cancelled = false;
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    void (async () => {
+      try {
+        const rows = await getRecommendedActivitiesForVolunteer(profile.id, session.access_token, 12);
+        if (cancelled) {
+          return;
+        }
+
+        const mapped = rows.map((row) => toViewModel(row));
+        setRecommendations(mapped);
+        setSelectedActivityId((current) => {
+          if (current && mapped.some((item) => item.activityId === current)) {
+            return current;
+          }
+          return mapped[0]?.activityId ?? '';
+        });
+      } catch (loadError) {
+        if (cancelled) {
+          return;
+        }
+        setRecommendations([]);
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load recommended activities.');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, session?.access_token]);
+
+  const filteredRecommendations = useMemo(() => {
+    const filtered = recommendations.filter((item) => {
+      if (matchFilter === 'high') {
+        return item.matchScore >= 75;
+      }
+      if (matchFilter === 'weekend') {
+        return hasWeekendSignal(item);
+      }
+      if (matchFilter === 'skill-based') {
+        return hasSkillSignal(item);
+      }
+      return true;
+    });
+
+    const sorted = [...filtered];
+    sorted.sort((left, right) => {
+      if (sortMode === 'soonest') {
+        return new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
+      }
+      return right.matchScore - left.matchScore || new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
+    });
+    return sorted;
+  }, [recommendations, matchFilter, sortMode]);
+
+  const selectedRecommendation = useMemo(() => {
+    if (filteredRecommendations.length === 0) {
+      return null;
+    }
+
+    return (
+      filteredRecommendations.find((item) => item.activityId === selectedActivityId) ??
+      filteredRecommendations[0]
+    );
+  }, [filteredRecommendations, selectedActivityId]);
+
+  const secondaryRecommendation = useMemo(() => {
+    if (!selectedRecommendation) {
+      return null;
+    }
+    return filteredRecommendations.find((item) => item.activityId !== selectedRecommendation.activityId) ?? null;
+  }, [filteredRecommendations, selectedRecommendation]);
+
+  useEffect(() => {
+    if (!selectedRecommendation) {
+      setSelectedActivityId('');
+      return;
+    }
+
+    if (selectedRecommendation.activityId !== selectedActivityId) {
+      setSelectedActivityId(selectedRecommendation.activityId);
+    }
+  }, [selectedActivityId, selectedRecommendation]);
+
+  const handleViewDetails = (activityId: string) => {
+    navigate(`/volunteer/activity/${activityId}`);
   };
 
-  const handleApplyJoin = () => {
-    setActionNotice('Apply / Join API is not connected for fallback recommendations yet.');
+  const handleJoin = async (activityId: string) => {
+    if (!session?.access_token) {
+      setError('No active session token.');
+      setMessage(null);
+      return;
+    }
+
+    setJoiningActivityId(activityId);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const result = await createParticipation(activityId, session.access_token);
+      setRecommendations((current) => current.filter((item) => item.activityId !== activityId));
+      setMessage(result.message ?? (result.created ? 'Registration submitted successfully.' : 'You are already registered.'));
+    } catch (joinError) {
+      setError(joinError instanceof Error ? joinError.message : 'Failed to register for activity.');
+    } finally {
+      setJoiningActivityId(null);
+    }
   };
 
   return (
     <VolunteerShell
       activeNav="ai-recommendations"
-      pageEyebrow="Smart Matchmaking Engine"
-      pageSubtitle="Smart suggestions based on your skills, interests, availability, and past participation."
+      headerActions={
+        <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+          Browse all opportunities
+        </Button>
+      }
+      pageEyebrow="Sprint 3 Matching"
+      pageSubtitle="Recommendations are ranked from your skills, interests, availability, and participation history."
       pageTitle="AI Recommended Activities"
     >
       <section className="ai-reco-page">
-        <section className="ai-reco-filter-strip" aria-label="Recommendation filters">
+        {error && <p className="form-error">{error}</p>}
+        {message && <p className="form-success">{message}</p>}
+
+        <div className="ai-reco-filter-strip">
           <div className="ai-reco-filter-row">
             <div className="ai-reco-filter-group">
               <Select
                 className="ai-reco-filter-select"
-                onChange={(event) => setCategoryFilter(event.target.value)}
-                value={categoryFilter}
-              >
-                {categoryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option === 'all' ? 'All Categories' : option}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                className="ai-reco-filter-select"
-                onChange={(event) => setDateFilter(event.target.value)}
-                value={dateFilter}
-              >
-                <option value="this-month">Date: This Month</option>
-                <option value="next-month">Date: Next Month</option>
-                <option value="all">Date: Any Time</option>
-              </Select>
-
-              <Select
-                className="ai-reco-filter-select"
-                onChange={(event) => setMatchFilter(event.target.value)}
+                onChange={(event) => setMatchFilter(event.target.value as MatchFilter)}
                 value={matchFilter}
               >
-                <option value="high-low">Match: High to Low</option>
-                <option value="low-high">Match: Low to High</option>
+                <option value="all">All recommendations</option>
+                <option value="high">High match only</option>
+                <option value="weekend">Weekend fit</option>
+                <option value="skill-based">Skill-based</option>
+              </Select>
+
+              <Select
+                className="ai-reco-filter-select"
+                onChange={(event) => setSortMode(event.target.value as SortMode)}
+                value={sortMode}
+              >
+                <option value="best-match">Sort by best match</option>
+                <option value="soonest">Sort by soonest date</option>
+              </Select>
+
+              <Select
+                className="ai-reco-filter-select"
+                disabled={filteredRecommendations.length === 0}
+                onChange={(event) => setSelectedActivityId(event.target.value)}
+                value={selectedRecommendation?.activityId ?? ''}
+              >
+                {filteredRecommendations.length === 0 ? (
+                  <option value="">No recommendations available</option>
+                ) : (
+                  filteredRecommendations.map((item) => (
+                    <option key={item.activityId} value={item.activityId}>
+                      {item.title}
+                    </option>
+                  ))
+                )}
               </Select>
             </div>
 
             <p className="ai-reco-sort-note">
-              Sorted by: <strong>Match Score</strong>
+              Ranked by <strong>{sortMode === 'best-match' ? 'match score' : 'upcoming date'}</strong>
             </p>
           </div>
-        </section>
-
-        {actionNotice && <p className="form-error">{actionNotice}</p>}
+        </div>
 
         {loading ? (
-          <Card as="section" className="ai-reco-loading-card">
+          <Card className="ai-reco-loading-card">
             <LoaderCircle className="ai-reco-loading-icon" />
-            <div>
-              <h3>Loading recommendations...</h3>
-              <p className="muted">Preparing your best activity matches.</p>
-            </div>
-          </Card>
-        ) : filteredRecommendations.length === 0 ? (
-          <Card as="section" className="ai-reco-loading-card">
-            <LoaderCircle className="ai-reco-loading-icon" />
-            <div>
-              <h3>No recommendations available</h3>
-              <p className="muted">
-                {usingMockFallback
-                  ? 'No fallback recommendations match the selected filters.'
-                  : 'Try changing filters to discover more suggested activities.'}
-              </p>
-            </div>
+            <p>Loading recommendation engine output...</p>
           </Card>
         ) : (
           <div className="ai-reco-main-grid">
-            <Card as="article" className="ai-reco-featured-card">
-              {featuredRecommendation ? (
-                <>
-                  <div className="ai-reco-image-wrap">
-                    <img alt={featuredRecommendation.title} className="ai-reco-image" src={featuredRecommendation.imageUrl} />
-                    <span className="ai-reco-match-pill" aria-label={`${featuredRecommendation.matchScore}% match`}>
-                      <Star size={12} />
-                      <span>
-                        {featuredRecommendation.matchScore}% {featuredRecommendation.matchLabel}
-                      </span>
-                    </span>
+            {selectedRecommendation ? (
+              <Card as="article" className="ai-reco-featured-card">
+                <div className="ai-reco-image-wrap">
+                  <img alt={selectedRecommendation.title} className="ai-reco-image" src={selectedRecommendation.heroImageUrl} />
+                  <span className="ai-reco-match-pill">
+                    <Star size={12} />
+                    {selectedRecommendation.matchScore}% match
+                  </span>
+                </div>
+
+                <div className="ai-reco-featured-body">
+                  <div className="ai-reco-category-row">
+                    {selectedRecommendation.categories.map((category) => (
+                      <Badge className="ai-reco-category-badge" key={category} tone="accent">
+                        {category}
+                      </Badge>
+                    ))}
                   </div>
 
-                  <div className="ai-reco-featured-body">
-                    <div className="ai-reco-category-row">
-                      {featuredRecommendation.categories.map((category) => (
-                        <Badge className="ai-reco-category-badge" key={category} tone="neutral">
-                          {category}
+                  <div>
+                    <h2>{selectedRecommendation.title}</h2>
+                    <p className="ai-reco-organizer">Hosted by {selectedRecommendation.organizerName}</p>
+                  </div>
+
+                  <div className="ai-reco-meta-row">
+                    <span>
+                      <CalendarDays size={15} />
+                      {selectedRecommendation.dateLabel} · {selectedRecommendation.timeLabel}
+                    </span>
+                    <span>
+                      <MapPin size={15} />
+                      {selectedRecommendation.locationLabel}
+                    </span>
+                    <span>{selectedRecommendation.hoursLabel}</span>
+                  </div>
+
+                  <div className="ai-reco-why-card">
+                    <p className="ai-reco-why-title">Why this was recommended</p>
+                    <p>{selectedRecommendation.explanation}</p>
+                    <div className="ai-reco-why-tags">
+                      {selectedRecommendation.reasons.map((reason) => (
+                        <Badge className="ai-reco-reason-tag" key={reason} tone="info">
+                          {reason}
                         </Badge>
                       ))}
                     </div>
-
-                    <h2>{featuredRecommendation.title}</h2>
-                    <p className="ai-reco-organizer">Organized by {featuredRecommendation.organizer}</p>
-
-                    <div className="ai-reco-meta-row">
-                      <span>
-                        <CalendarDays size={14} />
-                        {featuredRecommendation.dateLabel}
-                      </span>
-                      <span>
-                        <MapPin size={14} />
-                        {featuredRecommendation.location}
-                      </span>
-                    </div>
-
-                    <div className="ai-reco-why-card">
-                      <p className="ai-reco-why-title">Why This Matches</p>
-                      <p>{featuredRecommendation.whyMatches}</p>
-                      <div className="ai-reco-why-tags">
-                        {featuredRecommendation.reasons.map((reason) => (
-                          <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                            {reason}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="ai-reco-cta-row">
-                      <Button className="ai-reco-view-btn" onClick={handleViewDetails} type="button">
-                        View Details
-                      </Button>
-                      <Button className="ai-reco-join-btn" onClick={handleApplyJoin} type="button" variant="secondary">
-                        Apply / Join
-                      </Button>
-                    </div>
                   </div>
+
+                  <div className="ai-reco-cta-row">
+                    <Button
+                      className="ai-reco-view-btn"
+                      onClick={() => handleViewDetails(selectedRecommendation.activityId)}
+                      type="button"
+                    >
+                      View details
+                    </Button>
+                    <Button
+                      className="ai-reco-join-btn"
+                      disabled={joiningActivityId === selectedRecommendation.activityId}
+                      onClick={() => void handleJoin(selectedRecommendation.activityId)}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {joiningActivityId === selectedRecommendation.activityId ? 'Joining...' : 'Join now'}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ) : (
+              <Card className="ai-reco-missing-selected">
+                <p className="muted">No activities matched the current filters. Try broadening the filter set.</p>
+              </Card>
+            )}
+
+            <Card as="article" className="ai-reco-next-card">
+              {secondaryRecommendation ? (
+                <>
+                  <div className="ai-reco-next-icon-wrap">
+                    <ArrowRight size={18} />
+                  </div>
+                  <p className="ai-reco-why-title">Up next</p>
+                  <h3>{secondaryRecommendation.title}</h3>
+                  <p className="muted">{secondaryRecommendation.explanation}</p>
+                  <p className="muted">
+                    {secondaryRecommendation.matchScore}% match · {secondaryRecommendation.dateLabel}
+                  </p>
+                  <Button onClick={() => setSelectedActivityId(secondaryRecommendation.activityId)} type="button" variant="secondary">
+                    Preview next recommendation
+                  </Button>
                 </>
               ) : (
-                <div className="ai-reco-missing-selected">
-                  <p className="muted">Selected recommendation is unavailable.</p>
-                </div>
+                <>
+                  <div className="ai-reco-next-icon-wrap">
+                    <LoaderCircle size={18} />
+                  </div>
+                  <p className="ai-reco-why-title">Recommendation coverage</p>
+                  <h3>No secondary match yet</h3>
+                  <p className="muted">
+                    The engine currently has {filteredRecommendations.length} result
+                    {filteredRecommendations.length === 1 ? '' : 's'} for the active filter set.
+                  </p>
+                  <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                    Open activity browser
+                  </Button>
+                </>
               )}
-            </Card>
-
-            <Card as="section" className="ai-reco-next-card">
-              <div className="ai-reco-next-icon-wrap" aria-hidden="true">
-                <LoaderCircle size={18} />
-              </div>
-              <h3>Loading more activities...</h3>
-              <p className="muted">Scanning for matches...</p>
             </Card>
           </div>
         )}

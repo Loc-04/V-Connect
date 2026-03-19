@@ -5,7 +5,7 @@ import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
-import { listParticipations } from '../lib/participations';
+import { approveRegistration, listActivityRegistrations, rejectRegistration } from '../lib/registrations';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './OrganizerRegistrationApprovalPage.css';
@@ -141,12 +141,7 @@ export function OrganizerRegistrationApprovalPage() {
       setError(null);
 
       try {
-        const participationRows = await listParticipations({
-          accessToken: session.access_token,
-          mine: true,
-          activityId,
-          limit: 500,
-        });
+        const participationRows = await listActivityRegistrations(activityId, session.access_token);
         setParticipations(participationRows);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load applicants for activity.');
@@ -304,12 +299,48 @@ export function OrganizerRegistrationApprovalPage() {
       return;
     }
 
+    if (!session?.access_token) {
+      setError('No active session token.');
+      setMessage(null);
+      return;
+    }
+
     setError(null);
     setMessage(null);
 
-    setError(
-      `Registration ${nextStatus} action is not connected yet because the backend API is not available in current scope.`
+    const action = nextStatus === 'approved' ? approveRegistration : rejectRegistration;
+    const results = await Promise.allSettled(ids.map((id) => action(id, session.access_token)));
+
+    const successfulResults = results.filter(
+      (result): result is PromiseFulfilledResult<{ registration: ParticipationRecord; message?: string }> =>
+        result.status === 'fulfilled'
     );
+    const failedResults = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+
+    if (successfulResults.length > 0) {
+      const updatedById = new Map(successfulResults.map((result) => [result.value.registration.id, result.value.registration]));
+      setParticipations((current) =>
+        current.map((participation) => updatedById.get(participation.id) ?? participation)
+      );
+      setSelectedIds([]);
+
+      const successMessage =
+        successfulResults.length === 1
+          ? successfulResults[0].value.message ?? `Registration ${nextStatus} successfully.`
+          : `${successfulResults.length} registrations ${nextStatus} successfully.`;
+      setMessage(successMessage);
+    }
+
+    if (failedResults.length > 0) {
+      const firstError = failedResults[0].reason;
+      const failureMessage =
+        firstError instanceof Error ? firstError.message : `Failed to ${nextStatus} one or more registrations.`;
+      setError(failureMessage);
+      if (successfulResults.length > 0 && selectedActivityId) {
+        await loadApplicantsForActivity(selectedActivityId);
+      }
+      return;
+    }
   };
 
   const handleSingleStatus = async (id: string, nextStatus: ApprovalStatus) => {

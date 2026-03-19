@@ -8,7 +8,7 @@
 - `src/config`: env + shared constants
 - `src/database`: database client init
 - `src/common`: shared utilities
-- `src/auth`, `src/users`, `src/activities`, `src/participations`, `src/feedback`, `src/notifications`, `src/admin`:
+- `src/auth`, `src/users`, `src/activities`, `src/participations`, `src/feedback`, `src/notifications`, `src/recommendations`, `src/admin`:
   each domain contains dedicated `*.routes.js`, `*.service.js`, and `*.validation.js` (when needed)
 
 All active endpoints are mounted directly at root path (no `/api` prefix).
@@ -42,6 +42,14 @@ shared-backend listening on http://localhost:3000
 - `GET /participations`
 - `POST /participations`
 - `POST /participations/:id/check-in`
+- `POST /activities/:id/register`
+- `DELETE /activities/:id/register`
+- `GET /activities/:id/registrations`
+- `GET /registrations/:id`
+- `PUT /registrations/:id/approve`
+- `PUT /registrations/:id/reject`
+- `GET /recommendations/:userId`
+- `GET /recommendations/activity/:id`
 - `GET /feedback`
 - `POST /feedback`
 - `GET /admin/users`
@@ -62,6 +70,39 @@ shared-backend listening on http://localhost:3000
 - `POST /participations/:id/check-in`
   - Organizer/admin only.
   - Marks a participation as checked in (`status = checked_in` and `checked_in_at` when the column exists).
+
+### Sprint 3 Registration API
+
+- `POST /activities/:id/register`
+  - Volunteer/admin only.
+  - Creates or reopens a registration for the authenticated user on the target activity.
+- `DELETE /activities/:id/register`
+  - Volunteer/admin only.
+  - Cancels the authenticated user's latest registration on the target activity.
+- `GET /activities/:id/registrations`
+  - Organizer/admin only.
+  - Returns all registrations for the target activity.
+- `GET /registrations/:id`
+  - Admin, owning organizer, or owning volunteer.
+  - Returns registration detail with volunteer/activity summary.
+- `PUT /registrations/:id/approve`
+  - Organizer/admin only.
+  - Approves a registration, respecting activity capacity.
+- `PUT /registrations/:id/reject`
+  - Organizer/admin only.
+  - Rejects a registration.
+
+### Sprint 3 Recommendation API
+
+- `GET /recommendations/:userId`
+  - Admin or the target user only.
+  - If `userId` is a volunteer, returns recommended activities.
+  - If `userId` is an organizer, returns recommended volunteers across that organizer's open activities.
+  - Query: `limit=1..50`
+- `GET /recommendations/activity/:id`
+  - Organizer/admin only.
+  - Returns recommended volunteers for a specific activity.
+  - Query: `limit=1..50`
 
 ### Feedback API
 
