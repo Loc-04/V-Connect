@@ -7,6 +7,13 @@ interface ParticipationResponse {
   message?: string;
 }
 
+interface RegistrationResponse {
+  registration?: ParticipationRecord;
+  participation?: ParticipationRecord;
+  created?: boolean;
+  message?: string;
+}
+
 interface ParticipationListResponse {
   participations: ParticipationRecord[];
 }
@@ -42,7 +49,7 @@ function createQueryString(options: Omit<ListParticipationsOptions, 'accessToken
   return query ? `?${query}` : '';
 }
 
-function normalizeParticipationRecord(record: ParticipationRecord): ParticipationRecord {
+export function normalizeParticipationRecord(record: ParticipationRecord): ParticipationRecord {
   const participationId = record.participationId || record.id;
   const activityId = record.activityId ?? record.activity_id ?? null;
   const activityName = record.activityName || 'Untitled Activity';
@@ -50,6 +57,8 @@ function normalizeParticipationRecord(record: ParticipationRecord): Participatio
   const date = record.date ?? record.created_at ?? null;
   const hours = typeof record.hours === 'number' ? record.hours : null;
   const status = String(record.status ?? 'upcoming');
+  const activityDeleted = Boolean(record.activityDeleted);
+  const activityDeletedAt = record.activityDeletedAt ?? null;
 
   return {
     ...record,
@@ -60,11 +69,13 @@ function normalizeParticipationRecord(record: ParticipationRecord): Participatio
     organization,
     date,
     hours,
+    activityDeleted,
+    activityDeletedAt,
     activity_id: record.activity_id ?? activityId ?? undefined,
   };
 }
 
-function normalizeParticipationList(rows: ParticipationRecord[] | undefined): ParticipationRecord[] {
+export function normalizeParticipationList(rows: ParticipationRecord[] | undefined): ParticipationRecord[] {
   return (rows ?? []).map((record) => normalizeParticipationRecord(record));
 }
 
@@ -100,17 +111,35 @@ export async function createParticipation(
   activityId: string,
   accessToken: string
 ): Promise<{ participation: ParticipationRecord; created: boolean; message?: string }> {
-  const response = await apiRequest<ParticipationResponse>('/participations', {
+  const response = await apiRequest<RegistrationResponse>(`/activities/${activityId}/register`, {
     method: 'POST',
     accessToken,
-    body: { activityId },
   });
 
+  const participation = response.registration ?? response.participation;
+  if (!participation) {
+    throw new Error('Registration succeeded but no participation payload was returned.');
+  }
+
   return {
-    participation: normalizeParticipationRecord(response.participation),
+    participation: normalizeParticipationRecord(participation),
     created: response.created !== false,
     message: response.message,
   };
+}
+
+export async function cancelParticipation(activityId: string, accessToken: string): Promise<ParticipationRecord> {
+  const response = await apiRequest<RegistrationResponse>(`/activities/${activityId}/register`, {
+    method: 'DELETE',
+    accessToken,
+  });
+
+  const participation = response.registration ?? response.participation;
+  if (!participation) {
+    throw new Error('Cancel registration succeeded but no participation payload was returned.');
+  }
+
+  return normalizeParticipationRecord(participation);
 }
 
 export async function checkInParticipation(participationId: string, accessToken: string): Promise<ParticipationRecord> {

@@ -2,10 +2,20 @@ import { Router } from 'express';
 import { activityColumns, validActivityStatuses } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
+import { createNotificationRecord } from '../notifications/notifications.service.js';
 import { normalizeActivityPayload } from './activities.validation.js';
 import { canWriteActivities, getActivityById } from './activities.service.js';
 
 const router = Router();
+
+async function tryCreateNotification(payload) {
+  try {
+    await createNotificationRecord(payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Notification create failed: ${message}`);
+  }
+}
 
 async function handleActivityDetail(req, res) {
   const activityId = req.params.id;
@@ -220,7 +230,7 @@ router.delete('/activities/:id', requireAuth, async (req, res) => {
 
   const { data: existingActivity, error: existingError } = await supabaseAdmin
     .from('activities')
-    .select('id, organizer_id')
+    .select('id, organizer_id, title')
     .eq('id', activityId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -240,6 +250,41 @@ router.delete('/activities/:id', requireAuth, async (req, res) => {
     return;
   }
 
+  const { data: registrations, error: registrationsError } = await supabaseAdmin
+    .from('activity_participations')
+    .select('id, volunteer_id, status')
+    .eq('activity_id', activityId);
+
+  if (registrationsError) {
+    res.status(500).json({ message: registrationsError.message });
+    return;
+  }
+
+  const registrationsToCancel = (registrations ?? []).filter((registration) => {
+    const status = String(registration.status ?? '').toLowerCase();
+    return status === 'pending' || status === 'approved';
+  });
+
+  if (registrationsToCancel.length > 0) {
+    const { error: cancelRegistrationsError } = await supabaseAdmin
+      .from('activity_participations')
+      .update({
+        status: 'cancelled',
+        updated_at: new Date().toISOString(),
+      })
+      .in(
+        'id',
+        registrationsToCancel
+          .map((registration) => registration.id)
+          .filter((id) => typeof id === 'string' && id.length > 0)
+      );
+
+    if (cancelRegistrationsError) {
+      res.status(500).json({ message: cancelRegistrationsError.message });
+      return;
+    }
+  }
+
   const { error } = await supabaseAdmin
     .from('activities')
     .update({
@@ -253,6 +298,39 @@ router.delete('/activities/:id', requireAuth, async (req, res) => {
     res.status(500).json({ message: error.message });
     return;
   }
+
+  const activeOrCompletedRegistrations = Array.from(
+    new Map(
+      (registrations ?? [])
+        .filter((registration) => {
+          const status = String(registration.status ?? '').toLowerCase();
+          return Boolean(registration.volunteer_id) && status !== 'cancelled' && status !== 'rejected';
+        })
+        .map((registration) => [registration.volunteer_id, registration])
+    ).values()
+  );
+
+  await Promise.all(
+    activeOrCompletedRegistrations.map((registration) => {
+      const status = String(registration.status ?? '').toLowerCase();
+      const isCompletedRecord = status === 'checked_in';
+
+      return tryCreateNotification({
+        userId: registration.volunteer_id,
+        title: 'Activity Removed',
+        message: isCompletedRecord
+          ? `The organizer removed "${existingActivity.title}". Your completed participation record has been preserved in history.`
+          : `The organizer removed "${existingActivity.title}". Your registration is no longer active, and the record has been preserved in history.`,
+        type: 'message',
+        data: {
+          activityId,
+          registrationId: registration.id,
+          status: isCompletedRecord ? 'completed' : 'cancelled',
+          activityDeleted: true,
+        },
+      });
+    })
+  );
 
   res.json({ success: true, message: 'Activity deleted successfully.' });
 });

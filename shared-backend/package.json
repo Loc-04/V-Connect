@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "migrate:profiles": "node scripts/migrateProfiles.js",
     "seed:demo": "node scripts/seedDemoData.js",
+    "seed:recommendations": "node scripts/seedRecommendationDemo.js",
     "db:apply": "node scripts/applySql.js",
     "db:notifications": "node scripts/applySql.js"
   },

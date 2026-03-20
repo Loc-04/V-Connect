@@ -1,4 +1,4 @@
-﻿import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   Award,
   BriefcaseBusiness,
@@ -21,7 +21,7 @@ import {
   type NotificationEntry,
   type NotificationType,
 } from '../lib/notifications';
-import { VolunteerShell } from '../layouts/VolunteerShell';
+import { OrganizerShell } from '../layouts/OrganizerShell';
 import './NotificationsPage.css';
 
 type NotificationFilter = 'all' | 'unread';
@@ -60,7 +60,7 @@ function formatTimeAgo(value: string): string {
   return `${Math.floor(diffMs / day)}d ago`;
 }
 
-export function NotificationsPage() {
+export function OrganizerNotificationsPage() {
   const { profile, session } = useAuth();
   const userId = profile?.id ?? null;
   const accessToken = session?.access_token ?? null;
@@ -115,10 +115,7 @@ export function NotificationsPage() {
   );
 
   const filteredNotifications = useMemo(
-    () =>
-      filter === 'unread'
-        ? notifications.filter((notification) => !notification.read)
-        : notifications,
+    () => (filter === 'unread' ? notifications.filter((notification) => !notification.read) : notifications),
     [filter, notifications]
   );
 
@@ -126,7 +123,7 @@ export function NotificationsPage() {
   const hasMore = filteredNotifications.length > visibleCount;
 
   const handleMarkAllAsRead = async () => {
-    if (!userId || !accessToken || unreadCount === 0) {
+    if (!accessToken || unreadCount === 0) {
       return;
     }
 
@@ -144,7 +141,7 @@ export function NotificationsPage() {
   };
 
   const handleClearAll = async () => {
-    if (!userId || !accessToken || notifications.length === 0) {
+    if (!accessToken || notifications.length === 0) {
       return;
     }
 
@@ -162,7 +159,7 @@ export function NotificationsPage() {
   };
 
   const handleNotificationClick = async (notification: NotificationEntry) => {
-    if (!userId || !accessToken || notification.read) {
+    if (!accessToken || notification.read) {
       return;
     }
 
@@ -177,7 +174,7 @@ export function NotificationsPage() {
   };
 
   return (
-    <VolunteerShell
+    <OrganizerShell
       activeNav="notifications"
       headerActions={
         <div className="notifications-head-actions">
@@ -203,8 +200,10 @@ export function NotificationsPage() {
           </Button>
         </div>
       }
-      pageSubtitle="Stay updated with your latest volunteer activities and system alerts."
+      pageSubtitle="Track organizer-side updates such as registrations, approvals, and system alerts."
       pageTitle="Notifications"
+      searchPlaceholder="Search organizer workspace..."
+      searchValue=""
     >
       <Card as="section" className="notifications-page-card">
         <div className="notifications-filter-tabs" role="tablist" aria-label="Notification filters">
@@ -284,6 +283,6 @@ export function NotificationsPage() {
           </Button>
         </div>
       </Card>
-    </VolunteerShell>
+    </OrganizerShell>
   );
 }

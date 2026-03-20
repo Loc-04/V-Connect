@@ -24,4 +24,6 @@ export interface ParticipationRecord {
   organization: string;
   date: string | null;
   hours: number | null;
+  activityDeleted?: boolean;
+  activityDeletedAt?: string | null;
 }

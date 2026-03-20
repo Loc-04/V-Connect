@@ -256,7 +256,12 @@ export function ParticipationHistoryPage() {
                         <span className="history-activity-icon" aria-hidden="true">
                           <History size={14} />
                         </span>
-                        <span>{record.activityName}</span>
+                        <div className="history-activity-copy">
+                          <span>{record.activityName}</span>
+                          {record.activityDeleted ? (
+                            <small className="history-activity-note">Removed by organizer. Historical record kept.</small>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                     <td>{record.organization}</td>
@@ -273,11 +278,12 @@ export function ParticipationHistoryPage() {
                     <td>
                       <Button
                         className="history-view-btn"
+                        disabled={record.activityDeleted || !record.activityId}
                         onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
                         type="button"
                         variant="secondary"
                       >
-                        View Details
+                        {record.activityDeleted ? 'Unavailable' : 'View Details'}
                       </Button>
                     </td>
                   </tr>
