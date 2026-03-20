@@ -3,12 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CalendarClock, Heart, MapPin, Share2, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { getActivityById } from '../lib/activities';
+import { listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
 import type { ActivityDetailMock } from '../lib/participationMocks';
 import type { ActivityRecord } from '../types/activity';
+import type { ParticipationRecord } from '../types/participation';
 import './ActivityDetailPage.css';
 
 type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published';
@@ -190,12 +193,15 @@ function getStatusTone(status: ViewStatus) {
 export function ActivityDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [activity, setActivity] = useState<ActivityDetailViewModel | null>(null);
   const [usingMockFallback, setUsingMockFallback] = useState(false);
+  const [participation, setParticipation] = useState<ParticipationRecord | null>(null);
+  const canRegister = profile?.role === 'volunteer';
 
   useEffect(() => {
     if (!id) {
@@ -248,6 +254,48 @@ export function ActivityDetailPage() {
     };
   }, [id, session?.access_token]);
 
+  useEffect(() => {
+    if (!id || !session?.access_token || !canRegister) {
+      setParticipation(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await listParticipations({
+          accessToken: session.access_token,
+          mine: true,
+          activityId: id,
+          limit: 1,
+        });
+
+        if (!cancelled) {
+          setParticipation(rows[0] ?? null);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load your registration status.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canRegister, id, session?.access_token]);
+
+  const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
+    if (type === 'error') {
+      setError(nextMessage);
+      setMessage(null);
+      return;
+    }
+
+    setMessage(nextMessage);
+    setError(null);
+  };
+
   const openSlotsLabel = useMemo(() => {
     if (!activity) {
       return '--';
@@ -282,6 +330,8 @@ export function ActivityDetailPage() {
       pageTitle={activity?.title ?? 'Activity Details'}
     >
       <section className="activity-detail-page">
+        {message && <p className="form-success">{message}</p>}
+
         {loading && (
           <Card className="activity-detail-state-card">
             <p>Loading activity detail...</p>
@@ -399,9 +449,17 @@ export function ActivityDetailPage() {
                     </div>
                   </div>
 
-                  <Button className="activity-detail-join-btn" type="button">
-                    Join Activity
-                  </Button>
+                  <RegistrationAction
+                    accessToken={session?.access_token ?? null}
+                    activityId={activity.id}
+                    canRegister={canRegister}
+                    className="activity-detail-registration-action"
+                    currentStatus={participation?.status ?? 'none'}
+                    onNotice={handleRegistrationNotice}
+                    onRegistered={(nextParticipation) => {
+                      setParticipation(nextParticipation);
+                    }}
+                  />
                   <small className="activity-detail-guideline">By joining, you agree to our community guideline.</small>
                 </Card>
 

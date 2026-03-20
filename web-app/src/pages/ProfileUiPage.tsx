@@ -11,8 +11,8 @@ import {
   Trees,
   TrendingUp,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
@@ -33,6 +33,11 @@ const fallbackAvatar =
 const availabilityLabels = ['Weekdays', 'Weekends', 'Evenings'] as const;
 
 type EditorPanel = 'profile' | 'availability';
+
+interface AvatarFeedback {
+  tone: 'error' | 'success';
+  message: string;
+}
 
 interface EditFormState {
   fullName: string;
@@ -223,6 +228,11 @@ export function ProfileUiPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [avatarFeedback, setAvatarFeedback] = useState<AvatarFeedback | null>(null);
+
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const avatarObjectUrlRef = useRef<string | null>(null);
 
   const accessToken = session?.access_token ?? '';
 
@@ -252,6 +262,15 @@ export function ProfileUiPage() {
   useEffect(() => {
     setProfile(authProfile);
   }, [authProfile]);
+
+  useEffect(() => {
+    return () => {
+      if (avatarObjectUrlRef.current) {
+        URL.revokeObjectURL(avatarObjectUrlRef.current);
+        avatarObjectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void loadProfile();
@@ -329,7 +348,7 @@ export function ProfileUiPage() {
   const volunteerLevel = totalHours >= 120 ? 'Gold Level' : totalHours >= 60 ? 'Silver Level' : 'Growing Level';
 
   const displayName = profile?.full_name?.trim() || session?.user?.email || 'Volunteer';
-  const avatarUrl = profile?.avatar_url || fallbackAvatar;
+  const avatarUrl = avatarPreviewUrl || profile?.avatar_url || fallbackAvatar;
   const profileSummary = buildProfileSummary(profile, volunteerProfile);
 
   const upcomingTimeLabel = upcomingPreview
@@ -347,6 +366,51 @@ export function ProfileUiPage() {
 
   const closeEditor = () => {
     setEditorPanel(null);
+  };
+
+  const handleAvatarButtonClick = () => {
+    setAvatarFeedback(null);
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    setAvatarFeedback(null);
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarFeedback({
+        tone: 'error',
+        message: 'Please choose a valid image file for your avatar.',
+      });
+      return;
+    }
+
+    const maxFileSize = 5 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      setAvatarFeedback({
+        tone: 'error',
+        message: 'Avatar image must be smaller than 5 MB.',
+      });
+      return;
+    }
+
+    if (avatarObjectUrlRef.current) {
+      URL.revokeObjectURL(avatarObjectUrlRef.current);
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(file);
+    avatarObjectUrlRef.current = nextPreviewUrl;
+    setAvatarPreviewUrl(nextPreviewUrl);
+    setAvatarFeedback({
+      tone: 'success',
+      message: 'Avatar preview updated for this session.',
+    });
   };
 
   const handlePersistSkills = async (nextSkills: string[]) => {
@@ -415,6 +479,14 @@ export function ProfileUiPage() {
       pageTitle="Profile Overview"
     >
       <section className="vol-profile-dashboard">
+        <input
+          accept="image/*"
+          className="vol-profile-file-input"
+          onChange={handleAvatarFileChange}
+          ref={avatarInputRef}
+          type="file"
+        />
+
         {loading && (
           <Card as="article" className="vol-profile-card">
             <p className="muted">Loading profile...</p>
@@ -432,6 +504,12 @@ export function ProfileUiPage() {
 
         {!loading && !loadError && (
           <>
+            {avatarFeedback && (
+              <p className={avatarFeedback.tone === 'error' ? 'form-error' : 'form-success'}>
+                {avatarFeedback.message}
+              </p>
+            )}
+
             <Card as="article" className="vol-profile-card vol-profile-hero-card">
               <div className="vol-profile-hero-grid">
                 <div className="vol-profile-avatar-wrap">
@@ -439,7 +517,7 @@ export function ProfileUiPage() {
                   <button
                     aria-label="Change avatar"
                     className="vol-profile-camera-btn"
-                    onClick={() => openEditor('profile')}
+                    onClick={handleAvatarButtonClick}
                     type="button"
                   >
                     <Camera size={14} />
@@ -665,7 +743,11 @@ export function ProfileUiPage() {
                           className="vol-profile-history-item"
                           key={record.id}
                           onClick={() =>
-                            navigate(record.activityId ? `/volunteer/activity/${record.activityId}` : '/volunteer/participation-history')
+                            navigate(
+                              record.activityDeleted || !record.activityId
+                                ? '/volunteer/participation-history'
+                                : `/volunteer/activity/${record.activityId}`
+                            )
                           }
                           type="button"
                         >

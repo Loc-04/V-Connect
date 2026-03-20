@@ -1,11 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
+  Bell,
   CalendarCheck2,
   ClipboardList,
   LayoutDashboard,
   LogOut,
   Settings,
+  Sparkles,
   Users,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -14,6 +16,8 @@ export type OrganizerNavKey =
   | 'dashboard'
   | 'activities'
   | 'volunteers'
+  | 'notifications'
+  | 'recommendations'
   | 'assignments'
   | 'reports'
   | 'settings';
@@ -29,8 +33,10 @@ const menuItems: SidebarItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/organizer/dashboard' },
   { key: 'activities', label: 'Activities', icon: CalendarCheck2, to: '/organizer/activities' },
   { key: 'volunteers', label: 'Volunteers', icon: Users, to: '/organizer/registrations' },
+  { key: 'notifications', label: 'Notifications', icon: Bell, to: '/organizer/notifications' },
+  { key: 'recommendations', label: 'Recommendations', icon: Sparkles, to: '/organizer/recommendations' },
   { key: 'assignments', label: 'Assignments', icon: ClipboardList },
-  { key: 'reports', label: 'Reports', icon: BarChart3 },
+  { key: 'reports', label: 'Reports', icon: BarChart3, to: '/organizer/reports' },
 ];
 
 const preferenceItems: SidebarItem[] = [{ key: 'settings', label: 'Settings', icon: Settings }];

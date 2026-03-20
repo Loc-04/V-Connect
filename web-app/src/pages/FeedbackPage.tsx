@@ -12,6 +12,7 @@ import type { ParticipationRecord } from '../types/participation';
 import './FeedbackPage.css';
 
 const categoryOptions = ['Organization', 'Activity Quality', 'Venue', 'Management', 'Staff Support'];
+const REQUIRE_FEEDBACK_CATEGORIES = true;
 
 const ratingLabels: Record<number, string> = {
   1: 'Needs major improvement',
@@ -39,6 +40,13 @@ interface FeedbackHistoryItem {
   details: string;
 }
 
+interface FeedbackFieldErrors {
+  activityId?: string;
+  rating?: string;
+  categories?: string;
+  details?: string;
+}
+
 function formatDateLabel(value: string | null | undefined): string {
   if (!value) {
     return '--';
@@ -62,6 +70,44 @@ function buildPreview(details: string): string {
     return normalized;
   }
   return `${normalized.slice(0, 107)}...`;
+}
+
+function countWords(value: string): number {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function validateFeedbackFields(input: {
+  activityId: string;
+  rating: number;
+  details: string;
+  selectedCategories: string[];
+}): FeedbackFieldErrors {
+  const errors: FeedbackFieldErrors = {};
+  const normalizedDetails = input.details.trim();
+  const wordCount = countWords(normalizedDetails);
+
+  if (!input.activityId) {
+    errors.activityId = 'Please choose a completed activity.';
+  }
+
+  if (input.rating <= 0) {
+    errors.rating = 'Please select an overall experience rating.';
+  }
+
+  if (REQUIRE_FEEDBACK_CATEGORIES && input.selectedCategories.length === 0) {
+    errors.categories = 'Please choose at least one highlight category.';
+  }
+
+  if (!normalizedDetails) {
+    errors.details = 'Please enter detailed feedback.';
+  } else if (wordCount <= 20) {
+    errors.details = 'Detailed feedback must be more than 20 words.';
+  }
+
+  return errors;
 }
 
 function buildCompletedActivities(records: ParticipationRecord[]): CompletedActivityOption[] {
@@ -119,6 +165,7 @@ export function FeedbackPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [activities, setActivities] = useState<CompletedActivityOption[]>([]);
   const [historyItems, setHistoryItems] = useState<FeedbackHistoryItem[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<FeedbackFieldErrors>({});
 
   const [activityId, setActivityId] = useState('');
   const [rating, setRating] = useState(0);
@@ -158,26 +205,75 @@ export function FeedbackPage() {
     () => activities.find((item) => item.id === activityId) ?? null,
     [activities, activityId]
   );
+  const detailsWordCount = useMemo(() => countWords(details), [details]);
 
   const ratingHint = rating === 0 ? 'Select your experience rating.' : ratingLabels[rating] ?? 'Thanks for rating.';
 
-  const canSubmit = Boolean(selectedActivity && rating > 0 && details.trim().length >= 10 && !submitting);
+  const isSubmitDisabled = submitting || loading || !accessToken;
+
+  const updateFieldError = (
+    field: keyof FeedbackFieldErrors,
+    overrides: Partial<{ activityId: string; rating: number; details: string; selectedCategories: string[] }>
+  ) => {
+    setFieldErrors((current) => {
+      if (!current[field]) {
+        return current;
+      }
+
+      const nextErrors = validateFeedbackFields({
+        activityId,
+        rating,
+        details,
+        selectedCategories,
+        ...overrides,
+      });
+
+      if (!nextErrors[field]) {
+        const nextState = { ...current };
+        delete nextState[field];
+        return nextState;
+      }
+
+      return {
+        ...current,
+        [field]: nextErrors[field],
+      };
+    });
+  };
 
   const toggleCategory = (category: string) => {
-    setSelectedCategories((current) =>
-      current.includes(category) ? current.filter((item) => item !== category) : [...current, category]
-    );
+    setSelectedCategories((current) => {
+      const nextCategories = current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category];
+
+      updateFieldError('categories', { selectedCategories: nextCategories });
+      return nextCategories;
+    });
   };
 
   const handleSubmit = async () => {
-    if (!accessToken || !selectedActivity || rating <= 0 || details.trim().length < 10) {
-      setError('Please choose an activity, rating, and at least 10 characters of detailed feedback.');
+    const nextFieldErrors = validateFeedbackFields({
+      activityId,
+      rating,
+      details,
+      selectedCategories,
+    });
+
+    setError(null);
+    setSuccess(null);
+    setFieldErrors(nextFieldErrors);
+
+    if (!accessToken) {
+      setError('No active session token.');
+      return;
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0 || !selectedActivity) {
       return;
     }
 
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       await createFeedback(
@@ -192,6 +288,7 @@ export function FeedbackPage() {
       setRating(0);
       setSelectedCategories([]);
       setDetails('');
+      setFieldErrors({});
       setSuccess('Feedback submitted successfully. Thank you for helping us improve.');
       await loadData();
     } catch (submitError) {
@@ -214,10 +311,14 @@ export function FeedbackPage() {
               Select Recently Completed Activity
             </label>
             <Select
-              className="feedback-select"
+              className={fieldErrors.activityId ? 'feedback-select is-invalid' : 'feedback-select'}
               disabled={loading || activities.length === 0}
               id="feedback-activity-select"
-              onChange={(event) => setActivityId(event.target.value)}
+              onChange={(event) => {
+                const nextActivityId = event.target.value;
+                setActivityId(nextActivityId);
+                updateFieldError('activityId', { activityId: nextActivityId });
+              }}
               value={activityId}
             >
               <option value="">
@@ -229,10 +330,15 @@ export function FeedbackPage() {
                 </option>
               ))}
             </Select>
+            {fieldErrors.activityId && <p className="feedback-field-error">{fieldErrors.activityId}</p>}
 
             <div>
               <p className="feedback-label">Overall Experience Rating</p>
-              <div className="feedback-rating-picker" role="radiogroup" aria-label="Overall experience rating">
+              <div
+                className={fieldErrors.rating ? 'feedback-rating-picker is-invalid' : 'feedback-rating-picker'}
+                role="radiogroup"
+                aria-label="Overall experience rating"
+              >
                 {Array.from({ length: 5 }, (_, index) => {
                   const value = index + 1;
                   const active = value <= rating;
@@ -241,7 +347,10 @@ export function FeedbackPage() {
                       aria-label={`Rate ${value} star${value > 1 ? 's' : ''}`}
                       className={active ? 'feedback-rate-btn is-active' : 'feedback-rate-btn'}
                       key={value}
-                      onClick={() => setRating(value)}
+                      onClick={() => {
+                        setRating(value);
+                        updateFieldError('rating', { rating: value });
+                      }}
                       type="button"
                       variant="secondary"
                     >
@@ -251,11 +360,12 @@ export function FeedbackPage() {
                 })}
               </div>
               <p className="feedback-rating-hint">{ratingHint}</p>
+              {fieldErrors.rating && <p className="feedback-field-error">{fieldErrors.rating}</p>}
             </div>
 
             <div>
               <p className="feedback-label">Highlight Categories</p>
-              <div className="feedback-category-wrap">
+              <div className={fieldErrors.categories ? 'feedback-category-wrap is-invalid' : 'feedback-category-wrap'}>
                 {categoryOptions.map((category) => {
                   const isSelected = selectedCategories.includes(category);
                   return (
@@ -271,25 +381,37 @@ export function FeedbackPage() {
                   );
                 })}
               </div>
+              {fieldErrors.categories && <p className="feedback-field-error">{fieldErrors.categories}</p>}
             </div>
 
             <label className="feedback-label" htmlFor="feedback-details">
               Detailed Feedback
             </label>
             <textarea
-              className="feedback-textarea"
+              className={fieldErrors.details ? 'feedback-textarea is-invalid' : 'feedback-textarea'}
               id="feedback-details"
-              onChange={(event) => setDetails(event.target.value)}
+              onChange={(event) => {
+                const nextDetails = event.target.value;
+                setDetails(nextDetails);
+                updateFieldError('details', { details: nextDetails });
+              }}
               placeholder="Tell us more about your experience, what went well, and what could be improved."
               rows={6}
               value={details}
             />
+            <div className="feedback-details-meta">
+              <p className={fieldErrors.details ? 'feedback-word-count is-invalid' : 'feedback-word-count'}>
+                {detailsWordCount} word{detailsWordCount === 1 ? '' : 's'}
+              </p>
+              <p className="feedback-inline-note">Please write more than 20 words.</p>
+            </div>
+            {fieldErrors.details && <p className="feedback-field-error">{fieldErrors.details}</p>}
           </div>
 
           {error && <p className="form-error">{error}</p>}
           {success && <p className="form-success">{success}</p>}
 
-          <Button className="feedback-submit-btn" disabled={!canSubmit} onClick={() => void handleSubmit()} type="button">
+          <Button className="feedback-submit-btn" disabled={isSubmitDisabled} onClick={() => void handleSubmit()} type="button">
             {submitting ? 'Submitting...' : 'Submit Feedback'}
             <ArrowRight className="feedback-btn-icon" />
           </Button>

@@ -7,6 +7,11 @@ export type {
   ProfileStats,
   RecentParticipationItem,
   CoreSkillOption,
+  OrganizerProfileView,
+  OrganizerTopStats,
+  OrganizerActivityBadge,
+  OrganizerManagedActivityItem,
+  OrganizerRecommendedVolunteerItem,
 } from './types';
 
 export {
@@ -15,4 +20,7 @@ export {
   getVolunteerProfile,
   getVolunteerStats,
   getRecentParticipations,
+  getOrganizerProfile,
+  getOrganizerManagedActivities,
+  getOrganizerRecommendedVolunteers,
 } from './services/profile-service';

@@ -347,6 +347,10 @@ export function OrganizerActivityManagementPage() {
       activeNav="activities"
       headerActions={
         <>
+          <Button onClick={() => navigate('/organizer/recommendations')} type="button" variant="secondary">
+            <UsersRound size={15} />
+            <span>AI Recommendations</span>
+          </Button>
           <Button onClick={() => void loadData()} type="button" variant="secondary">
             <RefreshCw size={15} />
             <span>Refresh</span>
@@ -537,6 +541,18 @@ export function OrganizerActivityManagementPage() {
                                   ))}
                                 </div>
                               )}
+
+                              <button
+                                className="row-action-item"
+                                onClick={() => {
+                                  navigate(`/organizer/recommendations?activityId=${activity.id}`);
+                                  setOpenMenuActivityId(null);
+                                  setOpenStatusPickerActivityId(null);
+                                }}
+                                type="button"
+                              >
+                                Recommend Volunteers
+                              </button>
 
                               <button
                                 className="row-action-item"

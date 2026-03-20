@@ -4,10 +4,10 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../auth/useAuth';
 import {
-  getNotificationsForUser,
-  markNotificationAsReadForUser,
+  getNotifications,
+  markNotificationAsRead,
   type NotificationEntry,
-} from '../../lib/engagement';
+} from '../../lib/notifications';
 import { NotificationItem } from './NotificationItem';
 import './NotificationDropdown.css';
 
@@ -15,10 +15,19 @@ type NotificationFilter = 'all' | 'unread';
 
 const MAX_VISIBLE_NOTIFICATIONS = 6;
 
-export function NotificationDropdown() {
+interface NotificationDropdownProps {
+  viewAllPath?: string;
+  triggerClassName?: string;
+}
+
+export function NotificationDropdown({
+  viewAllPath = '/volunteer/notifications',
+  triggerClassName = 'vol-shell-notify-btn',
+}: NotificationDropdownProps) {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const userId = profile?.id ?? null;
+  const accessToken = session?.access_token ?? null;
 
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -29,7 +38,8 @@ export function NotificationDropdown() {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!userId) {
+    if (!userId || !accessToken) {
+      setNotifications([]);
       return;
     }
 
@@ -40,7 +50,7 @@ export function NotificationDropdown() {
       setError(null);
 
       try {
-        const nextNotifications = await getNotificationsForUser(userId);
+        const nextNotifications = await getNotifications(accessToken);
         if (!cancelled) {
           setNotifications(nextNotifications);
         }
@@ -60,7 +70,7 @@ export function NotificationDropdown() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [accessToken, userId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -93,7 +103,7 @@ export function NotificationDropdown() {
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !userId) {
+    if (!isOpen || !userId || !accessToken) {
       return;
     }
 
@@ -101,7 +111,7 @@ export function NotificationDropdown() {
 
     const refreshNotifications = async () => {
       try {
-        const nextNotifications = await getNotificationsForUser(userId);
+        const nextNotifications = await getNotifications(accessToken);
         if (!cancelled) {
           setNotifications(nextNotifications);
         }
@@ -117,7 +127,7 @@ export function NotificationDropdown() {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, userId]);
+  }, [accessToken, isOpen, userId]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.read).length,
@@ -132,17 +142,19 @@ export function NotificationDropdown() {
 
   const navigateToNotifications = () => {
     setIsOpen(false);
-    navigate('/volunteer/notifications');
+    navigate(viewAllPath);
   };
 
   const handleSelectNotification = async (notification: NotificationEntry) => {
-    if (!userId) {
+    if (!userId || !accessToken) {
       return;
     }
 
     if (!notification.read) {
-      const nextNotifications = await markNotificationAsReadForUser(userId, notification.id);
-      setNotifications(nextNotifications);
+      const updatedNotification = await markNotificationAsRead(accessToken, notification.id);
+      setNotifications((current) =>
+        current.map((item) => (item.id === updatedNotification.id ? updatedNotification : item))
+      );
     }
   };
 
@@ -153,7 +165,7 @@ export function NotificationDropdown() {
         aria-expanded={isOpen}
         aria-haspopup="dialog"
         aria-label="Open notifications"
-        className="vol-shell-notify-btn mini-notify-trigger"
+        className={`${triggerClassName} mini-notify-trigger`.trim()}
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >

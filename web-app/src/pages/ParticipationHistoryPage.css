@@ -138,9 +138,20 @@
 .history-activity-cell {
   display: inline-flex;
   gap: 0.45rem;
-  align-items: center;
+  align-items: flex-start;
   font-weight: 700;
   color: var(--text);
+}
+
+.history-activity-copy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.history-activity-note {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .history-activity-icon {
@@ -153,13 +164,18 @@
   place-items: center;
 }
 
-.history-status.ui-badge {
+.history-registration-action .registration-action-badge.ui-badge {
   min-width: 86px;
 }
 
 .history-view-btn.secondary-btn {
   padding: 0.32rem 0.7rem;
   font-size: 0.72rem;
+}
+
+.history-view-btn.secondary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
 }
 
 .history-empty {

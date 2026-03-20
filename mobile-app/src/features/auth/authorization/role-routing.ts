@@ -3,7 +3,7 @@ import { ROUTES } from '@/src/shared/constants/route-constants';
 
 export function getHomeRouteForRole(role: UserRole): string {
   if (role === 'organizer' || role === 'admin') {
-    return ROUTES.ORGANIZER.DASHBOARD;
+    return ROUTES.ORGANIZER.HOME;
   }
   return ROUTES.VOLUNTEER.HOME;
 }

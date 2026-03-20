@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { Badge, Button, Card, Input, Table } from '../components/ui';
+import { RegistrationAction } from '../components/activities/RegistrationAction';
+import { Button, Card, Input, Table } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { listParticipations } from '../lib/participations';
 import type { ParticipationRecord, ParticipationStatus } from '../types/participation';
@@ -42,20 +43,6 @@ function formatHours(value: number | null) {
     return '--';
   }
   return `${value.toFixed(1)}h`;
-}
-
-function statusLabel(status: ParticipationStatus) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function getStatusTone(status: ParticipationStatus) {
-  if (status === 'completed') {
-    return 'success' as const;
-  }
-  if (status === 'cancelled') {
-    return 'danger' as const;
-  }
-  return 'info' as const;
 }
 
 export function ParticipationHistoryPage() {
@@ -232,7 +219,7 @@ export function ParticipationHistoryPage() {
                 <th>Organization</th>
                 <th>Date</th>
                 <th>Hours</th>
-                <th>Status</th>
+                <th>Registration</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -269,25 +256,34 @@ export function ParticipationHistoryPage() {
                         <span className="history-activity-icon" aria-hidden="true">
                           <History size={14} />
                         </span>
-                        <span>{record.activityName}</span>
+                        <div className="history-activity-copy">
+                          <span>{record.activityName}</span>
+                          {record.activityDeleted ? (
+                            <small className="history-activity-note">Removed by organizer. Historical record kept.</small>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                     <td>{record.organization}</td>
                     <td>{formatDateLabel(record.date)}</td>
                     <td>{formatHours(record.hours)}</td>
                     <td>
-                      <Badge className="history-status" tone={getStatusTone(record.status)}>
-                        {statusLabel(record.status)}
-                      </Badge>
+                      <RegistrationAction
+                        activityId={record.activityId ?? record.id}
+                        className="history-registration-action"
+                        currentStatus={record.status}
+                        mode="badge"
+                      />
                     </td>
                     <td>
                       <Button
                         className="history-view-btn"
+                        disabled={record.activityDeleted || !record.activityId}
                         onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
                         type="button"
                         variant="secondary"
                       >
-                        View Details
+                        {record.activityDeleted ? 'Unavailable' : 'View Details'}
                       </Button>
                     </td>
                   </tr>

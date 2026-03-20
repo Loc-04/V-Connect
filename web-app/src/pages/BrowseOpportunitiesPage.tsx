@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Heart, MapPin, Search } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { listActivities } from '../lib/activities';
-import { createParticipation, listParticipations } from '../lib/participations';
+import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
@@ -112,7 +113,6 @@ export function BrowseOpportunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [applyingActivityId, setApplyingActivityId] = useState<string | null>(null);
   const [participationByActivityId, setParticipationByActivityId] = useState<Record<string, ParticipationRecord>>({});
   const canApply = profile?.role === 'volunteer';
 
@@ -193,28 +193,15 @@ export function BrowseOpportunitiesPage() {
 
   const opportunities = useMemo(() => activities.map((activity, index) => toOpportunity(activity, index)), [activities]);
 
-  const handleQuickApply = async (activityId: string) => {
-    if (!session?.access_token) {
-      setError('No active session token.');
+  const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
+    if (type === 'error') {
+      setError(nextMessage);
+      setMessage(null);
       return;
     }
 
-    setApplyingActivityId(activityId);
+    setMessage(nextMessage);
     setError(null);
-    setMessage(null);
-
-    try {
-      const result = await createParticipation(activityId, session.access_token);
-      setParticipationByActivityId((current) => ({
-        ...current,
-        [activityId]: result.participation,
-      }));
-      setMessage(result.message ?? (result.created ? 'Applied successfully.' : 'Participation already exists.'));
-    } catch (applyError) {
-      setError(applyError instanceof Error ? applyError.message : 'Failed to apply for this activity.');
-    } finally {
-      setApplyingActivityId(null);
-    }
   };
 
   const handleOpenActivity = (activityId: string) => {
@@ -342,26 +329,20 @@ export function BrowseOpportunitiesPage() {
 
                   <div className="browse-card-footer">
                     <span>{opportunity.spotsLeft} spots</span>
-                    <Button
-                      className="browse-apply-btn"
-                      disabled={
-                        !canApply ||
-                        applyingActivityId === opportunity.id ||
-                        Boolean(participationByActivityId[opportunity.id])
-                      }
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleQuickApply(opportunity.id);
+                    <RegistrationAction
+                      accessToken={session?.access_token ?? null}
+                      activityId={opportunity.id}
+                      canRegister={canApply}
+                      className="browse-registration-action"
+                      currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
+                      onNotice={handleRegistrationNotice}
+                      onRegistered={(participation) => {
+                        setParticipationByActivityId((current) => ({
+                          ...current,
+                          [opportunity.id]: participation,
+                        }));
                       }}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      type="button"
-                    >
-                      {applyingActivityId === opportunity.id
-                        ? 'Applying...'
-                        : participationByActivityId[opportunity.id]
-                          ? `Applied (${participationByActivityId[opportunity.id].status})`
-                          : 'Quick Apply'}
-                    </Button>
+                    />
                   </div>
                 </div>
               </Card>

@@ -14,13 +14,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
 import { Button, Card } from '../components/ui';
 import {
-  clearNotificationsForUser,
-  getNotificationsForUser,
-  markAllNotificationsAsReadForUser,
-  markNotificationAsReadForUser,
+  clearNotifications,
+  getNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
   type NotificationEntry,
   type NotificationType,
-} from '../lib/engagement';
+} from '../lib/notifications';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import './NotificationsPage.css';
 
@@ -61,8 +61,9 @@ function formatTimeAgo(value: string): string {
 }
 
 export function NotificationsPage() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const userId = profile?.id ?? null;
+  const accessToken = session?.access_token ?? null;
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -72,7 +73,8 @@ export function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
 
   useEffect(() => {
-    if (!userId) {
+    if (!userId || !accessToken) {
+      setNotifications([]);
       setLoading(false);
       return;
     }
@@ -83,7 +85,7 @@ export function NotificationsPage() {
 
     void (async () => {
       try {
-        const nextNotifications = await getNotificationsForUser(userId);
+        const nextNotifications = await getNotifications(accessToken);
         if (!cancelled) {
           setNotifications(nextNotifications);
         }
@@ -101,7 +103,7 @@ export function NotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [accessToken, userId]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -124,7 +126,7 @@ export function NotificationsPage() {
   const hasMore = filteredNotifications.length > visibleCount;
 
   const handleMarkAllAsRead = async () => {
-    if (!userId || unreadCount === 0) {
+    if (!userId || !accessToken || unreadCount === 0) {
       return;
     }
 
@@ -132,8 +134,8 @@ export function NotificationsPage() {
     setError(null);
 
     try {
-      const nextNotifications = await markAllNotificationsAsReadForUser(userId);
-      setNotifications(nextNotifications);
+      await markAllNotificationsAsRead(accessToken);
+      setNotifications((current) => current.map((item) => ({ ...item, read: true })));
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Failed to mark notifications as read.');
     } finally {
@@ -142,7 +144,7 @@ export function NotificationsPage() {
   };
 
   const handleClearAll = async () => {
-    if (!userId || notifications.length === 0) {
+    if (!userId || !accessToken || notifications.length === 0) {
       return;
     }
 
@@ -150,8 +152,8 @@ export function NotificationsPage() {
     setError(null);
 
     try {
-      const nextNotifications = await clearNotificationsForUser(userId);
-      setNotifications(nextNotifications);
+      await clearNotifications(accessToken);
+      setNotifications([]);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Failed to clear notifications.');
     } finally {
@@ -160,13 +162,15 @@ export function NotificationsPage() {
   };
 
   const handleNotificationClick = async (notification: NotificationEntry) => {
-    if (!userId || notification.read) {
+    if (!userId || !accessToken || notification.read) {
       return;
     }
 
     try {
-      const nextNotifications = await markNotificationAsReadForUser(userId, notification.id);
-      setNotifications(nextNotifications);
+      const updatedNotification = await markNotificationAsRead(accessToken, notification.id);
+      setNotifications((current) =>
+        current.map((item) => (item.id === updatedNotification.id ? updatedNotification : item))
+      );
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Failed to update notification status.');
     }
