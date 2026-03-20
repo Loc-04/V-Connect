@@ -7,6 +7,7 @@ import feedbackRoutes from '../feedback/feedback.routes.js';
 import notificationsRoutes from '../notifications/notifications.routes.js';
 import recommendationsRoutes from '../recommendations/recommendations.routes.js';
 import adminRoutes from '../admin/admin.routes.js';
+import reportsRoutes from '../reports/reports.routes.js';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use(feedbackRoutes);
 router.use(notificationsRoutes);
 router.use(recommendationsRoutes);
 router.use(adminRoutes);
+router.use(reportsRoutes);
 
 export default router;

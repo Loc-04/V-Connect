@@ -8,7 +8,7 @@
 - `src/config`: env + shared constants
 - `src/database`: database client init
 - `src/common`: shared utilities
-- `src/auth`, `src/users`, `src/activities`, `src/participations`, `src/feedback`, `src/notifications`, `src/recommendations`, `src/admin`:
+- `src/auth`, `src/users`, `src/activities`, `src/participations`, `src/feedback`, `src/notifications`, `src/recommendations`, `src/admin`, `src/reports`:
   each domain contains dedicated `*.routes.js`, `*.service.js`, and `*.validation.js` (when needed)
 
 All active endpoints are mounted directly at root path (no `/api` prefix).
@@ -55,6 +55,7 @@ shared-backend listening on http://localhost:3000
 - `GET /admin/users`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
+- `GET /organizer/reports/summary`
 
 ### Attendance / Check-in API
 
@@ -140,6 +141,22 @@ create table if not exists public.participation_feedback (
 You can run the ready-made SQL file in this repo:
 
 - `shared-backend/scripts/createFeedbackTable.sql`
+
+### Organizer Report / Analytics API
+
+- `GET /organizer/reports/summary`
+  - Organizer/admin only.
+  - Query:
+    - `activityId=<uuid>` optional (load report for a specific organizer activity)
+    - `organizerId=<uuid>` optional (admin only; query another organizer's report)
+  - Returns:
+    - `report` object tailored for the organizer report summary UI, including:
+      - summary text and activity duration
+      - mini metrics (completion rate, average rating, capacity fill)
+      - participation totals and trend
+      - feedback rating, quote, sentiment chips
+      - generated issue highlights
+    - `meta` object with generation time, selected activity id, and available activities list.
 
 ### Profile Migration
 
