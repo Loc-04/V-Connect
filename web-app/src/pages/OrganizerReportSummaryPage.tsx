@@ -1,13 +1,15 @@
 import { Download, Share2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useAuth } from '../auth/useAuth';
 import { Button } from '../components/ui';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
 import { IssueHighlightsCard } from '../components/reports/IssueHighlightsCard';
 import { ParticipationCountCard } from '../components/reports/ParticipationCountCard';
 import { ReportSummaryHeroCard } from '../components/reports/ReportSummaryHeroCard';
 import { OrganizerShell } from '../layouts/OrganizerShell';
-import { organizerReportSummaryMock } from '../lib/organizerReportSummary';
+import { getOrganizerReportSummary } from '../lib/reports';
+import type { OrganizerReportSummaryData } from '../lib/organizerReportSummary';
 import './OrganizerReportSummaryPage.css';
 
 function matchesSearch(searchTerm: string, value: string) {
@@ -15,9 +17,34 @@ function matchesSearch(searchTerm: string, value: string) {
 }
 
 export function OrganizerReportSummaryPage() {
+  const { session } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [report, setReport] = useState<OrganizerReportSummaryData | null>(null);
+
+  const loadReport = useCallback(async () => {
+    if (!session?.access_token) {
+      setLoading(false);
+      setReport(null);
+      setError('No active session token.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await getOrganizerReportSummary(session.access_token);
+      setReport(response.report);
+    } catch (loadError) {
+      setReport(null);
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load report analytics.');
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.access_token]);
 
   useEffect(() => {
     const handleAfterPrint = () => {
@@ -31,16 +58,24 @@ export function OrganizerReportSummaryPage() {
     };
   }, []);
 
+  useEffect(() => {
+    void loadReport();
+  }, [loadReport]);
+
   const filteredIssues = useMemo(() => {
-    const normalized = searchTerm.trim();
-    if (!normalized) {
-      return organizerReportSummaryMock.issues;
+    if (!report) {
+      return [];
     }
 
-    return organizerReportSummaryMock.issues.filter(
+    const normalized = searchTerm.trim();
+    if (!normalized) {
+      return report.issues;
+    }
+
+    return report.issues.filter(
       (item) => matchesSearch(normalized, item.title) || matchesSearch(normalized, item.description)
     );
-  }, [searchTerm]);
+  }, [report, searchTerm]);
 
   const handleExportPdf = () => {
     setError(null);
@@ -51,7 +86,7 @@ export function OrganizerReportSummaryPage() {
   const handleShareReport = async () => {
     const sharePayload = {
       title: 'V-Connect Report Summary',
-      text: `Report Summary - ${organizerReportSummaryMock.activityTitle}`,
+      text: `Report Summary - ${report?.activityTitle ?? 'Organizer activity'}`,
       url: window.location.href,
     };
 
@@ -113,50 +148,65 @@ export function OrganizerReportSummaryPage() {
             <h1>Report Summary</h1>
           </div>
           <div className="org-report-print-meta">
-            <span>{organizerReportSummaryMock.activityTitle}</span>
-            <strong>{organizerReportSummaryMock.durationValue}</strong>
+            <span>{report?.activityTitle ?? '--'}</span>
+            <strong>{report?.durationValue ?? '--'}</strong>
           </div>
         </header>
 
         {message && <p className="form-success">{message}</p>}
         {error && <p className="form-error">{error}</p>}
 
-        <div className="org-report-top-grid">
-          <ReportSummaryHeroCard
-            durationLabel={organizerReportSummaryMock.durationLabel}
-            durationValue={organizerReportSummaryMock.durationValue}
-            liveLabel={organizerReportSummaryMock.liveLabel}
-            metrics={organizerReportSummaryMock.miniMetrics}
-            summary={organizerReportSummaryMock.summary}
-            title={organizerReportSummaryMock.activityTitle}
-          />
+        {loading ? (
+          <section className="card org-report-lower-card org-report-empty-card">
+            <p className="muted">Loading report analytics...</p>
+          </section>
+        ) : report ? (
+          <>
+            <div className="org-report-top-grid">
+              <ReportSummaryHeroCard
+                durationLabel={report.durationLabel}
+                durationValue={report.durationValue}
+                liveLabel={report.liveLabel}
+                metrics={report.miniMetrics}
+                summary={report.summary}
+                title={report.activityTitle}
+              />
 
-          <ParticipationCountCard
-            rows={organizerReportSummaryMock.participationBreakdown}
-            total={organizerReportSummaryMock.participationTotal}
-            trend={organizerReportSummaryMock.participationTrend}
-            trendLabel={organizerReportSummaryMock.participationTrendLabel}
-          />
-        </div>
+              <ParticipationCountCard
+                rows={report.participationBreakdown}
+                total={report.participationTotal}
+                trend={report.participationTrend}
+                trendLabel={report.participationTrendLabel}
+              />
+            </div>
 
-        <div className="org-report-lower-grid">
-          <FeedbackOverviewCard
-            quote={organizerReportSummaryMock.feedbackQuote}
-            rating={organizerReportSummaryMock.feedbackRating}
-            sentiments={organizerReportSummaryMock.sentimentChips}
-          />
+            <div className="org-report-lower-grid">
+              <FeedbackOverviewCard
+                quote={report.feedbackQuote}
+                rating={report.feedbackRating}
+                sentiments={report.sentimentChips}
+              />
 
-          {filteredIssues.length > 0 ? (
-            <IssueHighlightsCard issues={filteredIssues} />
-          ) : (
-            <section className="card org-report-lower-card org-report-empty-card">
-              <div className="org-report-card-head">
-                <h3>Issue Highlights</h3>
-              </div>
-              <p className="muted">No issue highlights match the current search.</p>
-            </section>
-          )}
-        </div>
+              {filteredIssues.length > 0 ? (
+                <IssueHighlightsCard issues={filteredIssues} />
+              ) : (
+                <section className="card org-report-lower-card org-report-empty-card">
+                  <div className="org-report-card-head">
+                    <h3>Issue Highlights</h3>
+                  </div>
+                  <p className="muted">No issue highlights match the current search.</p>
+                </section>
+              )}
+            </div>
+          </>
+        ) : (
+          <section className="card org-report-lower-card org-report-empty-card">
+            <div className="org-report-card-head">
+              <h3>Report Summary</h3>
+            </div>
+            <p className="muted">No report data is available right now.</p>
+          </section>
+        )}
       </section>
     </OrganizerShell>
   );
