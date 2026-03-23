@@ -1,20 +1,3 @@
-import { StyleSheet } from 'react-native';
+import { CheckInScreen } from '@/src/features/check-in';
 
-import { ThemedText } from '@/src/shared/ui/themed-text';
-import { ThemedView } from '@/src/shared/ui/themed-view';
-
-export default function CheckInScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title">Check In</ThemedText>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default CheckInScreen;
