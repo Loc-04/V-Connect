@@ -42,7 +42,7 @@ const sidebarItems: SidebarItem[] = [
   { key: 'feedback', label: 'Feedback', to: '/volunteer/feedback', icon: MessageSquare },
   { key: 'notifications', label: 'Notifications', to: '/volunteer/notifications', icon: Bell },
   { key: 'profile', label: 'Profile', to: '/volunteer/profile-ui', icon: User },
-  { key: 'settings', label: 'Settings', to: '/volunteer/profile-ui', icon: Settings },
+  { key: 'settings', label: 'Settings', to: '/volunteer/profile-settings', icon: Settings },
 ];
 
 interface VolunteerSidebarProps {
