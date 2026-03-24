@@ -122,6 +122,20 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
     payload.status = 'draft';
   }
 
+  if (Object.hasOwn(body, 'provinceCode')) {
+    if (body.provinceCode != null && typeof body.provinceCode !== 'string') {
+      throw new Error('provinceCode must be a string or null.');
+    }
+    payload.province_code = body.provinceCode ? body.provinceCode.trim() : null;
+  }
+
+  if (Object.hasOwn(body, 'wardCode')) {
+    if (body.wardCode != null && typeof body.wardCode !== 'string') {
+      throw new Error('wardCode must be a string or null.');
+    }
+    payload.ward_code = body.wardCode ? body.wardCode.trim() : null;
+  }
+
   if (partial && Object.keys(payload).length === 0) {
     throw new Error('No valid activity fields provided.');
   }
