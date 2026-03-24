@@ -14,7 +14,10 @@ export const ROUTES = {
   },
   ORGANIZER: {
     HOME: '/(organizer)/(tabs)/home',
+    EVENTS: '/(organizer)/(tabs)/events',
     PROFILE: '/(organizer)/(tabs)/profile',
+    ACTIVITY_NEW: '/(organizer)/activity/new',
+    ACTIVITY_DETAIL: '/(organizer)/activity/[id]',
   },
 } as const;
 
