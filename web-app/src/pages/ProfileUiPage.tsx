@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Camera,
   Clock3,
+  Heart,
   Leaf,
   Medal,
   Pencil,
@@ -17,8 +18,6 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { ProfileEmptyState, ProfileSectionCard } from '../components/profile/ProfileSectionCard';
-import { ProfileInterestsCard } from '../components/profile/ProfileInterestsCard';
-import { ProfileSkillsCard } from '../components/profile/ProfileSkillsCard';
 import { Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { listParticipations } from '../lib/participations';
@@ -31,8 +30,13 @@ const fallbackAvatar =
   'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80';
 
 const availabilityLabels = ['Weekdays', 'Weekends', 'Evenings'] as const;
-
-type EditorPanel = 'profile' | 'availability';
+const settingsRoute = '/volunteer/profile-settings';
+const skillToneClassNames = [
+  'vol-profile-chip-green',
+  'vol-profile-chip-blue',
+  'vol-profile-chip-purple',
+  'vol-profile-chip-orange',
+] as const;
 
 interface AvatarFeedback {
   tone: 'error' | 'success';
@@ -43,7 +47,6 @@ interface EditFormState {
   fullName: string;
   phone: string;
   avatarUrl: string;
-  availability: VolunteerAvailability;
 }
 
 function formatMonthYear(value: string | null | undefined): string {
@@ -158,12 +161,11 @@ function computeWeekBars(availability: VolunteerAvailability) {
   });
 }
 
-function toEditForm(profile: UserRecord | null, volunteerProfile: VolunteerProfile | null): EditFormState {
+function toEditForm(profile: UserRecord | null): EditFormState {
   return {
     fullName: profile?.full_name ?? '',
     phone: profile?.phone ?? '',
     avatarUrl: profile?.avatar_url ?? '',
-    availability: volunteerProfile?.availability ?? { weekdays: false, weekends: false, evenings: false },
   };
 }
 
@@ -196,22 +198,6 @@ function buildReputationScore(totalHours: number, skillCount: number, completedC
   return Math.max(72, Math.min(100, Math.round(76 + totalHours / 5 + skillCount * 2 + completedCount * 1.5)));
 }
 
-function getEditorPanelMeta(panel: EditorPanel | null) {
-  switch (panel) {
-    case 'availability':
-      return {
-        title: 'Edit Availability',
-        description: 'Adjust your weekly schedule so organizers know when you can help.',
-      };
-    case 'profile':
-    default:
-      return {
-        title: 'Edit Profile',
-        description: 'Update the core details shown on your volunteer overview.',
-      };
-  }
-}
-
 export function ProfileUiPage() {
   const navigate = useNavigate();
   const { session, profile: authProfile, refreshProfile } = useAuth();
@@ -223,8 +209,8 @@ export function ProfileUiPage() {
   const [volunteerProfile, setVolunteerProfile] = useState<VolunteerProfile | null>(null);
   const [participations, setParticipations] = useState<ParticipationRecord[]>([]);
 
-  const [editorPanel, setEditorPanel] = useState<EditorPanel | null>(null);
-  const [form, setForm] = useState<EditFormState>(() => toEditForm(authProfile, null));
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [form, setForm] = useState<EditFormState>(() => toEditForm(authProfile));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
@@ -250,7 +236,7 @@ export function ProfileUiPage() {
       const response = await getProfileMe(accessToken);
       setProfile(response.profile);
       setVolunteerProfile(response.volunteerProfile);
-      setForm(toEditForm(response.profile, response.volunteerProfile));
+      setForm(toEditForm(response.profile));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load profile.';
       setLoadError(message);
@@ -356,16 +342,11 @@ export function ProfileUiPage() {
       ? `${upcomingPreview.hours.toFixed(1)} volunteer hours`
       : 'Schedule to be confirmed'
     : null;
-  const editorMeta = getEditorPanelMeta(editorPanel);
-
-  const openEditor = (panel: EditorPanel) => {
+  const handleCancelProfileEdit = () => {
+    setForm(toEditForm(profile));
     setSaveError(null);
     setSaveNotice(null);
-    setEditorPanel(panel);
-  };
-
-  const closeEditor = () => {
-    setEditorPanel(null);
+    setIsEditingProfile(false);
   };
 
   const handleAvatarButtonClick = () => {
@@ -413,24 +394,6 @@ export function ProfileUiPage() {
     });
   };
 
-  const handlePersistSkills = async (nextSkills: string[]) => {
-    if (!accessToken) {
-      throw new Error('No active session token.');
-    }
-
-    const updated = await patchProfileMe({ skills: nextSkills }, accessToken);
-    setVolunteerProfile(updated.volunteerProfile);
-  };
-
-  const handlePersistInterests = async (nextInterests: string[]) => {
-    if (!accessToken) {
-      throw new Error('No active session token.');
-    }
-
-    const updated = await patchProfileMe({ interests: nextInterests }, accessToken);
-    setVolunteerProfile(updated.volunteerProfile);
-  };
-
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -448,15 +411,14 @@ export function ProfileUiPage() {
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
         avatarUrl: form.avatarUrl.trim() ? form.avatarUrl.trim() : null,
-        availability: form.availability,
       };
 
       const updated = await patchProfileMe(payload, accessToken);
       setProfile(updated.profile);
       setVolunteerProfile(updated.volunteerProfile);
-      setForm(toEditForm(updated.profile, updated.volunteerProfile));
+      setForm(toEditForm(updated.profile));
       setSaveNotice('Profile updated successfully.');
-      setEditorPanel(null);
+      setIsEditingProfile(false);
       await refreshProfile();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save profile.';
@@ -469,13 +431,16 @@ export function ProfileUiPage() {
   return (
     <VolunteerShell
       activeNav="profile"
+      pageEyebrow="Account Overview"
       headerActions={
-        <Button className="vol-profile-ai-btn" type="button">
-          <Sparkles size={16} />
-          <span>Get AI Recommendations</span>
-        </Button>
+        <div className="vol-profile-page-actions">
+          <Button onClick={() => navigate(settingsRoute)} type="button" variant="secondary">
+            <Pencil size={14} />
+            <span>Manage Skills & Availability</span>
+          </Button>
+        </div>
       }
-      pageSubtitle="Manage your volunteer identity, skills, and schedule."
+      pageSubtitle="View your profile summary and manage preferences from the dedicated settings page."
       pageTitle="Profile Overview"
     >
       <section className="vol-profile-dashboard">
@@ -570,23 +535,25 @@ export function ProfileUiPage() {
                   <Button
                     className="vol-profile-edit-btn"
                     onClick={() => {
-                      if (editorPanel) {
-                        closeEditor();
+                      if (isEditingProfile) {
+                        handleCancelProfileEdit();
                         return;
                       }
-                      openEditor('profile');
+                      setSaveError(null);
+                      setSaveNotice(null);
+                      setIsEditingProfile(true);
                     }}
                     type="button"
                     variant="secondary"
                   >
                     <Pencil size={16} />
-                    <span>{editorPanel ? 'Close editor' : 'Edit Profile'}</span>
+                    <span>{isEditingProfile ? 'Cancel edit' : 'Edit Profile'}</span>
                   </Button>
                 </div>
               </div>
             </Card>
 
-            {editorPanel && (
+            {isEditingProfile && (
               <Card as="article" className="vol-profile-card vol-profile-edit-card">
                 <div className="vol-profile-section-head">
                   <div className="vol-profile-section-title">
@@ -594,13 +561,15 @@ export function ProfileUiPage() {
                       <Pencil size={16} />
                     </span>
                     <div>
-                      <h3>{editorMeta.title}</h3>
-                      <p className="vol-profile-section-description">{editorMeta.description}</p>
+                      <h3>Edit Profile</h3>
+                      <p className="vol-profile-section-description">
+                        Update your basic profile details shown on this overview page.
+                      </p>
                     </div>
                   </div>
 
-                  <Button onClick={closeEditor} type="button" variant="secondary">
-                    Close
+                  <Button onClick={handleCancelProfileEdit} type="button" variant="secondary">
+                    Cancel
                   </Button>
                 </div>
 
@@ -608,94 +577,43 @@ export function ProfileUiPage() {
                 {saveNotice && <p className="form-success">{saveNotice}</p>}
 
                 <form className="vol-profile-edit-form" onSubmit={handleSave}>
-                  {editorPanel === 'profile' && (
-                    <div className="vol-profile-form-grid">
-                      <div>
-                        <label className="field-label" htmlFor="editFullName">
-                          Full name
-                        </label>
-                        <Input
-                          id="editFullName"
-                          onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
-                          required
-                          value={form.fullName}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="field-label" htmlFor="editPhone">
-                          Phone
-                        </label>
-                        <Input
-                          id="editPhone"
-                          onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                          required
-                          value={form.phone}
-                        />
-                      </div>
-
-                      <div className="vol-profile-form-span">
-                        <label className="field-label" htmlFor="editAvatarUrl">
-                          Avatar URL
-                        </label>
-                        <Input
-                          id="editAvatarUrl"
-                          onChange={(event) => setForm((current) => ({ ...current, avatarUrl: event.target.value }))}
-                          placeholder="https://..."
-                          value={form.avatarUrl}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {editorPanel === 'availability' && (
+                  <div className="vol-profile-form-grid">
                     <div>
-                      <p className="field-label">Availability</p>
-                      <div className="vol-profile-toggle-row">
-                        <label className="vol-profile-toggle">
-                          <input
-                            checked={form.availability.weekdays}
-                            onChange={(event) =>
-                              setForm((current) => ({
-                                ...current,
-                                availability: { ...current.availability, weekdays: event.target.checked },
-                              }))
-                            }
-                            type="checkbox"
-                          />
-                          <span>Weekdays</span>
-                        </label>
-
-                        <label className="vol-profile-toggle">
-                          <input
-                            checked={form.availability.weekends}
-                            onChange={(event) =>
-                              setForm((current) => ({
-                                ...current,
-                                availability: { ...current.availability, weekends: event.target.checked },
-                              }))
-                            }
-                            type="checkbox"
-                          />
-                          <span>Weekends</span>
-                        </label>
-
-                        <label className="vol-profile-toggle">
-                          <input
-                            checked={form.availability.evenings}
-                            onChange={(event) =>
-                              setForm((current) => ({
-                                ...current,
-                                availability: { ...current.availability, evenings: event.target.checked },
-                              }))
-                            }
-                            type="checkbox"
-                          />
-                          <span>Evenings</span>
-                        </label>
-                      </div>
+                      <label className="field-label" htmlFor="editFullName">
+                        Full name
+                      </label>
+                      <Input
+                        id="editFullName"
+                        onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
+                        required
+                        value={form.fullName}
+                      />
                     </div>
-                  )}
+
+                    <div>
+                      <label className="field-label" htmlFor="editPhone">
+                        Phone
+                      </label>
+                      <Input
+                        id="editPhone"
+                        onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                        required
+                        value={form.phone}
+                      />
+                    </div>
+
+                    <div className="vol-profile-form-span">
+                      <label className="field-label" htmlFor="editAvatarUrl">
+                        Avatar URL
+                      </label>
+                      <Input
+                        id="editAvatarUrl"
+                        onChange={(event) => setForm((current) => ({ ...current, avatarUrl: event.target.value }))}
+                        placeholder="https://..."
+                        value={form.avatarUrl}
+                      />
+                    </div>
+                  </div>
 
                   <div className="vol-profile-form-actions">
                     <Button disabled={saving} type="submit">
@@ -703,7 +621,7 @@ export function ProfileUiPage() {
                     </Button>
                     <Button
                       onClick={() => {
-                        setForm(toEditForm(profile, volunteerProfile));
+                        setForm(toEditForm(profile));
                         setSaveError(null);
                         setSaveNotice(null);
                       }}
@@ -719,9 +637,69 @@ export function ProfileUiPage() {
 
             <div className="vol-profile-content-grid">
               <div className="vol-profile-main-column">
-                <ProfileSkillsCard onPersist={handlePersistSkills} skills={skills} userId={profile?.id ?? null} />
+                <ProfileSectionCard
+                  action={
+                    <button className="vol-profile-text-link" onClick={() => navigate(settingsRoute)} type="button">
+                      Manage
+                    </button>
+                  }
+                  icon={Sparkles}
+                  title="Skills & Expertise"
+                >
+                  {skills.length > 0 ? (
+                    <>
+                      <p className="vol-profile-section-description">
+                        Skills are managed in the dedicated preferences page.
+                      </p>
+                      <div className="vol-profile-chips">
+                        {skills.map((skill, index) => (
+                          <span
+                            className={`vol-profile-chip ${skillToneClassNames[index % skillToneClassNames.length]}`}
+                            key={skill}
+                          >
+                            <span className="vol-profile-chip-dot" aria-hidden="true" />
+                            <span>{skill}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <ProfileEmptyState
+                      message="No skills added yet. Add your skills in the settings page."
+                      title="No skills added yet"
+                    />
+                  )}
+                </ProfileSectionCard>
 
-                <ProfileInterestsCard interests={interests} onPersist={handlePersistInterests} />
+                <ProfileSectionCard
+                  action={
+                    <button className="vol-profile-text-link" onClick={() => navigate(settingsRoute)} type="button">
+                      Manage
+                    </button>
+                  }
+                  icon={Heart}
+                  title="Interests & Causes"
+                >
+                  {interests.length > 0 ? (
+                    <>
+                      <p className="vol-profile-section-description">
+                        Interests are managed in the dedicated preferences page.
+                      </p>
+                      <div className="vol-profile-interest-list">
+                        {interests.map((interest) => (
+                          <span className="vol-profile-interest-chip" key={interest}>
+                            <span>{interest}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <ProfileEmptyState
+                      message="No interests set yet. Add your interests in the settings page."
+                      title="No interests set yet"
+                    />
+                  )}
+                </ProfileSectionCard>
 
                 <ProfileSectionCard
                   action={
@@ -786,7 +764,7 @@ export function ProfileUiPage() {
               <div className="vol-profile-side-column">
                 <ProfileSectionCard
                   action={
-                    <button className="vol-profile-card-action" onClick={() => openEditor('availability')} type="button">
+                    <button className="vol-profile-card-action" onClick={() => navigate(settingsRoute)} type="button">
                       <Pencil size={14} />
                       <span>{hasAvailability ? 'Edit schedule' : 'Set schedule'}</span>
                     </button>
@@ -829,11 +807,15 @@ export function ProfileUiPage() {
                   ) : (
                     <ProfileEmptyState
                       action={
-                        <button className="vol-profile-card-action vol-profile-card-action-ghost" onClick={() => openEditor('availability')} type="button">
-                          Set availability
+                        <button
+                          className="vol-profile-card-action vol-profile-card-action-ghost"
+                          onClick={() => navigate(settingsRoute)}
+                          type="button"
+                        >
+                          Edit availability
                         </button>
                       }
-                      message="Add your weekly availability so coordinators know when you can help."
+                      message="Add your weekly availability in settings so coordinators know when you can help."
                       title="No availability set"
                     />
                   )}

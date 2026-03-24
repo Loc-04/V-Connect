@@ -1,14 +1,20 @@
+import { AlertTriangle, Download, MessageSquare, RefreshCw, Search, Star } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardList, MessageSquare, RefreshCw, Star } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { Badge, Button, Card, Input, Select } from '../components/ui';
+import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listFeedbacks } from '../lib/feedback';
 import { listParticipations } from '../lib/participations';
 import type { FeedbackRecord } from '../types/feedback';
 import type { ParticipationRecord } from '../types/participation';
 import './AdminFeedbackPage.css';
 
-interface AdminFeedbackItem {
+type PeriodFilter = '30' | '90' | 'all';
+type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
+type FeedbackSentiment = 'positive' | 'neutral' | 'negative';
+
+interface FeedbackViewModel {
   id: string;
   participationId: string;
   activityTitle: string;
@@ -17,6 +23,9 @@ interface AdminFeedbackItem {
   rating: number;
   comment: string;
   submittedAt: string | null;
+  categoryLabel: string;
+  sentiment: FeedbackSentiment;
+  flaggedIssue: boolean;
 }
 
 function formatDateLabel(value: string | null): string {
@@ -47,48 +56,136 @@ function formatRoleLabel(role: string | null | undefined): string {
   return 'Volunteer';
 }
 
-function buildFeedbackItems(
-  feedbacks: FeedbackRecord[],
-  participations: ParticipationRecord[]
-): AdminFeedbackItem[] {
+function toCategoryLabel(activityTitle: string) {
+  const lower = activityTitle.toLowerCase();
+  if (lower.includes('garden') || lower.includes('environment')) {
+    return 'Community Garden';
+  }
+  if (lower.includes('youth') || lower.includes('mentor') || lower.includes('student')) {
+    return 'Youth Mentorship';
+  }
+  if (lower.includes('outreach') || lower.includes('senior')) {
+    return 'Senior Outreach';
+  }
+  return 'Community Program';
+}
+
+function toSentiment(rating: number): FeedbackSentiment {
+  if (rating >= 4) {
+    return 'positive';
+  }
+  if (rating <= 2) {
+    return 'negative';
+  }
+  return 'neutral';
+}
+
+function toFlaggedIssue(rating: number, comment: string) {
+  if (rating <= 2) {
+    return true;
+  }
+
+  const text = comment.toLowerCase();
+  return (
+    text.includes('issue') ||
+    text.includes('problem') ||
+    text.includes('delay') ||
+    text.includes('late') ||
+    text.includes('error') ||
+    text.includes('bottleneck')
+  );
+}
+
+function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: ParticipationRecord[]): FeedbackViewModel[] {
   const participationById = new Map(
     participations.map((participation) => [participation.participationId || participation.id, participation])
   );
 
   return feedbacks.map((feedback) => {
     const participation = participationById.get(feedback.participation_id);
+    const rating = Number(feedback.rating || 0);
+    const comment = feedback.comment?.trim() || 'No written feedback provided.';
+    const activityTitle = participation?.activityName ?? `Participation ${feedback.participation_id.slice(0, 8)}`;
 
     return {
       id: feedback.id,
       participationId: feedback.participation_id,
-      activityTitle: participation?.activityName ?? `Participation ${feedback.participation_id.slice(0, 8)}`,
+      activityTitle,
       volunteerName: participation?.volunteer?.full_name?.trim() || 'Volunteer',
       volunteerRole: formatRoleLabel(participation?.volunteer?.role),
-      rating: Number(feedback.rating || 0),
-      comment: feedback.comment?.trim() || 'No written feedback provided.',
+      rating,
+      comment,
       submittedAt: feedback.created_at ?? null,
+      categoryLabel: toCategoryLabel(activityTitle),
+      sentiment: toSentiment(rating),
+      flaggedIssue: toFlaggedIssue(rating, comment),
     };
   });
 }
 
 function RatingStars({ rating }: { rating: number }) {
   return (
-    <div className="admin-feedback-stars" aria-label={`Rating ${rating} out of 5`}>
+    <div className="feedback-review-stars" aria-label={`Rating ${rating} out of 5`}>
       {Array.from({ length: 5 }, (_, index) => {
         const active = index < Math.round(rating);
-        return <Star className={active ? 'admin-feedback-star is-active' : 'admin-feedback-star'} key={`${rating}-${index}`} />;
+        return <Star className={active ? 'feedback-review-star is-active' : 'feedback-review-star'} key={`${rating}-${index}`} />;
       })}
     </div>
   );
 }
 
+function buildExportCsv(items: FeedbackViewModel[]) {
+  const header = ['activity', 'volunteer', 'role', 'rating', 'sentiment', 'flagged_issue', 'submitted_at', 'comment'];
+  const rows = items.map((item) => [
+    item.activityTitle,
+    item.volunteerName,
+    item.volunteerRole,
+    String(item.rating),
+    item.sentiment,
+    String(item.flaggedIssue),
+    item.submittedAt ?? '',
+    item.comment.replace(/\r?\n/g, ' '),
+  ]);
+
+  return [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+}
+
+function withinPeriod(dateString: string | null, periodFilter: PeriodFilter) {
+  if (periodFilter === 'all') {
+    return true;
+  }
+
+  if (!dateString) {
+    return false;
+  }
+
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  const now = Date.now();
+  const days = periodFilter === '30' ? 30 : 90;
+  return now - parsed.getTime() <= days * 24 * 60 * 60 * 1000;
+}
+
 export function AdminFeedbackPage() {
   const { session, profile } = useAuth();
-  const [items, setItems] = useState<AdminFeedbackItem[]>([]);
+  const role = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
+  const isAdmin = role === 'admin';
+  const isOrganizer = role === 'organizer';
+
+  const [items, setItems] = useState<FeedbackViewModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const isAdmin = typeof profile?.role === 'string' && profile.role.trim().toLowerCase() === 'admin';
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
+  const [activityFilter, setActivityFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('30');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
 
   const loadFeedback = useCallback(async () => {
     if (!session?.access_token) {
@@ -101,9 +198,10 @@ export function AdminFeedbackPage() {
     setError(null);
 
     try {
+      const numericRating = ratingFilter === 'all' ? undefined : Number(ratingFilter);
       const [feedbacks, participations] = await Promise.all([
-        listFeedbacks({ accessToken: session.access_token, limit: 50 }),
-        listParticipations({ accessToken: session.access_token, limit: 300 }),
+        listFeedbacks({ accessToken: session.access_token, limit: 240, rating: numericRating }),
+        listParticipations({ accessToken: session.access_token, limit: 500 }),
       ]);
 
       setItems(buildFeedbackItems(feedbacks, participations));
@@ -114,110 +212,297 @@ export function AdminFeedbackPage() {
     } finally {
       setLoading(false);
     }
-  }, [session?.access_token]);
+  }, [ratingFilter, session?.access_token]);
 
   useEffect(() => {
     void loadFeedback();
   }, [loadFeedback]);
 
+  const activityOptions = useMemo(
+    () => Array.from(new Set(items.map((item) => item.activityTitle))).sort((left, right) => left.localeCompare(right)),
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return items.filter((item) => {
+      if (activityFilter !== 'all' && item.activityTitle !== activityFilter) {
+        return false;
+      }
+
+      if (!withinPeriod(item.submittedAt, periodFilter)) {
+        return false;
+      }
+
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      return (
+        item.activityTitle.toLowerCase().includes(normalizedSearch) ||
+        item.volunteerName.toLowerCase().includes(normalizedSearch) ||
+        item.comment.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [activityFilter, items, periodFilter, searchTerm]);
+
   const metrics = useMemo(() => {
-    const total = items.length;
-    const averageRating = total === 0 ? 0 : items.reduce((sum, item) => sum + item.rating, 0) / total;
-    const positiveCount = items.filter((item) => item.rating >= 4).length;
+    const total = filteredItems.length;
+    const averageRating = total === 0 ? 0 : filteredItems.reduce((sum, item) => sum + item.rating, 0) / total;
+    const positive = filteredItems.filter((item) => item.sentiment === 'positive').length;
+    const neutral = filteredItems.filter((item) => item.sentiment === 'neutral').length;
+    const negative = filteredItems.filter((item) => item.sentiment === 'negative').length;
 
     return {
       total,
       averageRating,
-      positiveCount,
+      positive,
+      neutral,
+      negative,
     };
-  }, [items]);
+  }, [filteredItems]);
 
-  return (
-    <section className="admin-feedback-page">
-      <p className="users-caption">{isAdmin ? 'Admin feedback oversight' : 'Organizer feedback overview'}</p>
+  const selectedFeedback = useMemo(
+    () => filteredItems.find((item) => item.id === selectedFeedbackId) ?? null,
+    [filteredItems, selectedFeedbackId]
+  );
 
-      <div className="users-page-head admin-feedback-head">
-        <div>
-          <h2>{isAdmin ? 'Feedback' : 'Activity Feedback'}</h2>
-          <p className="muted">
-            {isAdmin
-              ? 'Review volunteer feedback submissions without leaving the admin workspace.'
-              : 'Review volunteer feedback for activities you organize.'}
-          </p>
+  const handleExportCsv = () => {
+    const csvContent = buildExportCsv(filteredItems);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'feedback-review-export.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const reviewBody = (
+    <section className="feedback-review-page">
+      <Card as="section" className="feedback-review-filter-shell">
+        <div className="feedback-review-filter-row">
+          <label className="feedback-review-search" htmlFor="feedback-review-search">
+            <Search size={14} />
+            <Input
+              id="feedback-review-search"
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search feedback records..."
+              value={searchTerm}
+            />
+          </label>
+
+          <Select onChange={(event) => setActivityFilter(event.target.value)} sizeMode="small" value={activityFilter}>
+            <option value="all">All Activities</option>
+            {activityOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </Select>
+
+          <Select onChange={(event) => setRatingFilter(event.target.value as RatingFilter)} sizeMode="small" value={ratingFilter}>
+            <option value="all">All Ratings</option>
+            <option value="5">5 Stars</option>
+            <option value="4">4 Stars</option>
+            <option value="3">3 Stars</option>
+            <option value="2">2 Stars</option>
+            <option value="1">1 Star</option>
+          </Select>
+
+          <Select onChange={(event) => setPeriodFilter(event.target.value as PeriodFilter)} sizeMode="small" value={periodFilter}>
+            <option value="30">Last 30 Days</option>
+            <option value="90">Last 90 Days</option>
+            <option value="all">All Time</option>
+          </Select>
+
+          <Button onClick={() => void loadFeedback()} type="button" variant="secondary">
+            <RefreshCw size={14} />
+            <span>Refresh</span>
+          </Button>
+
+          <Button disabled={filteredItems.length === 0} onClick={handleExportCsv} type="button">
+            <Download size={14} />
+            <span>Export CSV</span>
+          </Button>
         </div>
-        <button className="secondary-btn dashboard-refresh-btn" onClick={() => void loadFeedback()} type="button">
-          <RefreshCw className="admin-feedback-refresh-icon" />
-          Refresh
-        </button>
-      </div>
+      </Card>
 
-      {lastSync && <p className="muted dashboard-last-sync">Last sync: {lastSync}</p>}
-
-      <div className="dashboard-metric-grid admin-feedback-metric-grid">
-        <article className="metric-card dashboard-metric-card admin-feedback-metric-card">
-          <span className="admin-feedback-metric-icon">
-            <MessageSquare className="admin-feedback-metric-icon-svg" />
-          </span>
-          <p>Total Feedback</p>
-          <strong>{metrics.total}</strong>
-        </article>
-        <article className="metric-card dashboard-metric-card admin-feedback-metric-card">
-          <span className="admin-feedback-metric-icon is-highlight">
-            <Star className="admin-feedback-metric-icon-svg" />
-          </span>
-          <p>Average Rating</p>
+      <div className="feedback-review-metrics">
+        <Card as="article" className="feedback-review-metric-card">
+          <p>Average Satisfaction</p>
           <strong>{metrics.averageRating.toFixed(1)}</strong>
-        </article>
-        <article className="metric-card dashboard-metric-card admin-feedback-metric-card">
-          <span className="admin-feedback-metric-icon is-soft">
-            <ClipboardList className="admin-feedback-metric-icon-svg" />
-          </span>
-          <p>Positive Reviews</p>
-          <strong>{metrics.positiveCount}</strong>
-        </article>
+          <RatingStars rating={metrics.averageRating} />
+        </Card>
+
+        <Card as="article" className="feedback-review-metric-card">
+          <p>Total Submissions</p>
+          <strong>{metrics.total}</strong>
+          <small>Filtered feedback entries</small>
+        </Card>
+
+        <Card as="article" className="feedback-review-metric-card">
+          <p>Sentiment Distribution</p>
+          <div className="feedback-review-sentiment-bars">
+            <div className="feedback-review-sentiment-row">
+              <span>Positive</span>
+              <strong>{metrics.positive}</strong>
+            </div>
+            <div className="feedback-review-sentiment-row">
+              <span>Neutral</span>
+              <strong>{metrics.neutral}</strong>
+            </div>
+            <div className="feedback-review-sentiment-row">
+              <span>Negative</span>
+              <strong>{metrics.negative}</strong>
+            </div>
+          </div>
+        </Card>
       </div>
 
-      <section className="users-table-card admin-feedback-panel">
+      <Card as="section" className="feedback-review-list-shell">
         {error && <p className="form-error">{error}</p>}
+        {lastSync && <p className="muted feedback-review-sync">Last sync: {lastSync}</p>}
 
         {loading ? (
           <p className="muted">Loading feedback...</p>
-        ) : items.length === 0 ? (
-          <div className="admin-feedback-empty">
-            <ClipboardList className="admin-feedback-empty-icon" />
-            <div>
-              <h3>No feedback available</h3>
-              <p className="muted">Volunteer feedback will appear here after submissions are created.</p>
-            </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="feedback-review-empty">
+            <MessageSquare size={18} />
+            <p>No feedback records match the current filters.</p>
           </div>
         ) : (
-          <div className="admin-feedback-list">
-            {items.map((item) => (
-              <article className="admin-feedback-item" key={item.id}>
-                <div className="admin-feedback-item-head">
-                  <div>
-                    <h3>{item.activityTitle}</h3>
-                    <p className="muted">
-                      {item.volunteerName} - {item.volunteerRole}
-                    </p>
+          <div className="feedback-review-list">
+            {filteredItems.map((item) => (
+              <article className="feedback-review-item" key={item.id}>
+                <div className="feedback-review-item-head">
+                  <div className="feedback-review-volunteer">
+                    <span className="feedback-review-avatar">{item.volunteerName.charAt(0).toUpperCase()}</span>
+                    <div>
+                      <strong>{item.volunteerName}</strong>
+                      <p>{item.activityTitle}</p>
+                    </div>
                   </div>
-                  <span className="admin-feedback-date">{formatDateLabel(item.submittedAt)}</span>
+                  <small>{formatDateLabel(item.submittedAt)}</small>
                 </div>
 
-                <div className="admin-feedback-item-meta">
-                  <span className="admin-feedback-rating-pill">
-                    <RatingStars rating={item.rating} />
-                    <strong>{item.rating.toFixed(1)}</strong>
-                  </span>
-                  <span className="admin-feedback-participation">Participation {item.participationId.slice(0, 8)}</span>
+                <div className="feedback-review-item-meta">
+                  <Badge tone="info">{item.categoryLabel}</Badge>
+                  <RatingStars rating={item.rating} />
+                  {item.flaggedIssue && (
+                    <Badge tone="danger">
+                      <AlertTriangle size={12} />
+                      <span>Needs Attention</span>
+                    </Badge>
+                  )}
                 </div>
 
-                <p className="admin-feedback-comment">{item.comment}</p>
+                <p className="feedback-review-comment">{item.comment}</p>
+
+                <div className="feedback-review-item-actions">
+                  <Badge tone={item.sentiment === 'positive' ? 'success' : item.sentiment === 'neutral' ? 'info' : 'danger'}>
+                    {item.sentiment}
+                  </Badge>
+                  <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
+                    View Detail
+                  </Button>
+                </div>
               </article>
             ))}
           </div>
         )}
-      </section>
+      </Card>
+
+      {selectedFeedback && (
+        <div className="feedback-review-modal-backdrop" role="presentation" onClick={() => setSelectedFeedbackId(null)}>
+          <Card
+            as="section"
+            className="feedback-review-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="feedback-review-modal-head">
+              <h3>Feedback Detail</h3>
+              <Button onClick={() => setSelectedFeedbackId(null)} type="button" variant="secondary">
+                Close
+              </Button>
+            </div>
+
+            <div className="feedback-review-modal-grid">
+              <div>
+                <small>Volunteer</small>
+                <p>{selectedFeedback.volunteerName}</p>
+              </div>
+              <div>
+                <small>Role</small>
+                <p>{selectedFeedback.volunteerRole}</p>
+              </div>
+              <div>
+                <small>Activity</small>
+                <p>{selectedFeedback.activityTitle}</p>
+              </div>
+              <div>
+                <small>Submitted</small>
+                <p>{formatDateLabel(selectedFeedback.submittedAt)}</p>
+              </div>
+            </div>
+
+            <div className="feedback-review-modal-rating">
+              <RatingStars rating={selectedFeedback.rating} />
+              <strong>{selectedFeedback.rating.toFixed(1)} / 5.0</strong>
+            </div>
+
+            <p className="feedback-review-modal-comment">{selectedFeedback.comment}</p>
+
+            <div className="feedback-review-modal-foot">
+              <Badge tone="info">{selectedFeedback.categoryLabel}</Badge>
+              <Badge
+                tone={
+                  selectedFeedback.sentiment === 'positive'
+                    ? 'success'
+                    : selectedFeedback.sentiment === 'neutral'
+                      ? 'info'
+                      : 'danger'
+                }
+              >
+                {selectedFeedback.sentiment}
+              </Badge>
+              {selectedFeedback.flaggedIssue && <Badge tone="danger">Flagged from current data</Badge>}
+            </div>
+          </Card>
+        </div>
+      )}
+    </section>
+  );
+
+  if (isOrganizer) {
+    return (
+      <OrganizerShell
+        activeNav="reports"
+        pageContext={<span className="feedback-review-context">Performance Insights</span>}
+        pageSubtitle="Review volunteer feedback and activity ratings to optimize impact."
+        pageTitle="Feedback Review"
+        searchPlaceholder="Search feedback..."
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+      >
+        {reviewBody}
+      </OrganizerShell>
+    );
+  }
+
+  return (
+    <section className="admin-feedback-page">
+      <p className="users-caption">{isAdmin ? 'Admin feedback oversight' : 'Feedback overview'}</p>
+      <div className="users-page-head">
+        <div>
+          <h2>Feedback Review</h2>
+          <p className="muted">Review volunteer feedback and activity ratings to optimize impact.</p>
+        </div>
+      </div>
+      {reviewBody}
     </section>
   );
 }

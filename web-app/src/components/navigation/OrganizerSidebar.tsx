@@ -35,7 +35,7 @@ const menuItems: SidebarItem[] = [
   { key: 'volunteers', label: 'Volunteers', icon: Users, to: '/organizer/registrations' },
   { key: 'notifications', label: 'Notifications', icon: Bell, to: '/organizer/notifications' },
   { key: 'recommendations', label: 'Recommendations', icon: Sparkles, to: '/organizer/recommendations' },
-  { key: 'assignments', label: 'Assignments', icon: ClipboardList },
+  { key: 'assignments', label: 'Check-ins', icon: ClipboardList, to: '/organizer/checkins' },
   { key: 'reports', label: 'Reports', icon: BarChart3, to: '/organizer/reports' },
 ];
 
