@@ -4,6 +4,8 @@ export default function OrganizerLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="activity/new" options={{ headerShown: true, title: 'Create Activity' }} />
+      <Stack.Screen name="activity/[id]" options={{ headerShown: true, title: 'Edit Activity' }} />
     </Stack>
   );
 }
