@@ -262,7 +262,7 @@ router.delete('/activities/:id', requireAuth, async (req, res) => {
 
   const registrationsToCancel = (registrations ?? []).filter((registration) => {
     const status = String(registration.status ?? '').toLowerCase();
-    return status === 'pending' || status === 'approved';
+    return status === 'assigned' || status === 'pending' || status === 'approved';
   });
 
   if (registrationsToCancel.length > 0) {

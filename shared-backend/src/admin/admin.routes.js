@@ -3,8 +3,123 @@ import { userColumns, validRoles } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAdmin, requireAuth } from '../auth/auth.middleware.js';
 import { countRows, getDistribution } from './admin.service.js';
+import { isUuid } from '../common/utils/validators.js';
+import { normalizeNotificationPayload, normalizeNotificationUpdatePayload } from '../notifications/notifications.validation.js';
+import {
+  createNotificationRecord,
+  deleteNotificationRecord,
+  listNotificationsForAdmin,
+  updateNotificationRecord,
+} from '../notifications/notifications.service.js';
 
 const router = Router();
+
+router.get('/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
+  const requestedLimit = Number(req.query.limit ?? 100);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 300)
+    : 100;
+  const unreadOnly = String(req.query.unread ?? 'false').toLowerCase() === 'true';
+  const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+  const type = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : '';
+
+  if (userId && !isUuid(userId)) {
+    res.status(400).json({ message: 'userId must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    const notifications = await listNotificationsForAdmin({
+      limit,
+      unreadOnly,
+      userId,
+      type,
+    });
+    res.json({ notifications });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load admin notifications.';
+    res.status(500).json({ message });
+  }
+});
+
+router.post('/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
+  let payload;
+  try {
+    payload = normalizeNotificationPayload(req.body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  if (!payload.userId || !isUuid(payload.userId)) {
+    res.status(400).json({ message: 'userId is required and must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    const notification = await createNotificationRecord({
+      userId: payload.userId,
+      title: payload.title,
+      message: payload.message,
+      type: payload.type,
+      data: payload.data,
+    });
+    res.status(201).json({ notification });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create admin notification.';
+    res.status(500).json({ message });
+  }
+});
+
+router.put('/admin/notifications/:id', requireAuth, requireAdmin, async (req, res) => {
+  const notificationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!isUuid(notificationId)) {
+    res.status(400).json({ message: 'Notification id must be a valid UUID.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeNotificationUpdatePayload(req.body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  if (Object.hasOwn(payload, 'userId') && !isUuid(payload.userId)) {
+    res.status(400).json({ message: 'userId must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    const notification = await updateNotificationRecord({
+      notificationId,
+      updates: payload,
+    });
+    res.json({ notification });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update admin notification.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.delete('/admin/notifications/:id', requireAuth, requireAdmin, async (req, res) => {
+  const notificationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!isUuid(notificationId)) {
+    res.status(400).json({ message: 'Notification id must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    const notification = await deleteNotificationRecord(notificationId);
+    res.json({ success: true, notification });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete admin notification.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
 
 router.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
   const roleFilter = typeof req.query.role === 'string' ? req.query.role : 'all';

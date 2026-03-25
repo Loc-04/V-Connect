@@ -34,6 +34,9 @@ shared-backend listening on http://localhost:3000
 - `POST /auth/reset-password`
 - `GET /auth/me`
 - `POST /auth/register-profile`
+- `GET /profile/skills-availability`
+- `PUT /profile/skills-availability`
+- `GET /availability-slots`
 - `GET /activities`
 - `GET /activities/:id`
 - `POST /activities`
@@ -50,12 +53,73 @@ shared-backend listening on http://localhost:3000
 - `PUT /registrations/:id/reject`
 - `GET /recommendations/:userId`
 - `GET /recommendations/activity/:id`
+- `POST /recommendations/activity/:id/assignments`
+- `PUT /recommendations/assignments/:id/status`
+- `DELETE /recommendations/assignments/:id`
 - `GET /feedback`
 - `POST /feedback`
 - `GET /admin/users`
+- `GET /admin/notifications`
+- `POST /admin/notifications`
+- `PUT /admin/notifications/:id`
+- `DELETE /admin/notifications/:id`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
 - `GET /organizer/reports/summary`
+
+### Sprint 3 Volunteer Skills & Availability API
+
+- `GET /profile/skills-availability`
+  - Volunteer only.
+  - Returns the authenticated volunteer's `skills`, `interests`, `availability`, and `updatedAt`.
+- `PUT /profile/skills-availability`
+  - Volunteer only.
+  - Body supports:
+
+```json
+{
+  "skills": ["Teamwork", "First Aid"],
+  "interests": ["Football", "Community Events"],
+  "availability": {
+    "weekdays": true,
+    "weekends": false,
+    "evenings": true
+  }
+}
+```
+
+  - At least one field is required: `skills`, `interests`, or `availability`.
+- `GET /availability-slots`
+  - Authenticated users.
+  - Returns supported availability slot metadata and the display grid used by the volunteer settings UI.
+
+### Sprint 3 Admin Notification Management API
+
+- `GET /admin/notifications`
+  - Admin only.
+  - Query: `limit=1..300`, `unread=true|false`, `userId=<uuid>`, `type=<string>`
+- `POST /admin/notifications`
+  - Admin only.
+  - Body:
+
+```json
+{
+  "userId": "<target_user_uuid>",
+  "title": "System Update",
+  "message": "The new attendance workflow is now live.",
+  "type": "info",
+  "data": {
+    "source": "admin-panel"
+  }
+}
+```
+
+- `PUT /admin/notifications/:id`
+  - Admin only.
+  - Supports updating `userId`, `title`, `message`, `type`, `data`, and `readAt`.
+- `DELETE /admin/notifications/:id`
+  - Admin only.
+  - Deletes a single notification by id.
 
 ### Attendance / Check-in API
 
@@ -104,6 +168,41 @@ shared-backend listening on http://localhost:3000
   - Organizer/admin only.
   - Returns recommended volunteers for a specific activity.
   - Query: `limit=1..50`
+- `POST /recommendations/activity/:id/assignments`
+  - Organizer/admin only.
+  - Body:
+
+```json
+{
+  "volunteerId": "<volunteer_uuid>"
+}
+```
+
+  - Creates or reopens an assignment using `activity_participations` with status `assigned`.
+- `PUT /recommendations/assignments/:id/status`
+  - Organizer/admin only.
+  - Body:
+
+```json
+{
+  "status": "approved"
+}
+```
+
+  - Allowed statuses: `assigned`, `approved`, `rejected`, `cancelled`
+- `DELETE /recommendations/assignments/:id`
+  - Organizer/admin only.
+  - Logical unassign. Sets status to `cancelled`.
+
+If your Supabase database still rejects the `assigned` status, run:
+
+- `shared-backend/scripts/allowAssignedParticipationStatus.sql`
+
+Or apply it from the terminal after setting `SUPABASE_DB_URL` in `shared-backend/.env`:
+
+```bash
+npm run db:apply -- --file=scripts/allowAssignedParticipationStatus.sql
+```
 
 ### Feedback API
 
@@ -183,6 +282,7 @@ Get-Process node | Stop-Process -Force
 - `PASSWORD_RESET_REDIRECT_TO` (optional, default `${FRONTEND_ORIGIN}/reset-password`)
 - `SUPABASE_URL` (or `EXPO_PUBLIC_SUPABASE_URL`)
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_DB_URL` (required only for local SQL apply scripts such as status/notification table migrations)
 
 ### Password Reset API
 

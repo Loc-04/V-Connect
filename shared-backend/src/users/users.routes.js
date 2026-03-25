@@ -6,6 +6,113 @@ import { supabaseAdmin } from '../database/supabase.js';
 import { getVolunteerProfileByUserId } from './users.service.js';
 
 const router = Router();
+const availabilitySlots = [
+  {
+    key: 'weekdays',
+    label: 'Weekdays',
+    description: 'Available on Monday to Friday daytime shifts.',
+    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+    timeWindows: ['Morning', 'Afternoon'],
+  },
+  {
+    key: 'weekends',
+    label: 'Weekends',
+    description: 'Available on Saturday and Sunday daytime shifts.',
+    days: ['Sat', 'Sun'],
+    timeWindows: ['Morning', 'Afternoon'],
+  },
+  {
+    key: 'evenings',
+    label: 'Evenings',
+    description: 'Available for late-day or after-hours support.',
+    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    timeWindows: ['Evening'],
+  },
+];
+
+function normalizeAvailability(availability) {
+  return {
+    weekdays: availability?.weekdays ?? false,
+    weekends: availability?.weekends ?? false,
+    evenings: availability?.evenings ?? false,
+  };
+}
+
+function normalizeAvailabilityInput(value) {
+  if (!isPlainObject(value)) {
+    throw new Error('availability must be an object.');
+  }
+
+  const availabilityKeys = ['weekdays', 'weekends', 'evenings'];
+  for (const key of availabilityKeys) {
+    if (!Object.hasOwn(value, key) || typeof value[key] !== 'boolean') {
+      throw new Error(`availability.${key} must be a boolean.`);
+    }
+  }
+
+  return {
+    weekdays: value.weekdays,
+    weekends: value.weekends,
+    evenings: value.evenings,
+  };
+}
+
+function extractVolunteerProfileUpdates(body, { requireAtLeastOne = false } = {}) {
+  if (!isPlainObject(body)) {
+    throw new Error('Body must be a JSON object.');
+  }
+
+  const updates = {};
+
+  if (Object.hasOwn(body, 'skills')) {
+    updates.skills = normalizeStringArray(body.skills, 'skills');
+  }
+
+  if (Object.hasOwn(body, 'interests')) {
+    updates.interests = normalizeStringArray(body.interests, 'interests');
+  }
+
+  if (Object.hasOwn(body, 'availability')) {
+    updates.availability = normalizeAvailabilityInput(body.availability);
+  }
+
+  if (requireAtLeastOne && Object.keys(updates).length === 0) {
+    throw new Error('At least one field is required: skills, interests, availability.');
+  }
+
+  return updates;
+}
+
+async function upsertVolunteerProfile(userId, updates) {
+  const { data, error } = await supabaseAdmin
+    .from('volunteer_profiles')
+    .upsert(
+      {
+        user_id: userId,
+        ...updates,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
+    .select(volunteerColumns)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? null;
+}
+
+function buildSkillsAvailabilityResponse(userId, volunteerProfile) {
+  return {
+    userId,
+    skills: Array.isArray(volunteerProfile?.skills) ? volunteerProfile.skills : [],
+    interests: Array.isArray(volunteerProfile?.interests) ? volunteerProfile.interests : [],
+    availability: normalizeAvailability(volunteerProfile?.availability),
+    updatedAt: volunteerProfile?.updated_at ?? null,
+  };
+}
 
 router.get('/profile/me', requireAuth, async (req, res) => {
   try {
@@ -22,6 +129,63 @@ router.get('/profile/me', requireAuth, async (req, res) => {
     const message = error instanceof Error ? error.message : 'Failed to load profile.';
     res.status(500).json({ message });
   }
+});
+
+router.get('/profile/skills-availability', requireAuth, async (req, res) => {
+  if (req.auth?.profile?.role !== 'volunteer') {
+    res.status(403).json({ message: 'Volunteer role required.' });
+    return;
+  }
+
+  try {
+    const volunteerProfile = await getVolunteerProfileByUserId(req.auth.user.id);
+    res.json({
+      skillsAvailability: buildSkillsAvailabilityResponse(req.auth.user.id, volunteerProfile),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load skills and availability.';
+    res.status(500).json({ message });
+  }
+});
+
+router.put('/profile/skills-availability', requireAuth, async (req, res) => {
+  if (req.auth?.profile?.role !== 'volunteer') {
+    res.status(403).json({ message: 'Volunteer role required.' });
+    return;
+  }
+
+  let volunteerUpdates;
+  try {
+    volunteerUpdates = extractVolunteerProfileUpdates(req.body ?? {}, { requireAtLeastOne: true });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  try {
+    const volunteerProfile = await upsertVolunteerProfile(req.auth.user.id, volunteerUpdates);
+    res.json({
+      skillsAvailability: buildSkillsAvailabilityResponse(req.auth.user.id, volunteerProfile),
+      message: 'Skills and availability updated successfully.',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update skills and availability.';
+    res.status(500).json({ message });
+  }
+});
+
+router.get('/availability-slots', requireAuth, (_req, res) => {
+  res.json({
+    availabilitySlots,
+    availabilityGrid: {
+      days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      rows: [
+        { key: 'morning', label: 'Morning' },
+        { key: 'afternoon', label: 'Afternoon' },
+        { key: 'evening', label: 'Evening' },
+      ],
+    },
+  });
 });
 
 router.patch('/profile/me', requireAuth, async (req, res) => {
@@ -89,46 +253,12 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
     }
   }
 
-  const volunteerUpdates = {};
-
-  if (Object.hasOwn(body, 'skills')) {
-    try {
-      volunteerUpdates.skills = normalizeStringArray(body.skills, 'skills');
-    } catch (error) {
-      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid skills.' });
-      return;
-    }
-  }
-
-  if (Object.hasOwn(body, 'interests')) {
-    try {
-      volunteerUpdates.interests = normalizeStringArray(body.interests, 'interests');
-    } catch (error) {
-      res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid interests.' });
-      return;
-    }
-  }
-
-  if (Object.hasOwn(body, 'availability')) {
-    const availability = body.availability;
-    if (!isPlainObject(availability)) {
-      res.status(400).json({ message: 'availability must be an object.' });
-      return;
-    }
-
-    const availabilityKeys = ['weekdays', 'weekends', 'evenings'];
-    for (const key of availabilityKeys) {
-      if (!Object.hasOwn(availability, key) || typeof availability[key] !== 'boolean') {
-        res.status(400).json({ message: `availability.${key} must be a boolean.` });
-        return;
-      }
-    }
-
-    volunteerUpdates.availability = {
-      weekdays: availability.weekdays,
-      weekends: availability.weekends,
-      evenings: availability.evenings,
-    };
+  let volunteerUpdates = {};
+  try {
+    volunteerUpdates = extractVolunteerProfileUpdates(body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid volunteer profile payload.' });
+    return;
   }
 
   const hasUserUpdates = Object.keys(userUpdates).length > 0;
@@ -172,25 +302,7 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
     let volunteerProfile = null;
     if (req.auth.profile.role === 'volunteer') {
       if (hasVolunteerUpdates) {
-        const { data, error } = await supabaseAdmin
-          .from('volunteer_profiles')
-          .upsert(
-            {
-              user_id: req.auth.user.id,
-              ...volunteerUpdates,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'user_id' }
-          )
-          .select(volunteerColumns)
-          .maybeSingle();
-
-        if (error) {
-          res.status(500).json({ message: error.message });
-          return;
-        }
-
-        volunteerProfile = data ?? null;
+        volunteerProfile = await upsertVolunteerProfile(req.auth.user.id, volunteerUpdates);
       } else {
         volunteerProfile = await getVolunteerProfileByUserId(req.auth.user.id);
       }

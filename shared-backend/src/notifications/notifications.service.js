@@ -21,6 +21,33 @@ async function listNotifications({ userId, limit = 50, unreadOnly = false }) {
   return data ?? [];
 }
 
+async function listNotificationsForAdmin({ limit = 50, unreadOnly = false, userId = '', type = '' }) {
+  let query = supabaseAdmin
+    .from('notifications')
+    .select(notificationColumns)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  if (type) {
+    query = query.eq('type', type);
+  }
+
+  if (unreadOnly) {
+    query = query.is('read_at', null);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
 async function getNotificationById(notificationId) {
   const { data, error } = await supabaseAdmin
     .from('notifications')
@@ -56,6 +83,49 @@ async function createNotificationRecord({ userId, title, message, type = 'info',
   }
 
   return inserted ?? null;
+}
+
+async function updateNotificationRecord({ notificationId, updates }) {
+  const notification = await getNotificationById(notificationId);
+  if (!notification) {
+    const error = new Error('Notification not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const dbUpdates = {};
+
+  if (Object.hasOwn(updates, 'userId')) {
+    dbUpdates.user_id = updates.userId;
+  }
+  if (Object.hasOwn(updates, 'title')) {
+    dbUpdates.title = updates.title;
+  }
+  if (Object.hasOwn(updates, 'message')) {
+    dbUpdates.message = updates.message;
+  }
+  if (Object.hasOwn(updates, 'type')) {
+    dbUpdates.type = updates.type;
+  }
+  if (Object.hasOwn(updates, 'data')) {
+    dbUpdates.data = updates.data;
+  }
+  if (Object.hasOwn(updates, 'readAt')) {
+    dbUpdates.read_at = updates.readAt;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .update(dbUpdates)
+    .eq('id', notificationId)
+    .select(notificationColumns)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? notification;
 }
 
 async function markNotificationAsRead({ notificationId, userId, isAdmin = false }) {
@@ -141,11 +211,30 @@ async function clearNotifications({ userId }) {
   return ids.length;
 }
 
+async function deleteNotificationRecord(notificationId) {
+  const notification = await getNotificationById(notificationId);
+  if (!notification) {
+    const error = new Error('Notification not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const { error } = await supabaseAdmin.from('notifications').delete().eq('id', notificationId);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return notification;
+}
+
 export {
   clearNotifications,
   createNotificationRecord,
+  deleteNotificationRecord,
   getNotificationById,
   listNotifications,
+  listNotificationsForAdmin,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  updateNotificationRecord,
 };
