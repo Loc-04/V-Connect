@@ -15,12 +15,14 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { OrganizerActivityManagementPage } from './pages/OrganizerActivityManagementPage';
+import { OrganizerCheckInManagementPage } from './pages/OrganizerCheckInManagementPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { OrganizerNotificationsPage } from './pages/OrganizerNotificationsPage';
 import { OrganizerRecommendationsPage } from './pages/OrganizerRecommendationsPage';
 import { OrganizerRegistrationApprovalPage } from './pages/OrganizerRegistrationApprovalPage';
 import { OrganizerReportSummaryPage } from './pages/OrganizerReportSummaryPage';
 import { ParticipationHistoryPage } from './pages/ParticipationHistoryPage';
+import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
 import { ProfileUiPage } from './pages/ProfileUiPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -128,6 +130,14 @@ function App() {
             }
           />
           <Route
+            path="/volunteer/profile-settings"
+            element={
+              <RequireRoleRoute allowedRoles={['volunteer']}>
+                <ProfileSettingsPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
             path="/volunteer/feedback"
             element={
               <RequireRoleRoute allowedRoles={['volunteer']}>
@@ -165,6 +175,14 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['organizer']}>
                 <OrganizerActivityManagementPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/organizer/checkins"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerCheckInManagementPage />
               </RequireRoleRoute>
             }
           />
