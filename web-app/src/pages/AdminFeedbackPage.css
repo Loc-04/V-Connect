@@ -139,6 +139,14 @@
   gap: 0.66rem;
 }
 
+.feedback-review-card.feedback-shared-card {
+  border-left: 3px solid #4f46e5;
+}
+
+.feedback-review-list > .feedback-review-card.feedback-shared-card:nth-child(3n + 1) {
+  border-left-color: #0f766e;
+}
+
 .feedback-review-item {
   border: 1px solid var(--border);
   border-left: 3px solid #4f46e5;
