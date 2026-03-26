@@ -255,14 +255,11 @@
 
 .org-checkin-time-cell {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.32rem;
 }
 
-.org-checkin-time-cell small {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.24rem;
-  color: #94a3b8;
+.org-checkin-time-badge.ui-badge {
+  justify-self: start;
   font-size: 0.66rem;
 }
 

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
 import { Badge, Button, Card, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
@@ -72,14 +73,10 @@ function getActivityStatusTone(status: string) {
   return 'neutral' as const;
 }
 
-function getParticipationStatusTone(status: string) {
-  if (status === 'approved' || status === 'checked_in') {
-    return 'success' as const;
-  }
-  if (status === 'rejected') {
-    return 'danger' as const;
-  }
-  return 'info' as const;
+interface AttendanceNoticeState {
+  tone: CheckInResultTone;
+  title: string;
+  description?: string;
 }
 
 export function OrganizerActivityManagementPage() {
@@ -100,6 +97,7 @@ export function OrganizerActivityManagementPage() {
   const [savingActivityId, setSavingActivityId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [checkingInParticipationId, setCheckingInParticipationId] = useState<string | null>(null);
+  const [attendanceNotice, setAttendanceNotice] = useState<AttendanceNoticeState | null>(null);
 
   const loadData = useCallback(async () => {
     if (!session?.access_token) {
@@ -234,8 +232,7 @@ export function OrganizerActivityManagementPage() {
       }
 
       setAttendanceLoading(true);
-      setError(null);
-      setMessage(null);
+      setAttendanceNotice(null);
       setSelectedActivityId(activityId);
 
       try {
@@ -247,7 +244,11 @@ export function OrganizerActivityManagementPage() {
         });
         setAttendanceRows(rows);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load attendance list.');
+        setAttendanceNotice({
+          tone: 'error',
+          title: 'Unable to load attendance list',
+          description: loadError instanceof Error ? loadError.message : 'Failed to load attendance list.',
+        });
       } finally {
         setAttendanceLoading(false);
       }
@@ -257,21 +258,32 @@ export function OrganizerActivityManagementPage() {
 
   const handleCheckIn = async (participationId: string) => {
     if (!session?.access_token) {
-      setError('No active session token.');
+      setAttendanceNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'No active session token.',
+      });
       return;
     }
 
     setCheckingInParticipationId(participationId);
-    setError(null);
-    setMessage(null);
+    setAttendanceNotice(null);
 
     try {
       const updated = await checkInParticipation(participationId, session.access_token);
       setAttendanceRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setParticipations((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setMessage('Volunteer checked in successfully.');
+      setAttendanceNotice({
+        tone: 'success',
+        title: 'Check-in successful',
+        description: 'Volunteer attendance was recorded for this activity.',
+      });
     } catch (checkInError) {
-      setError(checkInError instanceof Error ? checkInError.message : 'Failed to check in volunteer.');
+      setAttendanceNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: checkInError instanceof Error ? checkInError.message : 'Failed to check in volunteer.',
+      });
     } finally {
       setCheckingInParticipationId(null);
     }
@@ -610,6 +622,15 @@ export function OrganizerActivityManagementPage() {
               </Button>
             </div>
 
+            {attendanceNotice ? (
+              <CheckInResultState
+                className="org-attendance-result"
+                description={attendanceNotice.description}
+                title={attendanceNotice.title}
+                tone={attendanceNotice.tone}
+              />
+            ) : null}
+
             {attendanceLoading ? (
               <p className="muted">Loading attendance records...</p>
             ) : (
@@ -639,13 +660,21 @@ export function OrganizerActivityManagementPage() {
                       <tr key={participation.id}>
                         <td>{participation.volunteer?.full_name ?? participation.volunteer_id ?? 'Unknown volunteer'}</td>
                         <td>
-                          <Badge tone={getParticipationStatusTone(status)}>{toTitleCase(status)}</Badge>
+                          <AttendanceStatusBadge status={status} />
                         </td>
                         <td>{score !== null ? `${score}%` : '--'}</td>
                         <td>
-                          {participation.checked_in_at
-                            ? new Date(participation.checked_in_at).toLocaleString()
-                            : 'Not checked in'}
+                          <div className="org-attendance-time-cell">
+                            <span>
+                              {participation.checked_in_at
+                                ? new Date(participation.checked_in_at).toLocaleString()
+                                : 'Not checked in'}
+                            </span>
+                            <AttendanceStatusBadge
+                              className="org-attendance-time-badge"
+                              status={participation.checked_in_at ? 'checked_in' : 'not_checked_in'}
+                            />
+                          </div>
                         </td>
                         <td>
                           <Button
