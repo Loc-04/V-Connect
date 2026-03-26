@@ -190,15 +190,17 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
   };
 
   return (
-    <ProfileSectionCard action={headerAction} icon={Heart} title="Interests & Causes">
+    <ProfileSectionCard
+      action={headerAction}
+      icon={Heart}
+      subtitle="Keep your causes current so the platform can surface more relevant volunteer programs."
+      title="Interests & Causes"
+    >
       {error && <p className="form-error">{error}</p>}
       {notice && <p className="form-success">{notice}</p>}
 
       {items.length > 0 ? (
         <>
-          <p className="vol-profile-section-description">
-            Keep your causes updated so the platform can surface more relevant opportunities.
-          </p>
           <div className="vol-profile-interest-list">
             {items.map((interest, index) => (
               <span className="vol-profile-interest-chip" key={interest}>

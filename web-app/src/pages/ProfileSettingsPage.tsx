@@ -18,6 +18,23 @@ import type { VolunteerAvailability, VolunteerProfile } from '../types/profile';
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80';
 const availabilityDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const availabilityOptions = [
+  {
+    key: 'weekdays',
+    label: 'Weekdays',
+    description: 'Best for regular Monday to Friday volunteering.',
+  },
+  {
+    key: 'weekends',
+    label: 'Weekends',
+    description: 'Suitable for Saturday and Sunday commitments.',
+  },
+  {
+    key: 'evenings',
+    label: 'Evenings',
+    description: 'Useful for after-hours programs and support shifts.',
+  },
+] as const;
 
 type AvailabilityKey = keyof VolunteerAvailability;
 
@@ -51,14 +68,17 @@ function buildAvailabilityGridRows(availability: VolunteerAvailability) {
   return [
     {
       label: 'Morning',
+      hint: '8 AM - 12 PM',
       cells: baseDayAvailability,
     },
     {
       label: 'Afternoon',
+      hint: '12 PM - 5 PM',
       cells: baseDayAvailability,
     },
     {
       label: 'Evening',
+      hint: '5 PM - 9 PM',
       cells: eveningAvailability,
     },
   ];
@@ -220,6 +240,11 @@ export function ProfileSettingsPage() {
   const skills = volunteerProfile?.skills ?? [];
   const interests = volunteerProfile?.interests ?? [];
   const availabilityRows = useMemo(() => buildAvailabilityGridRows(availabilityForm), [availabilityForm]);
+  const selectedAvailabilityLabels = useMemo(
+    () => availabilityOptions.filter((option) => availabilityForm[option.key]).map((option) => option.label),
+    [availabilityForm]
+  );
+  const hasAvailability = selectedAvailabilityLabels.length > 0;
 
   const displayName = profile?.full_name?.trim() || session?.user?.email || 'Volunteer';
   const avatarUrl = profile?.avatar_url || fallbackAvatar;
@@ -258,15 +283,20 @@ export function ProfileSettingsPage() {
         )}
 
         {!loading && !loadError && (
-          <div className="vol-profile-content-grid">
-            <div className="vol-profile-main-column">
-              <Card as="article" className="vol-profile-card">
+          <div className="vol-profile-content-grid vol-profile-settings-layout">
+            <div className="vol-profile-main-column vol-profile-settings-summary-column">
+              <Card as="article" className="vol-profile-card vol-profile-settings-summary-card">
                 <div className="vol-profile-section-head">
                   <div className="vol-profile-section-title">
                     <span className="vol-profile-section-icon" aria-hidden="true">
                       <UserRound size={16} />
                     </span>
-                    <h3>Preferences Summary</h3>
+                    <div className="vol-profile-section-title-block">
+                      <h3>Preferences Summary</h3>
+                      <p className="vol-profile-section-subtitle">
+                        Review how your profile is presented before editing your volunteer preferences.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -320,79 +350,118 @@ export function ProfileSettingsPage() {
                 </div>
               </Card>
 
+            </div>
+
+            <div className="vol-profile-side-column vol-profile-settings-editor-column">
               <ProfileSkillsCard onPersist={handlePersistSkills} skills={skills} userId={profile?.id ?? null} />
 
               <ProfileInterestsCard interests={interests} onPersist={handlePersistInterests} />
-            </div>
 
-            <div className="vol-profile-side-column">
-              <ProfileSectionCard icon={CalendarDays} title="Weekly Availability">
+              <ProfileSectionCard
+                className="vol-profile-settings-availability-card"
+                icon={CalendarDays}
+                subtitle="Choose the recurring windows you can usually commit to. The weekly guide below visualizes those saved preferences."
+                title="Weekly Availability"
+              >
                 {saveError && <p className="form-error">{saveError}</p>}
                 {saveNotice && <p className="form-success">{saveNotice}</p>}
 
-                <form className="vol-profile-edit-form" onSubmit={handleSaveAvailability}>
-                  <div>
-                    <p className="field-label">Availability</p>
-                    <div className="vol-profile-toggle-row">
-                      <label className="vol-profile-toggle">
-                        <input
-                          checked={availabilityForm.weekdays}
-                          onChange={() => handleAvailabilityToggle('weekdays')}
-                          type="checkbox"
-                        />
-                        <span>Weekdays</span>
-                      </label>
+                <form className="vol-profile-edit-form vol-profile-settings-availability-form" onSubmit={handleSaveAvailability}>
+                  <div className="vol-profile-settings-toggle-grid">
+                    {availabilityOptions.map((option) => {
+                      const selected = availabilityForm[option.key];
 
-                      <label className="vol-profile-toggle">
-                        <input
-                          checked={availabilityForm.weekends}
-                          onChange={() => handleAvailabilityToggle('weekends')}
-                          type="checkbox"
-                        />
-                        <span>Weekends</span>
-                      </label>
+                      return (
+                        <label
+                          className={
+                            selected
+                              ? 'vol-profile-settings-toggle-card is-selected'
+                              : 'vol-profile-settings-toggle-card'
+                          }
+                          key={option.key}
+                        >
+                          <input
+                            checked={selected}
+                            onChange={() => handleAvailabilityToggle(option.key)}
+                            type="checkbox"
+                          />
+                          <span className="vol-profile-settings-toggle-pill">{selected ? 'Selected' : 'Optional'}</span>
+                          <strong>{option.label}</strong>
+                          <p>{option.description}</p>
+                        </label>
+                      );
+                    })}
+                  </div>
 
-                      <label className="vol-profile-toggle">
-                        <input
-                          checked={availabilityForm.evenings}
-                          onChange={() => handleAvailabilityToggle('evenings')}
-                          type="checkbox"
-                        />
-                        <span>Evenings</span>
-                      </label>
+                  <div className="vol-profile-settings-availability-summary">
+                    <div className="vol-profile-settings-availability-summary-copy">
+                      <span className="vol-profile-settings-summary-label">Current recurring availability</span>
+                      <strong>
+                        {hasAvailability
+                          ? buildAvailabilitySummary(availabilityForm)
+                          : 'No recurring availability selected yet.'}
+                      </strong>
+                    </div>
+                    <div className="vol-profile-settings-availability-tags">
+                      {hasAvailability ? (
+                        selectedAvailabilityLabels.map((label) => (
+                          <span className="vol-profile-settings-availability-tag" key={label}>
+                            {label}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="vol-profile-settings-availability-tag is-empty">
+                          Add at least one recurring window to improve activity matching.
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="vol-profile-slot-grid">
-                    <div className="vol-profile-slot-grid-head">
-                      <span />
-                      {availabilityDays.map((day) => (
-                        <span key={day}>{day}</span>
-                      ))}
-                    </div>
-
-                    {availabilityRows.map((row) => (
-                      <div className="vol-profile-slot-grid-row" key={row.label}>
-                        <strong>{row.label}</strong>
-                        {row.cells.map((active, index) => (
-                          <span
-                            className={active ? 'vol-profile-slot-chip is-active' : 'vol-profile-slot-chip'}
-                            key={`${row.label}-${availabilityDays[index]}`}
-                          >
-                            {active ? 'Yes' : 'No'}
+                  <div className="vol-profile-settings-grid-shell">
+                    <div className="vol-profile-slot-grid vol-profile-settings-slot-grid">
+                      <div className="vol-profile-slot-grid-head">
+                        <span />
+                        {availabilityDays.map((day, index) => (
+                          <span className={index > 4 ? 'is-weekend' : ''} key={day}>
+                            {day}
                           </span>
                         ))}
                       </div>
-                    ))}
+
+                      {availabilityRows.map((row) => (
+                        <div className="vol-profile-slot-grid-row" key={row.label}>
+                          <div className="vol-profile-slot-row-label">
+                            <strong>{row.label}</strong>
+                            <small>{row.hint}</small>
+                          </div>
+                          {row.cells.map((active, index) => (
+                            <span
+                              aria-label={`${row.label} on ${availabilityDays[index]} ${active ? 'available' : 'unavailable'}`}
+                              className={[
+                                'vol-profile-slot-chip',
+                                active ? 'is-active' : '',
+                                index > 4 ? 'is-weekend' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                              key={`${row.label}-${availabilityDays[index]}`}
+                              title={`${availabilityDays[index]} ${row.label}: ${active ? 'Available' : 'Unavailable'}`}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
-                  <p className="vol-profile-slot-note">
-                    Detailed time slots are visual guidance only. Saved availability currently supports weekdays,
-                    weekends, and evenings.
-                  </p>
-                  <p className="vol-profile-mini-note">{buildAvailabilitySummary(availabilityForm)}</p>
+                  <div className="vol-profile-settings-availability-note">
+                    <strong>Availability matching guide</strong>
+                    <p>
+                      Detailed time blocks are visual guidance only. Your saved settings still map to the supported
+                      backend preferences: weekdays, weekends, and evenings.
+                    </p>
+                  </div>
 
-                  <div className="vol-profile-form-actions">
+                  <div className="vol-profile-form-actions vol-profile-settings-form-actions">
                     <Button disabled={saving} type="submit">
                       <Save size={14} />
                       <span>{saving ? 'Saving...' : 'Save Availability'}</span>
