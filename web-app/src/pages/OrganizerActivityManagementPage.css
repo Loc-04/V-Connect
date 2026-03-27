@@ -191,6 +191,10 @@
   gap: 0.68rem;
 }
 
+.org-attendance-result {
+  width: 100%;
+}
+
 .org-attendance-head {
   display: flex;
   justify-content: space-between;
@@ -202,6 +206,16 @@
 .org-attendance-head h2 {
   font-size: 1.06rem;
   color: #0f172a;
+}
+
+.org-attendance-time-cell {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.org-attendance-time-badge.ui-badge {
+  justify-self: start;
+  font-size: 0.66rem;
 }
 
 @media (max-width: 1080px) {

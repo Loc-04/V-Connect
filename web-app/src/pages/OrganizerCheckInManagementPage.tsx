@@ -1,9 +1,10 @@
-import { Check, CircleDashed, Clock3, Filter, RefreshCw, Search, UsersRound } from 'lucide-react';
+import { Check, CircleDashed, Filter, RefreshCw, Search, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { Badge, Button, Card, Input, Select, Table } from '../components/ui';
+import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
+import { Button, Card, Input, Select, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
 import { checkInParticipation, listParticipations } from '../lib/participations';
@@ -52,28 +53,10 @@ function formatActivityDate(value: string | null | undefined) {
   });
 }
 
-function toTitleCase(value: string) {
-  if (!value) {
-    return 'Unknown';
-  }
-
-  return value
-    .split('_')
-    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
-    .join(' ');
-}
-
-function getStatusTone(status: string) {
-  if (status === 'checked_in') {
-    return 'success' as const;
-  }
-  if (status === 'rejected' || status === 'cancelled') {
-    return 'danger' as const;
-  }
-  if (status === 'approved') {
-    return 'accent' as const;
-  }
-  return 'info' as const;
+interface CheckInNoticeState {
+  tone: CheckInResultTone;
+  title: string;
+  description?: string;
 }
 
 export function OrganizerCheckInManagementPage() {
@@ -89,18 +72,21 @@ export function OrganizerCheckInManagementPage() {
   const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>('all');
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<CheckInNoticeState | null>(null);
 
   const loadActivities = useCallback(async () => {
     if (!session?.access_token) {
       setLoadingActivities(false);
-      setError('No active session token.');
+      setNotice({
+        tone: 'error',
+        title: 'Unable to load check-in data',
+        description: 'No active session token.',
+      });
       return;
     }
 
     setLoadingActivities(true);
-    setError(null);
+    setNotice(null);
 
     try {
       const rows = await listActivities({
@@ -122,7 +108,11 @@ export function OrganizerCheckInManagementPage() {
         return rows[0]?.id ?? '';
       });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load activities.');
+      setNotice({
+        tone: 'error',
+        title: 'Unable to load activities',
+        description: loadError instanceof Error ? loadError.message : 'Failed to load activities.',
+      });
     } finally {
       setLoadingActivities(false);
     }
@@ -141,7 +131,7 @@ export function OrganizerCheckInManagementPage() {
       }
 
       setLoadingAttendees(true);
-      setError(null);
+      setNotice(null);
 
       try {
         const rows = await listParticipations({
@@ -152,7 +142,11 @@ export function OrganizerCheckInManagementPage() {
         });
         setAttendees(rows);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load attendee records.');
+        setNotice({
+          tone: 'error',
+          title: 'Unable to load attendee records',
+          description: loadError instanceof Error ? loadError.message : 'Failed to load attendee records.',
+        });
       } finally {
         setLoadingAttendees(false);
       }
@@ -161,7 +155,7 @@ export function OrganizerCheckInManagementPage() {
   );
 
   useEffect(() => {
-    setMessage(null);
+    setNotice(null);
     setStatusFilter('all');
     void loadAttendees(selectedActivityId);
   }, [loadAttendees, selectedActivityId]);
@@ -247,20 +241,31 @@ export function OrganizerCheckInManagementPage() {
 
   const handleCheckIn = async (participationId: string) => {
     if (!session?.access_token) {
-      setError('No active session token.');
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'No active session token.',
+      });
       return;
     }
 
     setCheckingInId(participationId);
-    setError(null);
-    setMessage(null);
+    setNotice(null);
 
     try {
       const updated = await checkInParticipation(participationId, session.access_token);
       setAttendees((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setMessage('Check-in recorded successfully.');
+      setNotice({
+        tone: 'success',
+        title: 'Check-in successful',
+        description: 'Attendance was recorded for this attendee.',
+      });
     } catch (checkInError) {
-      setError(checkInError instanceof Error ? checkInError.message : 'Failed to check in attendee.');
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: checkInError instanceof Error ? checkInError.message : 'Failed to check in attendee.',
+      });
     } finally {
       setCheckingInId(null);
     }
@@ -268,18 +273,25 @@ export function OrganizerCheckInManagementPage() {
 
   const handleCheckInAll = async () => {
     if (!session?.access_token) {
-      setError('No active session token.');
+      setNotice({
+        tone: 'error',
+        title: 'Bulk check-in failed',
+        description: 'No active session token.',
+      });
       return;
     }
 
     if (checkInEligibleRows.length === 0) {
-      setMessage('No eligible attendees to check in for the current filter.');
+      setNotice({
+        tone: 'info',
+        title: 'No eligible attendees',
+        description: 'There are no pending or approved attendees in the current filtered list.',
+      });
       return;
     }
 
     setBulkChecking(true);
-    setError(null);
-    setMessage(null);
+    setNotice(null);
 
     const results = await Promise.allSettled(
       checkInEligibleRows.map((row) => checkInParticipation(row.id, session.access_token))
@@ -293,16 +305,32 @@ export function OrganizerCheckInManagementPage() {
     if (successful.length > 0) {
       const updatedMap = new Map(successful.map((result) => [result.value.id, result.value]));
       setAttendees((current) => current.map((item) => updatedMap.get(item.id) ?? item));
-      setMessage(
-        successful.length === 1
-          ? '1 attendee checked in successfully.'
-          : `${successful.length} attendees checked in successfully.`
-      );
     }
 
     if (failed.length > 0) {
       const firstError = failed[0].reason;
-      setError(firstError instanceof Error ? firstError.message : 'Some check-ins could not be completed.');
+      const errorMessage =
+        firstError instanceof Error ? firstError.message : 'Some check-ins could not be completed.';
+
+      if (successful.length > 0) {
+        setNotice({
+          tone: 'info',
+          title: `${successful.length} attendee${successful.length === 1 ? '' : 's'} checked in`,
+          description: `Some remaining attendees could not be checked in. ${errorMessage}`,
+        });
+      } else {
+        setNotice({
+          tone: 'error',
+          title: 'Bulk check-in failed',
+          description: errorMessage,
+        });
+      }
+    } else if (successful.length > 0) {
+      setNotice({
+        tone: 'success',
+        title:
+          successful.length === 1 ? '1 attendee checked in successfully.' : `${successful.length} attendees checked in successfully.`,
+      });
     }
 
     setBulkChecking(false);
@@ -424,8 +452,7 @@ export function OrganizerCheckInManagementPage() {
             </div>
           </div>
 
-          {error && <p className="form-error">{error}</p>}
-          {message && <p className="form-success">{message}</p>}
+          {notice ? <CheckInResultState description={notice.description} title={notice.title} tone={notice.tone} /> : null}
 
           {loading ? (
             <p className="muted">Loading check-in records...</p>
@@ -458,17 +485,15 @@ export function OrganizerCheckInManagementPage() {
                         </div>
                       </td>
                       <td>
-                        <Badge tone={getStatusTone(status)}>{toTitleCase(status)}</Badge>
+                        <AttendanceStatusBadge status={status} />
                       </td>
                       <td>
                         <div className="org-checkin-time-cell">
                           <span>{formatCheckInTime(attendee.checked_in_at)}</span>
-                          {status === 'checked_in' && (
-                            <small>
-                              <Clock3 size={12} />
-                              <span>Attendance recorded</span>
-                            </small>
-                          )}
+                          <AttendanceStatusBadge
+                            className="org-checkin-time-badge"
+                            status={attendee.checked_in_at ? 'checked_in' : 'not_checked_in'}
+                          />
                         </div>
                       </td>
                       <td>

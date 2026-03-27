@@ -6,6 +6,7 @@ import { Card } from '../ui/Card';
 interface ProfileSectionCardProps {
   title: string;
   icon: LucideIcon;
+  subtitle?: string;
   action?: ReactNode;
   className?: string;
   children: ReactNode;
@@ -20,6 +21,7 @@ interface ProfileEmptyStateProps {
 export function ProfileSectionCard({
   title,
   icon: Icon,
+  subtitle,
   action,
   className = '',
   children,
@@ -33,7 +35,10 @@ export function ProfileSectionCard({
           <span className="vol-profile-section-icon" aria-hidden="true">
             <Icon size={16} />
           </span>
-          <h3>{title}</h3>
+          <div className="vol-profile-section-title-block">
+            <h3>{title}</h3>
+            {subtitle ? <p className="vol-profile-section-subtitle">{subtitle}</p> : null}
+          </div>
         </div>
 
         {action ? <div className="vol-profile-section-action">{action}</div> : null}

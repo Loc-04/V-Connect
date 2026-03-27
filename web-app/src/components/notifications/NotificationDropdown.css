@@ -235,6 +235,19 @@
   border-color: #cbd5e3;
 }
 
+.mini-notify-footer-btn:disabled {
+  opacity: 0.52;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  background: #ffffff;
+  cursor: not-allowed;
+}
+
+.mini-notify-footer-btn:disabled:hover {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+
 @media (max-width: 760px) {
   .mini-notify-dropdown {
     width: min(360px, calc(100vw - 1.5rem));
