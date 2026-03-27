@@ -146,6 +146,44 @@ function matchesLocationFilter(activity, locationFilter) {
   return text.includes(normalizedLocationFilter);
 }
 
+function applyActivityReadVisibility({
+  query,
+  role,
+  mine,
+  statusFilter,
+  userId,
+}) {
+  if (mine) {
+    if (role !== 'admin') {
+      query = query.eq('organizer_id', userId);
+    }
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+    return { query, errorMessage: null };
+  }
+
+  if (role === 'volunteer') {
+    if (statusFilter === 'draft') {
+      return { query: null, errorMessage: 'Volunteers cannot access draft activities.' };
+    }
+    if (statusFilter === 'all') {
+      query = query.in('status', ['published', 'completed', 'cancelled']);
+    } else {
+      query = query.eq('status', statusFilter);
+    }
+    return { query, errorMessage: null };
+  }
+
+  if (statusFilter !== 'all') {
+    query = query.eq('status', statusFilter);
+  } else {
+    query = query.eq('status', 'published');
+  }
+
+  return { query, errorMessage: null };
+}
+
 async function tryCreateNotification(payload) {
   try {
     await createNotificationRecord(payload);
@@ -212,20 +250,18 @@ router.get('/activities', requireAuth, async (req, res) => {
     .order('start_time', { ascending: true })
     .limit(limit);
 
-  if (mine) {
-    if (role !== 'admin') {
-      query = query.eq('organizer_id', req.auth.user.id);
-    }
-    if (statusFilter !== 'all') {
-      query = query.eq('status', statusFilter);
-    }
-  } else if (role === 'volunteer') {
-    query = query.eq('status', 'published');
-  } else if (statusFilter !== 'all') {
-    query = query.eq('status', statusFilter);
-  } else {
-    query = query.eq('status', 'published');
+  const visibility = applyActivityReadVisibility({
+    query,
+    role,
+    mine,
+    statusFilter,
+    userId: req.auth.user.id,
+  });
+  if (visibility.errorMessage) {
+    res.status(403).json({ message: visibility.errorMessage });
+    return;
   }
+  query = visibility.query;
 
   if (search) {
     query = query.ilike('title', `%${search}%`);
@@ -319,20 +355,18 @@ router.get('/activities/search', requireAuth, async (req, res) => {
     .order('start_time', { ascending: true })
     .limit(limit);
 
-  if (mine) {
-    if (role !== 'admin') {
-      query = query.eq('organizer_id', req.auth.user.id);
-    }
-    if (statusFilter !== 'all') {
-      query = query.eq('status', statusFilter);
-    }
-  } else if (role === 'volunteer') {
-    query = query.eq('status', 'published');
-  } else if (statusFilter !== 'all') {
-    query = query.eq('status', statusFilter);
-  } else {
-    query = query.eq('status', 'published');
+  const visibility = applyActivityReadVisibility({
+    query,
+    role,
+    mine,
+    statusFilter,
+    userId: req.auth.user.id,
+  });
+  if (visibility.errorMessage) {
+    res.status(403).json({ message: visibility.errorMessage });
+    return;
   }
+  query = visibility.query;
 
   if (dateOnlyRange) {
     query = query.gte('start_time', dateOnlyRange.startIso).lt('start_time', dateOnlyRange.endIso);
