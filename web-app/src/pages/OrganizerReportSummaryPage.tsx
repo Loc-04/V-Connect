@@ -1,7 +1,9 @@
 import { Download, Share2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { Button } from '../components/ui';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
 import { IssueHighlightsCard } from '../components/reports/IssueHighlightsCard';
@@ -17,6 +19,7 @@ function matchesSearch(searchTerm: string, value: string) {
 }
 
 export function OrganizerReportSummaryPage() {
+  const navigate = useNavigate();
   const { session } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -154,11 +157,15 @@ export function OrganizerReportSummaryPage() {
         </header>
 
         {message && <p className="form-success">{message}</p>}
-        {error && <p className="form-error">{error}</p>}
+        {report && error && <p className="form-error">{error}</p>}
 
         {loading ? (
           <section className="card org-report-lower-card org-report-empty-card">
-            <p className="muted">Loading report analytics...</p>
+            <EmptyLoadingErrorState
+              description="Pulling the latest participation and feedback insights for this activity report."
+              state="loading"
+              title="Loading report analytics"
+            />
           </section>
         ) : report ? (
           <>
@@ -182,6 +189,8 @@ export function OrganizerReportSummaryPage() {
 
             <div className="org-report-lower-grid">
               <FeedbackOverviewCard
+                ariaLabel="Open feedback review"
+                onClick={() => navigate('/feedback')}
                 quote={report.feedbackQuote}
                 rating={report.feedbackRating}
                 sentiments={report.sentimentChips}
@@ -194,17 +203,29 @@ export function OrganizerReportSummaryPage() {
                   <div className="org-report-card-head">
                     <h3>Issue Highlights</h3>
                   </div>
-                  <p className="muted">No issue highlights match the current search.</p>
+                  <EmptyLoadingErrorState
+                    description="Try a broader search to see the issue highlights for this report."
+                    state="empty"
+                    title="No matching issues"
+                  />
                 </section>
               )}
             </div>
           </>
         ) : (
           <section className="card org-report-lower-card org-report-empty-card">
-            <div className="org-report-card-head">
-              <h3>Report Summary</h3>
-            </div>
-            <p className="muted">No report data is available right now.</p>
+            <EmptyLoadingErrorState
+              action={
+                error ? (
+                  <Button onClick={() => void loadReport()} type="button" variant="secondary">
+                    Retry
+                  </Button>
+                ) : undefined
+              }
+              description={error ?? 'No report data is available right now.'}
+              state={error ? 'error' : 'empty'}
+              title={error ? 'Unable to load report summary' : 'No report data available'}
+            />
           </section>
         )}
       </section>

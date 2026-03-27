@@ -139,8 +139,12 @@ export function NotificationDropdown({
       filter === 'unread' ? notifications.filter((notification) => !notification.read) : notifications;
     return list.slice(0, MAX_VISIBLE_NOTIFICATIONS);
   }, [filter, notifications]);
+  const hasVisibleNotifications = visibleNotifications.length > 0;
 
-  const navigateToNotifications = () => {
+  const navigateToNotifications = (options?: { requireNotifications?: boolean }) => {
+    if (options?.requireNotifications && !hasVisibleNotifications) {
+      return;
+    }
     setIsOpen(false);
     navigate(viewAllPath);
   };
@@ -178,7 +182,7 @@ export function NotificationDropdown({
           <div className="mini-notify-head">
             <div className="mini-notify-head-top">
               <h2>Notifications</h2>
-              <button className="mini-notify-view-all" onClick={navigateToNotifications} type="button">
+              <button className="mini-notify-view-all" onClick={() => navigateToNotifications()} type="button">
                 View all
               </button>
             </div>
@@ -221,7 +225,12 @@ export function NotificationDropdown({
           </div>
 
           <div className="mini-notify-footer">
-            <button className="mini-notify-footer-btn" onClick={navigateToNotifications} type="button">
+            <button
+              className="mini-notify-footer-btn"
+              disabled={!hasVisibleNotifications}
+              onClick={() => navigateToNotifications({ requireNotifications: true })}
+              type="button"
+            >
               See previous notifications
             </button>
           </div>

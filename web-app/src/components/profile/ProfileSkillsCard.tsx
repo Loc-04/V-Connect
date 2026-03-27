@@ -283,15 +283,17 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
   };
 
   return (
-    <ProfileSectionCard action={headerAction} icon={Sparkles} title="Skills & Expertise">
+    <ProfileSectionCard
+      action={headerAction}
+      icon={Sparkles}
+      subtitle="Highlight the strengths coordinators should consider when matching new opportunities."
+      title="Skills & Expertise"
+    >
       {error && <p className="form-error">{error}</p>}
       {notice && <p className="form-success">{notice}</p>}
 
       {hasSkills ? (
         <>
-          <p className="vol-profile-section-description">
-            Highlight the strengths you want coordinators to recognize when matching new opportunities.
-          </p>
           <div className="vol-profile-chips">
             {entries.map((skill, index) => (
               <span className={`vol-profile-chip vol-profile-chip-${skill.tone}`} key={`${skill.name}-${skill.level}`}>
