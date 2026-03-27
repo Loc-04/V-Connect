@@ -22,7 +22,16 @@ export interface ListActivitiesOptions {
   limit?: number;
 }
 
-function createQueryString(options: Omit<ListActivitiesOptions, 'accessToken'>) {
+export interface SearchActivitiesOptions extends ListActivitiesOptions {
+  keyword?: string;
+  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  skill?: string;
+  location?: string;
+}
+
+function createQueryString(options: Omit<SearchActivitiesOptions, 'accessToken'>) {
   const params = new URLSearchParams();
 
   if (typeof options.mine === 'boolean') {
@@ -35,6 +44,30 @@ function createQueryString(options: Omit<ListActivitiesOptions, 'accessToken'>) 
 
   if (options.search) {
     params.set('search', options.search);
+  }
+
+  if (options.keyword) {
+    params.set('keyword', options.keyword);
+  }
+
+  if (options.date) {
+    params.set('date', options.date);
+  }
+
+  if (options.dateFrom) {
+    params.set('dateFrom', options.dateFrom);
+  }
+
+  if (options.dateTo) {
+    params.set('dateTo', options.dateTo);
+  }
+
+  if (options.skill) {
+    params.set('skill', options.skill);
+  }
+
+  if (options.location) {
+    params.set('location', options.location);
   }
 
   if (options.limit) {
@@ -54,6 +87,27 @@ export async function listActivities(options: ListActivitiesOptions): Promise<Ac
   });
 
   const response = await apiRequest<ActivitiesResponse>(`/activities${query}`, {
+    accessToken: options.accessToken,
+  });
+
+  return response.activities;
+}
+
+export async function searchActivities(options: SearchActivitiesOptions): Promise<ActivityRecord[]> {
+  const query = createQueryString({
+    mine: options.mine,
+    status: options.status,
+    search: options.search,
+    keyword: options.keyword,
+    date: options.date,
+    dateFrom: options.dateFrom,
+    dateTo: options.dateTo,
+    skill: options.skill,
+    location: options.location,
+    limit: options.limit,
+  });
+
+  const response = await apiRequest<ActivitiesResponse>(`/activities/search${query}`, {
     accessToken: options.accessToken,
   });
 
