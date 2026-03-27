@@ -6,7 +6,7 @@ import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
-import { listActivities } from '../lib/activities';
+import { searchActivities } from '../lib/activities';
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
@@ -129,10 +129,10 @@ export function BrowseOpportunitiesPage() {
 
     void (async () => {
       try {
-        const nextActivities = await listActivities({
+        const nextActivities = await searchActivities({
           accessToken: session.access_token,
           status: statusFilter,
-          search: searchTerm || undefined,
+          keyword: searchTerm || undefined,
           limit: 60,
         });
 

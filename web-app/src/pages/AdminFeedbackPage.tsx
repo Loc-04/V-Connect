@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
-import { listFeedbacks } from '../lib/feedback';
+import { listFeedbackReview } from '../lib/feedback';
 import { listParticipations } from '../lib/participations';
 import type { FeedbackRecord } from '../types/feedback';
 import type { ParticipationRecord } from '../types/participation';
@@ -26,6 +26,7 @@ interface FeedbackViewModel {
   categoryLabel: string;
   sentiment: FeedbackSentiment;
   flaggedIssue: boolean;
+  reviewStatus: string;
 }
 
 function formatDateLabel(value: string | null): string {
@@ -80,7 +81,11 @@ function toSentiment(rating: number): FeedbackSentiment {
   return 'neutral';
 }
 
-function toFlaggedIssue(rating: number, comment: string) {
+function toFlaggedIssue(rating: number, comment: string, explicitFlag?: boolean | null) {
+  if (typeof explicitFlag === 'boolean') {
+    return explicitFlag;
+  }
+
   if (rating <= 2) {
     return true;
   }
@@ -118,7 +123,8 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       submittedAt: feedback.created_at ?? null,
       categoryLabel: toCategoryLabel(activityTitle),
       sentiment: toSentiment(rating),
-      flaggedIssue: toFlaggedIssue(rating, comment),
+      flaggedIssue: toFlaggedIssue(rating, comment, feedback.is_flagged),
+      reviewStatus: String(feedback.review_status ?? 'pending'),
     };
   });
 }
@@ -200,7 +206,7 @@ export function AdminFeedbackPage() {
     try {
       const numericRating = ratingFilter === 'all' ? undefined : Number(ratingFilter);
       const [feedbacks, participations] = await Promise.all([
-        listFeedbacks({ accessToken: session.access_token, limit: 240, rating: numericRating }),
+        listFeedbackReview({ accessToken: session.access_token, limit: 240, rating: numericRating }),
         listParticipations({ accessToken: session.access_token, limit: 500 }),
       ]);
 
@@ -404,6 +410,7 @@ export function AdminFeedbackPage() {
                   <Badge tone={item.sentiment === 'positive' ? 'success' : item.sentiment === 'neutral' ? 'info' : 'danger'}>
                     {item.sentiment}
                   </Badge>
+                  <Badge tone="info">{item.reviewStatus.replace('_', ' ')}</Badge>
                   <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
                     View Detail
                   </Button>

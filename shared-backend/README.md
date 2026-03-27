@@ -35,6 +35,7 @@ shared-backend listening on http://localhost:3000
 - `GET /auth/me`
 - `POST /auth/register-profile`
 - `GET /activities`
+- `GET /activities/search`
 - `GET /activities/:id`
 - `POST /activities`
 - `PATCH /activities/:id`
@@ -51,11 +52,28 @@ shared-backend listening on http://localhost:3000
 - `GET /recommendations/:userId`
 - `GET /recommendations/activity/:id`
 - `GET /feedback`
+- `GET /feedback/review`
+- `GET /feedback/:id`
+- `PUT /feedback/:id/status`
+- `PUT /feedback/:id/flag`
 - `POST /feedback`
 - `GET /admin/users`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
 - `GET /organizer/reports/summary`
+
+### Activity Search API
+
+- `GET /activities/search`
+  - Query:
+    - `keyword=<text>` (or `search=<text>`)
+    - `status=all|draft|published|completed|cancelled`
+    - `mine=true|false`
+    - `date=YYYY-MM-DD` (exact day)
+    - `dateFrom=<ISO|YYYY-MM-DD>` and `dateTo=<ISO|YYYY-MM-DD>`
+    - `skill=<skill>` or `skill=skill1,skill2`
+    - `location=<text>`
+    - `limit=1..300`
 
 ### Attendance / Check-in API
 
@@ -123,6 +141,40 @@ shared-backend listening on http://localhost:3000
 - `rating=1..5` (optional filter)
 - `participationId=<uuid>` (optional filter)
 - `limit=1..200` (optional, default `50`)
+
+`GET /feedback/review` query params:
+
+- `status=all|pending|in_review|resolved|dismissed` (optional, default `all`)
+- `flagged=true|false` (optional)
+- `rating=1..5` (optional)
+- `keyword=<text>` (optional, searches comment + ids)
+- `limit=1..250` (optional, default `100`)
+
+`GET /feedback/:id`
+
+- Returns one feedback entry with moderation metadata.
+
+`PUT /feedback/:id/status` request body:
+
+```json
+{
+  "status": "in_review"
+}
+```
+
+`PUT /feedback/:id/flag` request body:
+
+```json
+{
+  "flag": true,
+  "reason": "Potential incident reported by volunteer"
+}
+```
+
+Note:
+
+- moderation endpoints use existing `participation_feedback` columns when available (no DB migration required).
+- if moderation columns are unavailable in your current schema, write operations return `409`.
 
 Required Supabase table:
 

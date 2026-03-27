@@ -8,6 +8,144 @@ import { canWriteActivities, getActivityById } from './activities.service.js';
 
 const router = Router();
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateBoundary(rawValue, boundary) {
+  if (typeof rawValue !== 'string' || rawValue.trim().length === 0) {
+    return null;
+  }
+
+  const value = rawValue.trim();
+  if (dateOnlyPattern.test(value)) {
+    const suffix = boundary === 'end' ? 'T23:59:59.999Z' : 'T00:00:00.000Z';
+    const date = new Date(`${value}${suffix}`);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toISOString();
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+}
+
+function parseDateOnlyRange(rawValue) {
+  if (typeof rawValue !== 'string' || !dateOnlyPattern.test(rawValue.trim())) {
+    return null;
+  }
+
+  const normalized = rawValue.trim();
+  const start = new Date(`${normalized}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
+
+function normalizeSkillFilters(rawValue) {
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .map((item) => String(item).trim().toLowerCase())
+      .filter((item) => item.length > 0);
+  }
+
+  if (typeof rawValue !== 'string') {
+    return [];
+  }
+
+  return rawValue
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+}
+
+function getLocationText(location) {
+  if (!location) {
+    return '';
+  }
+
+  if (typeof location === 'string') {
+    return location.toLowerCase();
+  }
+
+  if (typeof location !== 'object') {
+    return '';
+  }
+
+  const parts = [
+    typeof location.address === 'string' ? location.address : '',
+    typeof location.city === 'string' ? location.city : '',
+    typeof location.ward === 'string' ? location.ward : '',
+    typeof location.district === 'string' ? location.district : '',
+    typeof location.province === 'string' ? location.province : '',
+  ];
+
+  return parts.join(' ').toLowerCase();
+}
+
+function matchesSkillFilter(activity, skillFilters) {
+  if (skillFilters.length === 0) {
+    return true;
+  }
+
+  const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
+  const normalizedSkills = requiredSkills.map((skill) => String(skill).trim().toLowerCase()).filter(Boolean);
+  if (normalizedSkills.length === 0) {
+    return false;
+  }
+
+  return skillFilters.some((filterSkill) =>
+    normalizedSkills.some((skill) => skill.includes(filterSkill) || filterSkill.includes(skill))
+  );
+}
+
+function matchesKeywordFilter(activity, keyword) {
+  if (!keyword) {
+    return true;
+  }
+
+  const normalizedKeyword = keyword.toLowerCase();
+  const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
+  const text = [
+    String(activity.title ?? ''),
+    String(activity.description ?? ''),
+    getLocationText(activity.location),
+    String(activity.province_code ?? ''),
+    String(activity.ward_code ?? ''),
+    requiredSkills.map((skill) => String(skill)).join(' '),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return text.includes(normalizedKeyword);
+}
+
+function matchesLocationFilter(activity, locationFilter) {
+  if (!locationFilter) {
+    return true;
+  }
+
+  const normalizedLocationFilter = locationFilter.toLowerCase();
+  const text = [
+    getLocationText(activity.location),
+    String(activity.province_code ?? ''),
+    String(activity.ward_code ?? ''),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return text.includes(normalizedLocationFilter);
+}
+
 async function tryCreateNotification(payload) {
   try {
     await createNotificationRecord(payload);
@@ -100,6 +238,125 @@ router.get('/activities', requireAuth, async (req, res) => {
   }
 
   res.json({ activities: data ?? [] });
+});
+
+router.get('/activities/search', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  const keyword =
+    typeof req.query.keyword === 'string'
+      ? req.query.keyword.trim()
+      : typeof req.query.search === 'string'
+        ? req.query.search.trim()
+        : typeof req.query.q === 'string'
+          ? req.query.q.trim()
+          : '';
+  const locationFilter = typeof req.query.location === 'string' ? req.query.location.trim() : '';
+  const skillFilters = normalizeSkillFilters(req.query.skill ?? req.query.skills ?? '');
+  const mine = String(req.query.mine ?? 'false').toLowerCase() === 'true';
+  const statusFilter = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'all';
+  const requestedLimit = Number(req.query.limit ?? 60);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 300)
+    : 60;
+
+  if (statusFilter !== 'all' && !validActivityStatuses.has(statusFilter)) {
+    res.status(400).json({
+      message: `Invalid status filter. Allowed: all, ${Array.from(validActivityStatuses).join(', ')}`,
+    });
+    return;
+  }
+
+  if (mine && !canWriteActivities(role)) {
+    res.status(403).json({ message: 'Only organizers/admins can query own activities.' });
+    return;
+  }
+
+  const dateOnlyRange = parseDateOnlyRange(typeof req.query.date === 'string' ? req.query.date : '');
+  if (req.query.date && !dateOnlyRange) {
+    res.status(400).json({ message: 'date must be in YYYY-MM-DD format.' });
+    return;
+  }
+
+  const rawDateFrom =
+    typeof req.query.dateFrom === 'string'
+      ? req.query.dateFrom
+      : typeof req.query.from === 'string'
+        ? req.query.from
+        : typeof req.query.startDate === 'string'
+          ? req.query.startDate
+          : '';
+  const rawDateTo =
+    typeof req.query.dateTo === 'string'
+      ? req.query.dateTo
+      : typeof req.query.to === 'string'
+        ? req.query.to
+        : typeof req.query.endDate === 'string'
+          ? req.query.endDate
+          : '';
+
+  const dateFrom = parseDateBoundary(rawDateFrom, 'start');
+  const dateTo = parseDateBoundary(rawDateTo, 'end');
+
+  if (rawDateFrom && !dateFrom) {
+    res.status(400).json({ message: 'dateFrom must be a valid date (ISO string or YYYY-MM-DD).' });
+    return;
+  }
+
+  if (rawDateTo && !dateTo) {
+    res.status(400).json({ message: 'dateTo must be a valid date (ISO string or YYYY-MM-DD).' });
+    return;
+  }
+
+  if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
+    res.status(400).json({ message: 'dateFrom must be earlier than or equal to dateTo.' });
+    return;
+  }
+
+  let query = supabaseAdmin
+    .from('activities')
+    .select(activityColumns)
+    .is('deleted_at', null)
+    .order('start_time', { ascending: true })
+    .limit(limit);
+
+  if (mine) {
+    if (role !== 'admin') {
+      query = query.eq('organizer_id', req.auth.user.id);
+    }
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+  } else if (role === 'volunteer') {
+    query = query.eq('status', 'published');
+  } else if (statusFilter !== 'all') {
+    query = query.eq('status', statusFilter);
+  } else {
+    query = query.eq('status', 'published');
+  }
+
+  if (dateOnlyRange) {
+    query = query.gte('start_time', dateOnlyRange.startIso).lt('start_time', dateOnlyRange.endIso);
+  } else {
+    if (dateFrom) {
+      query = query.gte('start_time', dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte('start_time', dateTo);
+    }
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  const filteredActivities = (data ?? [])
+    .filter((activity) => matchesKeywordFilter(activity, keyword))
+    .filter((activity) => matchesLocationFilter(activity, locationFilter))
+    .filter((activity) => matchesSkillFilter(activity, skillFilters));
+
+  res.json({ activities: filteredActivities });
 });
 
 router.get('/activities/:id', requireAuth, handleActivityDetail);
