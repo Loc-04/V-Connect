@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Heart, MapPin, Search } from 'lucide-react';
+import { CalendarDays, FilterX, Heart, MapPin, Search } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
-import { listActivities } from '../lib/activities';
+import { searchActivities } from '../lib/activities';
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
@@ -37,7 +37,6 @@ const fallbackImages = [
 const statusFilters: Array<{ label: string; value: ActivityStatus | 'all' }> = [
   { label: 'Published', value: 'published' },
   { label: 'All', value: 'all' },
-  { label: 'Draft', value: 'draft' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' },
 ];
@@ -109,6 +108,10 @@ export function BrowseOpportunitiesPage() {
   const { session, profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ActivityStatus | 'all'>('published');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
+  const [skillFilter, setSkillFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,10 +132,14 @@ export function BrowseOpportunitiesPage() {
 
     void (async () => {
       try {
-        const nextActivities = await listActivities({
+        const nextActivities = await searchActivities({
           accessToken: session.access_token,
           status: statusFilter,
-          search: searchTerm || undefined,
+          keyword: searchTerm || undefined,
+          dateFrom: dateFromFilter || undefined,
+          dateTo: dateToFilter || undefined,
+          skill: skillFilter || undefined,
+          location: locationFilter || undefined,
           limit: 60,
         });
 
@@ -153,7 +160,7 @@ export function BrowseOpportunitiesPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchTerm, session?.access_token, statusFilter]);
+  }, [dateFromFilter, dateToFilter, locationFilter, searchTerm, session?.access_token, skillFilter, statusFilter]);
 
   useEffect(() => {
     if (!session?.access_token || !canApply) {
@@ -208,6 +215,15 @@ export function BrowseOpportunitiesPage() {
     navigate(`/volunteer/activity/${activityId}`);
   };
 
+  const hasAdvancedFilters = Boolean(dateFromFilter || dateToFilter || skillFilter.trim() || locationFilter.trim());
+
+  const clearAdvancedFilters = () => {
+    setDateFromFilter('');
+    setDateToFilter('');
+    setSkillFilter('');
+    setLocationFilter('');
+  };
+
   return (
     <VolunteerShell
       activeNav="activities"
@@ -256,6 +272,65 @@ export function BrowseOpportunitiesPage() {
                 </Button>
               ))}
             </div>
+          </div>
+
+          <div className="browse-advanced-filters" aria-label="Advanced filters">
+            <label className="browse-advanced-field" htmlFor="browse-filter-date-from">
+              <span>Date from</span>
+              <Input
+                id="browse-filter-date-from"
+                onChange={(event) => setDateFromFilter(event.target.value)}
+                sizeMode="small"
+                type="date"
+                value={dateFromFilter}
+              />
+            </label>
+
+            <label className="browse-advanced-field" htmlFor="browse-filter-date-to">
+              <span>Date to</span>
+              <Input
+                id="browse-filter-date-to"
+                onChange={(event) => setDateToFilter(event.target.value)}
+                sizeMode="small"
+                type="date"
+                value={dateToFilter}
+              />
+            </label>
+
+            <label className="browse-advanced-field" htmlFor="browse-filter-skill">
+              <span>Skill</span>
+              <Input
+                id="browse-filter-skill"
+                onChange={(event) => setSkillFilter(event.target.value)}
+                placeholder="e.g. teamwork"
+                sizeMode="small"
+                type="text"
+                value={skillFilter}
+              />
+            </label>
+
+            <label className="browse-advanced-field" htmlFor="browse-filter-location">
+              <span>Location</span>
+              <Input
+                id="browse-filter-location"
+                onChange={(event) => setLocationFilter(event.target.value)}
+                placeholder="address / city"
+                sizeMode="small"
+                type="text"
+                value={locationFilter}
+              />
+            </label>
+
+            <Button
+              className="browse-clear-filters-btn"
+              disabled={!hasAdvancedFilters}
+              onClick={clearAdvancedFilters}
+              type="button"
+              variant="secondary"
+            >
+              <FilterX size={14} />
+              <span>Clear filters</span>
+            </Button>
           </div>
         </Card>
 

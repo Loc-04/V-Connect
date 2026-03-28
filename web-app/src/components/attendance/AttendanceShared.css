@@ -1,0 +1,113 @@
+.attendance-status-badge.ui-badge {
+  text-transform: capitalize;
+  gap: 0.28rem;
+  padding-inline: 0.62rem;
+}
+
+.attendance-status-badge.is-checked_in.ui-badge {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.attendance-status-badge.is-not_checked_in.ui-badge {
+  background: #eef2f7;
+  color: #64748b;
+}
+
+.attendance-status-badge.is-pending.ui-badge {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.attendance-status-badge.is-approved.ui-badge {
+  background: rgba(139, 92, 246, 0.12);
+  color: #5b21b6;
+}
+
+.attendance-status-badge.is-absent.ui-badge,
+.attendance-status-badge.is-rejected.ui-badge,
+.attendance-status-badge.is-cancelled.ui-badge {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.attendance-status-badge.is-unknown.ui-badge {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.checkin-result-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.68rem;
+  padding: 0.72rem 0.8rem;
+  border-radius: 14px;
+  border: 1px solid #dbe4f2;
+  background: #f8fafc;
+}
+
+.checkin-result-state-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #e2e8f0;
+  color: #64748b;
+}
+
+.checkin-result-state-copy {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.checkin-result-state-copy strong {
+  color: #0f172a;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.checkin-result-state-copy p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.checkin-result-state.is-success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.checkin-result-state.is-success .checkin-result-state-icon {
+  color: #15803d;
+  box-shadow: inset 0 0 0 1px #bbf7d0;
+}
+
+.checkin-result-state.is-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.checkin-result-state.is-error .checkin-result-state-icon {
+  color: #dc2626;
+  box-shadow: inset 0 0 0 1px #fecaca;
+}
+
+.checkin-result-state.is-info {
+  border-color: #dbe4f2;
+  background: #f8fafc;
+}
+
+.checkin-result-state.is-info .checkin-result-state-icon {
+  color: #475569;
+}
+
+@media (max-width: 760px) {
+  .checkin-result-state {
+    padding: 0.68rem 0.72rem;
+  }
+}

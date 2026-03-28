@@ -38,6 +38,7 @@ shared-backend listening on http://localhost:3000
 - `PUT /profile/skills-availability`
 - `GET /availability-slots`
 - `GET /activities`
+- `GET /activities/search`
 - `GET /activities/:id`
 - `POST /activities`
 - `PATCH /activities/:id`
@@ -57,6 +58,10 @@ shared-backend listening on http://localhost:3000
 - `PUT /recommendations/assignments/:id/status`
 - `DELETE /recommendations/assignments/:id`
 - `GET /feedback`
+- `GET /feedback/review`
+- `GET /feedback/:id`
+- `PUT /feedback/:id/status`
+- `PUT /feedback/:id/flag`
 - `POST /feedback`
 - `GET /admin/users`
 - `GET /admin/notifications`
@@ -66,60 +71,6 @@ shared-backend listening on http://localhost:3000
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
 - `GET /organizer/reports/summary`
-
-### Sprint 3 Volunteer Skills & Availability API
-
-- `GET /profile/skills-availability`
-  - Volunteer only.
-  - Returns the authenticated volunteer's `skills`, `interests`, `availability`, and `updatedAt`.
-- `PUT /profile/skills-availability`
-  - Volunteer only.
-  - Body supports:
-
-```json
-{
-  "skills": ["Teamwork", "First Aid"],
-  "interests": ["Football", "Community Events"],
-  "availability": {
-    "weekdays": true,
-    "weekends": false,
-    "evenings": true
-  }
-}
-```
-
-  - At least one field is required: `skills`, `interests`, or `availability`.
-- `GET /availability-slots`
-  - Authenticated users.
-  - Returns supported availability slot metadata and the display grid used by the volunteer settings UI.
-
-### Sprint 3 Admin Notification Management API
-
-- `GET /admin/notifications`
-  - Admin only.
-  - Query: `limit=1..300`, `unread=true|false`, `userId=<uuid>`, `type=<string>`
-- `POST /admin/notifications`
-  - Admin only.
-  - Body:
-
-```json
-{
-  "userId": "<target_user_uuid>",
-  "title": "System Update",
-  "message": "The new attendance workflow is now live.",
-  "type": "info",
-  "data": {
-    "source": "admin-panel"
-  }
-}
-```
-
-- `PUT /admin/notifications/:id`
-  - Admin only.
-  - Supports updating `userId`, `title`, `message`, `type`, `data`, and `readAt`.
-- `DELETE /admin/notifications/:id`
-  - Admin only.
-  - Deletes a single notification by id.
 
 ### Attendance / Check-in API
 
@@ -222,6 +173,40 @@ npm run db:apply -- --file=scripts/allowAssignedParticipationStatus.sql
 - `rating=1..5` (optional filter)
 - `participationId=<uuid>` (optional filter)
 - `limit=1..200` (optional, default `50`)
+
+`GET /feedback/review` query params:
+
+- `status=all|pending|in_review|resolved|dismissed` (optional, default `all`)
+- `flagged=true|false` (optional)
+- `rating=1..5` (optional)
+- `keyword=<text>` (optional, searches comment + ids)
+- `limit=1..250` (optional, default `100`)
+
+`GET /feedback/:id`
+
+- Returns one feedback entry with moderation metadata.
+
+`PUT /feedback/:id/status` request body:
+
+```json
+{
+  "status": "in_review"
+}
+```
+
+`PUT /feedback/:id/flag` request body:
+
+```json
+{
+  "flag": true,
+  "reason": "Potential incident reported by volunteer"
+}
+```
+
+Note:
+
+- moderation endpoints use existing `participation_feedback` columns when available (no DB migration required).
+- if moderation columns are unavailable in your current schema, write operations return `409`.
 
 Required Supabase table:
 

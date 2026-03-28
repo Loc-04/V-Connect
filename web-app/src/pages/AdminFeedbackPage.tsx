@@ -1,10 +1,11 @@
-import { AlertTriangle, Download, MessageSquare, RefreshCw, Search, Star } from 'lucide-react';
+import { Download, RefreshCw, Search, Star } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '../auth/useAuth';
+import { EmptyLoadingErrorState, FeedbackCard, IssueBadge, ReviewStatusTag } from '../components/feedback';
 import { Badge, Button, Card, Input, Select } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
-import { listFeedbacks } from '../lib/feedback';
+import { listFeedbackReview } from '../lib/feedback';
 import { listParticipations } from '../lib/participations';
 import type { FeedbackRecord } from '../types/feedback';
 import type { ParticipationRecord } from '../types/participation';
@@ -20,12 +21,14 @@ interface FeedbackViewModel {
   activityTitle: string;
   volunteerName: string;
   volunteerRole: string;
+  avatarUrl: string | null;
   rating: number;
   comment: string;
   submittedAt: string | null;
   categoryLabel: string;
   sentiment: FeedbackSentiment;
   flaggedIssue: boolean;
+  reviewStatus: string;
 }
 
 function formatDateLabel(value: string | null): string {
@@ -80,7 +83,11 @@ function toSentiment(rating: number): FeedbackSentiment {
   return 'neutral';
 }
 
-function toFlaggedIssue(rating: number, comment: string) {
+function toFlaggedIssue(rating: number, comment: string, explicitFlag?: boolean | null) {
+  if (typeof explicitFlag === 'boolean') {
+    return explicitFlag;
+  }
+
   if (rating <= 2) {
     return true;
   }
@@ -113,12 +120,14 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       activityTitle,
       volunteerName: participation?.volunteer?.full_name?.trim() || 'Volunteer',
       volunteerRole: formatRoleLabel(participation?.volunteer?.role),
+      avatarUrl: participation?.volunteer?.avatar_url ?? null,
       rating,
       comment,
       submittedAt: feedback.created_at ?? null,
       categoryLabel: toCategoryLabel(activityTitle),
       sentiment: toSentiment(rating),
-      flaggedIssue: toFlaggedIssue(rating, comment),
+      flaggedIssue: toFlaggedIssue(rating, comment, feedback.is_flagged),
+      reviewStatus: String(feedback.review_status ?? 'pending'),
     };
   });
 }
@@ -200,7 +209,7 @@ export function AdminFeedbackPage() {
     try {
       const numericRating = ratingFilter === 'all' ? undefined : Number(ratingFilter);
       const [feedbacks, participations] = await Promise.all([
-        listFeedbacks({ accessToken: session.access_token, limit: 240, rating: numericRating }),
+        listFeedbackReview({ accessToken: session.access_token, limit: 240, rating: numericRating }),
         listParticipations({ accessToken: session.access_token, limit: 500 }),
       ]);
 
@@ -362,16 +371,32 @@ export function AdminFeedbackPage() {
       </div>
 
       <Card as="section" className="feedback-review-list-shell">
-        {error && <p className="form-error">{error}</p>}
+        {error && items.length > 0 && <p className="form-error">{error}</p>}
         {lastSync && <p className="muted feedback-review-sync">Last sync: {lastSync}</p>}
 
         {loading ? (
-          <p className="muted">Loading feedback...</p>
+          <EmptyLoadingErrorState
+            description="Pulling the latest volunteer feedback records and participation context."
+            state="loading"
+            title="Loading feedback"
+          />
+        ) : error && items.length === 0 ? (
+          <EmptyLoadingErrorState
+            action={
+              <Button onClick={() => void loadFeedback()} type="button" variant="secondary">
+                Retry
+              </Button>
+            }
+            description={error}
+            state="error"
+            title="Unable to load feedback"
+          />
         ) : filteredItems.length === 0 ? (
-          <div className="feedback-review-empty">
-            <MessageSquare size={18} />
-            <p>No feedback records match the current filters.</p>
-          </div>
+          <EmptyLoadingErrorState
+            description="Try broadening the current filters or search term to review more feedback records."
+            state="empty"
+            title="No feedback records found"
+          />
         ) : (
           <div className="feedback-review-list">
             {filteredItems.map((item) => (
@@ -404,11 +429,30 @@ export function AdminFeedbackPage() {
                   <Badge tone={item.sentiment === 'positive' ? 'success' : item.sentiment === 'neutral' ? 'info' : 'danger'}>
                     {item.sentiment}
                   </Badge>
+                  <Badge tone="info">{item.reviewStatus.replace('_', ' ')}</Badge>
+              <FeedbackCard
+                action={
                   <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
                     View Detail
                   </Button>
-                </div>
-              </article>
+                }
+                activityLabel={item.activityTitle}
+                avatarUrl={item.avatarUrl}
+                className="feedback-review-card"
+                date={formatDateLabel(item.submittedAt)}
+                insight={item.flaggedIssue ? 'Automatically flagged from rating and comment keyword analysis.' : undefined}
+                key={item.id}
+                name={item.volunteerName}
+                rating={item.rating}
+                status={item.sentiment}
+                tags={
+                  <>
+                    <Badge tone="info">{item.categoryLabel}</Badge>
+                    {item.flaggedIssue ? <IssueBadge label="Needs Attention" state="warning" /> : null}
+                  </>
+                }
+                text={item.comment}
+              />
             ))}
           </div>
         )}
@@ -458,18 +502,8 @@ export function AdminFeedbackPage() {
 
             <div className="feedback-review-modal-foot">
               <Badge tone="info">{selectedFeedback.categoryLabel}</Badge>
-              <Badge
-                tone={
-                  selectedFeedback.sentiment === 'positive'
-                    ? 'success'
-                    : selectedFeedback.sentiment === 'neutral'
-                      ? 'info'
-                      : 'danger'
-                }
-              >
-                {selectedFeedback.sentiment}
-              </Badge>
-              {selectedFeedback.flaggedIssue && <Badge tone="danger">Flagged from current data</Badge>}
+              <ReviewStatusTag status={selectedFeedback.sentiment} />
+              {selectedFeedback.flaggedIssue && <IssueBadge label="Flagged from current data" state="warning" />}
             </div>
           </Card>
         </div>

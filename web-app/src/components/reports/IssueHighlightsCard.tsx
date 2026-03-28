@@ -1,4 +1,5 @@
-import { Badge, Card } from '../ui';
+import { IssueBadge } from '../feedback';
+import { Card } from '../ui';
 import type { ReportIssueHighlight } from '../../lib/organizerReportSummary';
 import { IssueHighlightItem } from './IssueHighlightItem';
 
@@ -11,9 +12,7 @@ export function IssueHighlightsCard({ issues }: IssueHighlightsCardProps) {
     <Card as="section" className="org-report-lower-card org-report-issues-card">
       <div className="org-report-card-head">
         <h3>Issue Highlights</h3>
-        <Badge className="org-report-active-badge" tone="danger">
-          {`${issues.length} Active`}
-        </Badge>
+        <IssueBadge className="org-report-active-badge" label={`${issues.length} Active`} state="active" />
       </div>
 
       <div className="org-report-issue-list">

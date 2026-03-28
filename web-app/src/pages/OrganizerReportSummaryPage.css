@@ -214,6 +214,30 @@
   gap: 1rem;
 }
 
+.org-report-feedback-card.is-interactive {
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.org-report-feedback-card.is-interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+  border-color: #cfd8e6;
+}
+
+.org-report-feedback-card.is-interactive:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.24);
+  outline-offset: 2px;
+}
+
+.org-report-feedback-link-icon {
+  color: #6366f1;
+  flex: none;
+}
+
 .org-report-feedback-top {
   display: flex;
   gap: 1rem;
@@ -289,11 +313,6 @@
   gap: 0.8rem;
 }
 
-.org-report-active-badge.ui-badge {
-  background: #fee2e2;
-  color: #ef4444;
-}
-
 .org-report-issue-list {
   display: grid;
   gap: 0.7rem;
@@ -311,27 +330,6 @@
 .org-report-issue-item strong {
   font-size: 0.96rem;
   color: #1e293b;
-}
-
-.org-report-priority.ui-badge {
-  text-transform: uppercase;
-  font-size: 0.66rem;
-  padding: 0.26rem 0.56rem;
-}
-
-.org-report-priority-high {
-  background: #fee2e2;
-  color: #ef4444;
-}
-
-.org-report-priority-medium {
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.org-report-priority-low {
-  background: #eef2f7;
-  color: #64748b;
 }
 
 .org-report-empty-card {
