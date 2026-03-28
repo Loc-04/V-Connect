@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
+import { Activity, BarChart3, Bell, LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 
@@ -35,6 +35,10 @@ export function AdminLayout() {
           <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/feedback">
             <Activity className="sidebar-link-icon" />
             Feedback
+          </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/notifications">
+            <Bell className="sidebar-link-icon" />
+            Notifications
           </NavLink>
           <button className="sidebar-link placeholder" type="button">
             <Activity className="sidebar-link-icon" />

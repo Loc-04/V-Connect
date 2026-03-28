@@ -6,12 +6,29 @@ import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
-import { getRecommendationsForActivity } from '../lib/recommendations';
+import { listParticipations } from '../lib/participations';
+import {
+  createRecommendationAssignment,
+  deleteRecommendationAssignment,
+  getRecommendationsForActivity,
+  updateRecommendationAssignmentStatus,
+} from '../lib/recommendations';
 import type { ActivityRecord } from '../types/activity';
+import type { ParticipationRecord } from '../types/participation';
 import type { RecommendedVolunteerRecord } from '../types/recommendation';
 import './OrganizerRecommendationsPage.css';
 
 type RecommendationFilter = 'all' | 'strong-fit' | 'weekend' | 'experienced';
+type AssignmentStatusChange = 'assigned' | 'approved' | 'rejected' | 'cancelled';
+
+const assignmentStatusOrder: Record<string, number> = {
+  assigned: 0,
+  pending: 1,
+  approved: 2,
+  checked_in: 3,
+  rejected: 4,
+  cancelled: 5,
+};
 
 function formatDateLabel(value: string) {
   const date = new Date(value);
@@ -71,6 +88,49 @@ function isExperienced(volunteer: RecommendedVolunteerRecord) {
   return Number(volunteer.totalHours ?? 0) >= 10;
 }
 
+function normalizeAssignmentStatus(value: string | null | undefined) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function formatAssignmentStatusLabel(value: string | null | undefined) {
+  const normalized = normalizeAssignmentStatus(value);
+  if (!normalized) {
+    return 'Unknown';
+  }
+
+  return normalized
+    .split('_')
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ');
+}
+
+function getAssignmentVolunteerName(assignment: ParticipationRecord) {
+  return assignment.volunteer?.full_name?.trim() || assignment.organization || 'Volunteer';
+}
+
+function shouldDisplayAssignment(assignment: ParticipationRecord) {
+  return normalizeAssignmentStatus(assignment.status) !== 'cancelled';
+}
+
+function canApproveAssignment(assignment: ParticipationRecord) {
+  const status = normalizeAssignmentStatus(assignment.status);
+  return status === 'assigned' || status === 'pending';
+}
+
+function canRejectAssignment(assignment: ParticipationRecord) {
+  const status = normalizeAssignmentStatus(assignment.status);
+  return status === 'assigned' || status === 'pending';
+}
+
+function canReassignVolunteer(assignment: ParticipationRecord) {
+  return normalizeAssignmentStatus(assignment.status) === 'rejected';
+}
+
+function canUnassignVolunteer(assignment: ParticipationRecord) {
+  const status = normalizeAssignmentStatus(assignment.status);
+  return status === 'assigned' || status === 'pending' || status === 'approved' || status === 'rejected';
+}
+
 export function OrganizerRecommendationsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -79,10 +139,15 @@ export function OrganizerRecommendationsPage() {
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState('');
   const [recommendations, setRecommendations] = useState<RecommendedVolunteerRecord[]>([]);
+  const [assignments, setAssignments] = useState<ParticipationRecord[]>([]);
   const [selectedVolunteerId, setSelectedVolunteerId] = useState<string | null>(null);
   const [filter, setFilter] = useState<RecommendationFilter>('all');
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busyVolunteerId, setBusyVolunteerId] = useState<string | null>(null);
+  const [busyAssignmentId, setBusyAssignmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadActivities = useCallback(async () => {
@@ -143,12 +208,13 @@ export function OrganizerRecommendationsPage() {
 
       try {
         const response = await getRecommendationsForActivity(activityId, session.access_token, 20);
-        setRecommendations(response.volunteers ?? []);
+        const nextRecommendations = response.volunteers ?? [];
+        setRecommendations(nextRecommendations);
         setSelectedVolunteerId((current) => {
-          if (current && response.volunteers.some((volunteer) => volunteer.userId === current)) {
+          if (current && nextRecommendations.some((volunteer) => volunteer.userId === current)) {
             return current;
           }
-          return response.volunteers[0]?.userId ?? null;
+          return nextRecommendations[0]?.userId ?? null;
         });
       } catch (loadError) {
         setRecommendations([]);
@@ -161,9 +227,60 @@ export function OrganizerRecommendationsPage() {
     [session?.access_token]
   );
 
+  const loadAssignments = useCallback(
+    async (activityId: string) => {
+      if (!session?.access_token || !activityId) {
+        setAssignments([]);
+        setLoadingAssignments(false);
+        return;
+      }
+
+      setLoadingAssignments(true);
+
+      try {
+        const rows = await listParticipations({
+          accessToken: session.access_token,
+          activityId,
+          status: 'all',
+          limit: 200,
+        });
+
+        const nextAssignments = rows
+          .filter(shouldDisplayAssignment)
+          .sort((left, right) => {
+            const leftRank = assignmentStatusOrder[normalizeAssignmentStatus(left.status)] ?? 99;
+            const rightRank = assignmentStatusOrder[normalizeAssignmentStatus(right.status)] ?? 99;
+            if (leftRank !== rightRank) {
+              return leftRank - rightRank;
+            }
+            return getAssignmentVolunteerName(left).localeCompare(getAssignmentVolunteerName(right));
+          });
+
+        setAssignments(nextAssignments);
+      } catch (loadError) {
+        setAssignments([]);
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load current assignments.');
+      } finally {
+        setLoadingAssignments(false);
+      }
+    },
+    [session?.access_token]
+  );
+
+  const refreshSelectedActivityData = useCallback(async () => {
+    if (!selectedActivityId) {
+      setRecommendations([]);
+      setAssignments([]);
+      setSelectedVolunteerId(null);
+      return;
+    }
+
+    await Promise.all([loadRecommendations(selectedActivityId), loadAssignments(selectedActivityId)]);
+  }, [loadAssignments, loadRecommendations, selectedActivityId]);
+
   useEffect(() => {
-    void loadRecommendations(selectedActivityId);
-  }, [loadRecommendations, selectedActivityId]);
+    void refreshSelectedActivityData();
+  }, [refreshSelectedActivityData]);
 
   const selectedActivity = useMemo(
     () => activities.find((activity) => activity.id === selectedActivityId) ?? null,
@@ -224,12 +341,60 @@ export function OrganizerRecommendationsPage() {
 
   const loading = loadingActivities || loadingRecommendations;
 
+  const handleAssignSelectedVolunteer = async () => {
+    if (!selectedActivityId || !selectedVolunteer || !session?.access_token) {
+      return;
+    }
+
+    setBusyVolunteerId(selectedVolunteer.userId);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await createRecommendationAssignment(
+        selectedActivityId,
+        selectedVolunteer.userId,
+        session.access_token
+      );
+      setNotice(response.message ?? `Assigned ${selectedVolunteer.fullName} successfully.`);
+      await refreshSelectedActivityData();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Failed to assign volunteer.');
+    } finally {
+      setBusyVolunteerId(null);
+    }
+  };
+
+  const handleAssignmentStatusChange = async (assignmentId: string, status: AssignmentStatusChange) => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    setBusyAssignmentId(assignmentId);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response =
+        status === 'cancelled'
+          ? await deleteRecommendationAssignment(assignmentId, session.access_token)
+          : await updateRecommendationAssignmentStatus(assignmentId, status, session.access_token);
+
+      setNotice(response.message ?? `Assignment updated to ${status}.`);
+      await refreshSelectedActivityData();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Failed to update assignment.');
+    } finally {
+      setBusyAssignmentId(null);
+    }
+  };
+
   return (
     <OrganizerShell
       activeNav="recommendations"
       headerActions={
         <>
-          <Button onClick={() => void loadRecommendations(selectedActivityId)} type="button" variant="secondary">
+          <Button onClick={() => void refreshSelectedActivityData()} type="button" variant="secondary">
             <RefreshCw size={15} />
             <span>Refresh Recommendations</span>
           </Button>
@@ -317,9 +482,10 @@ export function OrganizerRecommendationsPage() {
               <small className="org-reco-toolbar-note">
                 Strong fits: <strong>{metrics.strongFitCount}</strong>
               </small>
-            </div>
+              </div>
 
-            {error && <p className="form-error">{error}</p>}
+              {notice && <p className="form-success">{notice}</p>}
+              {error && <p className="form-error">{error}</p>}
             {loading ? (
               <div className="org-reco-loading-state">
                 <LoaderCircle className="org-reco-loading-icon" />
@@ -432,11 +598,21 @@ export function OrganizerRecommendationsPage() {
                 </div>
 
                 <div className="org-reco-detail-actions">
-                  <Button onClick={() => navigate('/organizer/registrations')} type="button">
-                    Open Registrations
+                  <Button
+                    disabled={busyVolunteerId === selectedVolunteer.userId}
+                    onClick={() => void handleAssignSelectedVolunteer()}
+                    type="button"
+                  >
+                    {busyVolunteerId === selectedVolunteer.userId ? 'Assigning...' : 'Assign Volunteer'}
                   </Button>
-                  <Button onClick={() => navigate(`/organizer/activities`)} type="button" variant="secondary">
-                    Back to Activities
+                  <Button
+                    onClick={() =>
+                      navigate(selectedActivityId ? `/organizer/registrations?activityId=${selectedActivityId}` : '/organizer/registrations')
+                    }
+                    type="button"
+                    variant="secondary"
+                  >
+                    Open Registrations
                   </Button>
                 </div>
 
@@ -490,9 +666,106 @@ export function OrganizerRecommendationsPage() {
                   <p>{availabilityLabel(selectedVolunteer)}</p>
                   {selectedVolunteer.availabilityNote && <p>{selectedVolunteer.availabilityNote}</p>}
                 </div>
+
+                <div className="org-reco-note">
+                  <h4>Assignment Flow</h4>
+                  <p>
+                    Use <strong>Assign Volunteer</strong> to create an `assigned` participation from this recommendation.
+                    After assignment, the volunteer is removed from the recommendation list and appears in the activity roster below.
+                  </p>
+                </div>
               </>
             ) : (
               <p className="muted">Select a volunteer recommendation to inspect the match details.</p>
+            )}
+          </Card>
+
+          <Card as="section" className="org-reco-detail-card org-reco-assignment-card">
+            <div className="org-reco-assignment-head">
+              <h3>Current Activity Roster</h3>
+              <small>{selectedActivity ? selectedActivity.title : 'Select an activity first'}</small>
+            </div>
+
+            {loadingAssignments ? (
+              <p className="muted">Loading linked volunteers...</p>
+            ) : assignments.length === 0 ? (
+              <p className="muted">No current assignments or registrations for this activity.</p>
+            ) : (
+              <div className="org-reco-assignment-list">
+                {assignments.map((assignment) => {
+                  const volunteerName = getAssignmentVolunteerName(assignment);
+                  const assignmentStatus = normalizeAssignmentStatus(assignment.status);
+                  const busy = busyAssignmentId === assignment.id;
+
+                  return (
+                    <article className="org-reco-assignment-item" key={assignment.id}>
+                      <div className="org-reco-assignment-copy">
+                        <div className="org-reco-assignment-top">
+                          <strong>{volunteerName}</strong>
+                          <span className={`org-reco-assignment-status is-${assignmentStatus || 'unknown'}`}>
+                            {formatAssignmentStatusLabel(assignment.status)}
+                          </span>
+                        </div>
+                        <p>{assignment.volunteer?.phone || assignment.volunteer_id || 'No volunteer contact'}</p>
+                        <small>
+                          Match score:{' '}
+                          {typeof assignment.ai_match_score === 'number'
+                            ? `${Math.round(assignment.ai_match_score * 100)}%`
+                            : 'N/A'}
+                        </small>
+                      </div>
+
+                      <div className="org-reco-assignment-actions">
+                        {canApproveAssignment(assignment) && (
+                          <Button
+                            disabled={busy}
+                            onClick={() => void handleAssignmentStatusChange(assignment.id, 'approved')}
+                            type="button"
+                          >
+                            {busy ? 'Working...' : 'Approve'}
+                          </Button>
+                        )}
+                        {canRejectAssignment(assignment) && (
+                          <Button
+                            className="org-reco-assignment-btn"
+                            disabled={busy}
+                            onClick={() => void handleAssignmentStatusChange(assignment.id, 'rejected')}
+                            type="button"
+                            variant="secondary"
+                          >
+                            Reject
+                          </Button>
+                        )}
+                        {canReassignVolunteer(assignment) && (
+                          <Button
+                            className="org-reco-assignment-btn"
+                            disabled={busy}
+                            onClick={() => void handleAssignmentStatusChange(assignment.id, 'assigned')}
+                            type="button"
+                            variant="secondary"
+                          >
+                            Assign Again
+                          </Button>
+                        )}
+                        {canUnassignVolunteer(assignment) && (
+                          <Button
+                            className="org-reco-assignment-btn"
+                            disabled={busy}
+                            onClick={() => void handleAssignmentStatusChange(assignment.id, 'cancelled')}
+                            type="button"
+                            variant="danger"
+                          >
+                            Unassign
+                          </Button>
+                        )}
+                        {assignmentStatus === 'checked_in' && (
+                          <span className="org-reco-assignment-locked">Checked in</span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             )}
           </Card>
         </aside>

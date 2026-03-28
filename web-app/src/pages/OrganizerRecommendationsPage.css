@@ -371,6 +371,107 @@
   color: #475569;
 }
 
+.org-reco-assignment-card.card {
+  margin-top: 0.8rem;
+}
+
+.org-reco-assignment-head {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.org-reco-assignment-head small {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.org-reco-assignment-list {
+  display: grid;
+  gap: 0.58rem;
+}
+
+.org-reco-assignment-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0.72rem;
+  display: grid;
+  gap: 0.62rem;
+}
+
+.org-reco-assignment-copy {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.org-reco-assignment-copy strong {
+  color: #0f172a;
+}
+
+.org-reco-assignment-copy p,
+.org-reco-assignment-copy small {
+  margin: 0;
+  color: #64748b;
+}
+
+.org-reco-assignment-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.org-reco-assignment-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.org-reco-assignment-status.is-assigned {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.org-reco-assignment-status.is-pending {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.org-reco-assignment-status.is-approved {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.org-reco-assignment-status.is-rejected,
+.org-reco-assignment-status.is-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.org-reco-assignment-status.is-checked_in {
+  background: #cffafe;
+  color: #0f766e;
+}
+
+.org-reco-assignment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.org-reco-assignment-btn {
+  min-width: 102px;
+}
+
+.org-reco-assignment-locked {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
 .org-reco-loading-state,
 .org-reco-empty-state {
   min-height: 220px;

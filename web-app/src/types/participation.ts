@@ -1,4 +1,4 @@
-export type ParticipationStatus = 'pending' | 'approved' | 'rejected' | 'checked_in' | string;
+export type ParticipationStatus = 'assigned' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'checked_in' | string;
 
 export interface ParticipationVolunteerSummary {
   id: string;

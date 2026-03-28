@@ -1,10 +1,26 @@
 import { apiRequest } from './api';
+import { normalizeParticipationRecord } from './participations';
+import type { ParticipationRecord } from '../types/participation';
 import type {
   ActivityRecommendationResponse,
   RecommendedActivityRecord,
   RecommendedVolunteerRecord,
   UserRecommendationResponse,
 } from '../types/recommendation';
+
+interface RecommendationAssignmentResponse {
+  assignment: ParticipationRecord;
+  created?: boolean;
+  message?: string;
+}
+
+async function normalizeAssignmentResponse<T extends RecommendationAssignmentResponse>(promise: Promise<T>): Promise<T> {
+  const response = await promise;
+  return {
+    ...response,
+    assignment: normalizeParticipationRecord(response.assignment),
+  };
+}
 
 export async function getRecommendationsForUser(
   userId: string,
@@ -44,5 +60,45 @@ export async function getRecommendationsForActivity(
     {
       accessToken,
     }
+  );
+}
+
+export async function createRecommendationAssignment(
+  activityId: string,
+  volunteerId: string,
+  accessToken: string
+): Promise<RecommendationAssignmentResponse> {
+  return normalizeAssignmentResponse(
+    apiRequest<RecommendationAssignmentResponse>(`/recommendations/activity/${activityId}/assignments`, {
+      method: 'POST',
+      accessToken,
+      body: { volunteerId },
+    })
+  );
+}
+
+export async function updateRecommendationAssignmentStatus(
+  assignmentId: string,
+  status: 'assigned' | 'approved' | 'rejected' | 'cancelled',
+  accessToken: string
+): Promise<RecommendationAssignmentResponse> {
+  return normalizeAssignmentResponse(
+    apiRequest<RecommendationAssignmentResponse>(`/recommendations/assignments/${assignmentId}/status`, {
+      method: 'PUT',
+      accessToken,
+      body: { status },
+    })
+  );
+}
+
+export async function deleteRecommendationAssignment(
+  assignmentId: string,
+  accessToken: string
+): Promise<RecommendationAssignmentResponse> {
+  return normalizeAssignmentResponse(
+    apiRequest<RecommendationAssignmentResponse>(`/recommendations/assignments/${assignmentId}`, {
+      method: 'DELETE',
+      accessToken,
+    })
   );
 }
