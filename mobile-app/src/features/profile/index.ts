@@ -21,6 +21,7 @@ export {
   getVolunteerStats,
   getRecentParticipations,
   getOrganizerProfile,
+  getOrganizerTopStats,
   getOrganizerManagedActivities,
   getOrganizerRecommendedVolunteers,
 } from './services/profile-service';

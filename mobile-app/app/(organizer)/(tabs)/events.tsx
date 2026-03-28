@@ -6,7 +6,6 @@ import {
   Alert,
   FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -169,26 +168,25 @@ export default function OrganizerEventsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-      >
+      <View style={styles.filterRow}>
         {STATUS_FILTERS.map((f) => {
           const active = f.value === statusFilter;
           return (
             <Pressable
               key={f.value}
-              style={[styles.filterChip, active && styles.filterChipActive]}
+              style={[styles.filterTab, active && styles.filterTabActive]}
               onPress={() => setStatusFilter(f.value)}
             >
-              <ThemedText style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+              <ThemedText
+                numberOfLines={1}
+                style={[styles.filterTabText, active && styles.filterTabTextActive]}
+              >
                 {f.label}
               </ThemedText>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
 
       {state === 'loading' ? (
         <View style={styles.centered}>
@@ -272,24 +270,32 @@ const styles = StyleSheet.create({
     color: '#1f2937',
   },
   filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     paddingBottom: 12,
+    alignSelf: 'flex-start',
   },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: '#f3f4f6',
+  filterTab: {
+    minWidth: 92,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#f9fafb',
+    alignItems: 'center',
   },
-  filterChipActive: {
+  filterTabActive: {
     backgroundColor: '#0f8a8a',
+    borderColor: '#0f8a8a',
   },
-  filterChipText: {
+  filterTabText: {
     fontSize: 13,
     fontWeight: '600',
     color: '#4b5563',
   },
-  filterChipTextActive: {
+  filterTabTextActive: {
     color: '#ffffff',
   },
   centered: {

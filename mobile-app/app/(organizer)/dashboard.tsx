@@ -15,6 +15,7 @@ import {
   getOrganizerManagedActivities,
   getOrganizerProfile,
   getOrganizerRecommendedVolunteers,
+  getOrganizerTopStats,
   type OrganizerManagedActivityItem,
   type OrganizerProfileView,
   type OrganizerRecommendedVolunteerItem,
@@ -25,10 +26,10 @@ import { ThemedView } from '@/src/shared/ui/themed-view';
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
 
-const TOP_STATS: OrganizerTopStats = {
-  totalEvents: '42',
-  volunteers: '1.2k',
-  successRate: '98%',
+const EMPTY_TOP_STATS: OrganizerTopStats = {
+  totalEvents: '0',
+  volunteers: '0',
+  successRate: '0%',
 };
 
 function toInitials(fullName: string): string {
@@ -57,6 +58,7 @@ export default function DashboardScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [profile, setProfile] = useState<OrganizerProfileView | null>(null);
+  const [topStats, setTopStats] = useState<OrganizerTopStats>(EMPTY_TOP_STATS);
   const [activities, setActivities] = useState<OrganizerManagedActivityItem[]>([]);
   const [allActivities, setAllActivities] = useState<OrganizerManagedActivityItem[]>([]);
   const [isViewAllVisible, setIsViewAllVisible] = useState(false);
@@ -80,14 +82,16 @@ export default function DashboardScreen() {
     setErrorMessage(null);
 
     try {
-      const [nextProfile, nextActivities, nextRecommended] = await Promise.all([
+      const [nextProfile, nextStats, nextActivities, nextRecommended] = await Promise.all([
         getOrganizerProfile(user.id),
+        getOrganizerTopStats(user.id),
         getOrganizerManagedActivities(user.id, 5),
         getOrganizerRecommendedVolunteers(user.id, 6),
       ]);
 
       if (!nextProfile) {
         setProfile(null);
+        setTopStats(EMPTY_TOP_STATS);
         setActivities([]);
         setRecommendedVolunteers([]);
         setState('empty');
@@ -95,6 +99,7 @@ export default function DashboardScreen() {
       }
 
       setProfile(nextProfile);
+      setTopStats(nextStats);
       setActivities(nextActivities);
       setRecommendedVolunteers(nextRecommended);
       setState('ready');
@@ -203,15 +208,15 @@ export default function DashboardScreen() {
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <ThemedText style={styles.statValue}>{TOP_STATS.totalEvents}</ThemedText>
+            <ThemedText style={styles.statValue}>{topStats.totalEvents}</ThemedText>
             <ThemedText style={styles.statLabel}>TOTAL EVENTS</ThemedText>
           </View>
           <View style={styles.statCard}>
-            <ThemedText style={styles.statValue}>{TOP_STATS.volunteers}</ThemedText>
+            <ThemedText style={styles.statValue}>{topStats.volunteers}</ThemedText>
             <ThemedText style={styles.statLabel}>VOLUNTEERS</ThemedText>
           </View>
           <View style={styles.statCard}>
-            <ThemedText style={styles.statValue}>{TOP_STATS.successRate}</ThemedText>
+            <ThemedText style={styles.statValue}>{topStats.successRate}</ThemedText>
             <ThemedText style={styles.statLabel}>SUCCESS RATE</ThemedText>
           </View>
         </View>
