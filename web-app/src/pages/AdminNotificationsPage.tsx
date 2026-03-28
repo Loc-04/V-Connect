@@ -2,7 +2,6 @@ import {
   BellRing,
   CheckCheck,
   Mail,
-  Pencil,
   PlusCircle,
   RefreshCw,
   Search,
@@ -427,7 +426,7 @@ export function AdminNotificationsPage() {
                 >
                   <button
                     className="admin-notification-row-main"
-                    onClick={() => setSelectedNotificationId(notification.id)}
+                    onClick={() => beginEdit(notification)}
                     type="button"
                   >
                     <div className="admin-notification-row-top">
@@ -453,10 +452,6 @@ export function AdminNotificationsPage() {
                   </button>
 
                   <div className="admin-notification-row-actions">
-                    <Button onClick={() => beginEdit(notification)} type="button" variant="secondary">
-                      <Pencil size={14} />
-                      Edit
-                    </Button>
                     <Button onClick={() => void handleDelete(notification)} type="button" variant="danger">
                       <Trash2 size={14} />
                       Delete
