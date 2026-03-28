@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../database/supabase.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ACTIVE_PARTICIPATION_STATUSES = new Set(['pending', 'approved', 'checked_in']);
+const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in']);
 
 function asDate(value) {
   if (!value) {

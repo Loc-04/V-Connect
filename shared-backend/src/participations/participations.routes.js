@@ -64,7 +64,7 @@ async function getActiveRegistrationCount(activityId, excludeParticipationId = n
     .from('activity_participations')
     .select('*', { head: true, count: 'exact' })
     .eq('activity_id', activityId)
-    .in('status', ['pending', 'approved', 'checked_in']);
+    .in('status', ['assigned', 'pending', 'approved', 'checked_in']);
 
   if (excludeParticipationId) {
     query = query.neq('id', excludeParticipationId);
@@ -160,7 +160,7 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
     throw new Error(existingError.message);
   }
 
-  if (existingRegistration && ['pending', 'approved', 'checked_in'].includes(String(existingRegistration.status ?? ''))) {
+  if (existingRegistration && ['assigned', 'pending', 'approved', 'checked_in'].includes(String(existingRegistration.status ?? ''))) {
     return {
       registration: await enrichParticipation(existingRegistration),
       created: false,

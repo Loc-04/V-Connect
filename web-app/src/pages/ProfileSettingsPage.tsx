@@ -11,32 +11,64 @@ import { ProfileInterestsCard } from '../components/profile/ProfileInterestsCard
 import { ProfileSkillsCard } from '../components/profile/ProfileSkillsCard';
 import { Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
-import { getProfileMe, patchProfileMe } from '../lib/profile';
+import { getAvailabilitySlots, getProfileMe, getSkillsAvailability, putSkillsAvailability } from '../lib/profile';
 import type { UserRecord } from '../types/domain';
-import type { VolunteerAvailability, VolunteerProfile } from '../types/profile';
+import type {
+  AvailabilityGridRow,
+  AvailabilitySlotOption,
+  SkillsAvailabilityRecord,
+  VolunteerAvailability,
+  VolunteerProfile,
+} from '../types/profile';
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80';
-const availabilityDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
-const availabilityOptions = [
+const fallbackAvailabilityDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const fallbackAvailabilityOptions: AvailabilitySlotOption[] = [
   {
     key: 'weekdays',
     label: 'Weekdays',
     description: 'Best for regular Monday to Friday volunteering.',
+    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+    timeWindows: ['Morning', 'Afternoon'],
   },
   {
     key: 'weekends',
     label: 'Weekends',
     description: 'Suitable for Saturday and Sunday commitments.',
+    days: ['Sat', 'Sun'],
+    timeWindows: ['Morning', 'Afternoon'],
   },
   {
     key: 'evenings',
     label: 'Evenings',
     description: 'Useful for after-hours programs and support shifts.',
+    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    timeWindows: ['Evening'],
   },
 ] as const;
+const fallbackAvailabilityRows: AvailabilityGridRow[] = [
+  { key: 'morning', label: 'Morning' },
+  { key: 'afternoon', label: 'Afternoon' },
+  { key: 'evening', label: 'Evening' },
+];
 
 type AvailabilityKey = keyof VolunteerAvailability;
+
+function buildVolunteerProfileFromSkillsAvailability(
+  userId: string,
+  current: VolunteerProfile | null,
+  next: SkillsAvailabilityRecord
+): VolunteerProfile {
+  return {
+    user_id: next.userId || current?.user_id || userId,
+    skills: next.skills,
+    interests: next.interests,
+    availability: next.availability,
+    total_hours: current?.total_hours ?? null,
+    updated_at: next.updatedAt,
+  };
+}
 
 function formatMonthYear(value: string | null | undefined): string {
   if (!value) {
@@ -51,8 +83,30 @@ function formatMonthYear(value: string | null | undefined): string {
   return date.toLocaleString(undefined, { month: 'long', year: 'numeric' });
 }
 
-function buildAvailabilityGridRows(availability: VolunteerAvailability) {
-  const baseDayAvailability = availabilityDays.map((_, index) => (index < 5 ? availability.weekdays : availability.weekends));
+function getAvailabilityHint(key: string): string {
+  if (key === 'morning') {
+    return '8 AM - 12 PM';
+  }
+  if (key === 'afternoon') {
+    return '12 PM - 5 PM';
+  }
+  if (key === 'evening') {
+    return '5 PM - 9 PM';
+  }
+  return 'Recurring window';
+}
+
+function isWeekendDay(day: string): boolean {
+  const token = day.trim().slice(0, 3).toLowerCase();
+  return token === 'sat' || token === 'sun';
+}
+
+function buildAvailabilityGridRows(
+  availability: VolunteerAvailability,
+  days: string[],
+  rows: AvailabilityGridRow[]
+) {
+  const baseDayAvailability = days.map((day) => (isWeekendDay(day) ? availability.weekends : availability.weekdays));
   const eveningAvailability = baseDayAvailability.map((active, index) => {
     if (!availability.evenings) {
       return false;
@@ -62,26 +116,14 @@ function buildAvailabilityGridRows(availability: VolunteerAvailability) {
       return true;
     }
 
-    return !availability.weekdays && !availability.weekends && (index === 4 || index === 5);
+    return !availability.weekdays && !availability.weekends && (index === Math.max(days.length - 2, 0) || index === days.length - 1);
   });
 
-  return [
-    {
-      label: 'Morning',
-      hint: '8 AM - 12 PM',
-      cells: baseDayAvailability,
-    },
-    {
-      label: 'Afternoon',
-      hint: '12 PM - 5 PM',
-      cells: baseDayAvailability,
-    },
-    {
-      label: 'Evening',
-      hint: '5 PM - 9 PM',
-      cells: eveningAvailability,
-    },
-  ];
+  return rows.map((row) => ({
+    label: row.label,
+    hint: getAvailabilityHint(row.key),
+    cells: row.key === 'evening' ? eveningAvailability : baseDayAvailability,
+  }));
 }
 
 function buildAvailabilitySummary(availability: VolunteerAvailability): string {
@@ -142,6 +184,9 @@ export function ProfileSettingsPage() {
 
   const [profile, setProfile] = useState<UserRecord | null>(null);
   const [volunteerProfile, setVolunteerProfile] = useState<VolunteerProfile | null>(null);
+  const [availabilityOptions, setAvailabilityOptions] = useState<AvailabilitySlotOption[]>(fallbackAvailabilityOptions);
+  const [availabilityDays, setAvailabilityDays] = useState<string[]>(fallbackAvailabilityDays);
+  const [availabilityRowsMeta, setAvailabilityRowsMeta] = useState<AvailabilityGridRow[]>(fallbackAvailabilityRows);
   const [availabilityForm, setAvailabilityForm] = useState<VolunteerAvailability>({
     weekdays: false,
     weekends: false,
@@ -165,17 +210,51 @@ export function ProfileSettingsPage() {
     setLoadError(null);
 
     try {
-      const response = await getProfileMe(accessToken);
-      setProfile(response.profile);
-      setVolunteerProfile(response.volunteerProfile);
-      setAvailabilityForm(normalizeAvailability(response.volunteerProfile?.availability));
+      const [profileResponse, skillsAvailabilityResponse, availabilitySlotsResponse] = await Promise.all([
+        getProfileMe(accessToken),
+        getSkillsAvailability(accessToken).catch(() => null),
+        getAvailabilitySlots(accessToken).catch(() => null),
+      ]);
+
+      setProfile(profileResponse.profile);
+
+      const nextVolunteerProfile = skillsAvailabilityResponse?.skillsAvailability
+        ? buildVolunteerProfileFromSkillsAvailability(
+            profileResponse.profile?.id ?? session?.user?.id ?? '',
+            profileResponse.volunteerProfile,
+            skillsAvailabilityResponse.skillsAvailability
+          )
+        : profileResponse.volunteerProfile;
+
+      setVolunteerProfile(nextVolunteerProfile);
+      setAvailabilityForm(
+        normalizeAvailability(skillsAvailabilityResponse?.skillsAvailability.availability ?? nextVolunteerProfile?.availability)
+      );
+
+      if (availabilitySlotsResponse?.availabilitySlots?.length) {
+        setAvailabilityOptions(availabilitySlotsResponse.availabilitySlots);
+      } else {
+        setAvailabilityOptions(fallbackAvailabilityOptions);
+      }
+
+      if (availabilitySlotsResponse?.availabilityGrid?.days?.length) {
+        setAvailabilityDays(availabilitySlotsResponse.availabilityGrid.days);
+      } else {
+        setAvailabilityDays(fallbackAvailabilityDays);
+      }
+
+      if (availabilitySlotsResponse?.availabilityGrid?.rows?.length) {
+        setAvailabilityRowsMeta(availabilitySlotsResponse.availabilityGrid.rows);
+      } else {
+        setAvailabilityRowsMeta(fallbackAvailabilityRows);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load profile settings.';
       setLoadError(message);
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, session?.user?.id]);
 
   useEffect(() => {
     void loadProfile();
@@ -186,8 +265,10 @@ export function ProfileSettingsPage() {
       throw new Error('No active session token.');
     }
 
-    const updated = await patchProfileMe({ skills: nextSkills }, accessToken);
-    setVolunteerProfile(updated.volunteerProfile);
+    const updated = await putSkillsAvailability({ skills: nextSkills }, accessToken);
+    setVolunteerProfile((current) =>
+      buildVolunteerProfileFromSkillsAvailability(profile?.id ?? session?.user?.id ?? '', current, updated.skillsAvailability)
+    );
   };
 
   const handlePersistInterests = async (nextInterests: string[]) => {
@@ -195,8 +276,10 @@ export function ProfileSettingsPage() {
       throw new Error('No active session token.');
     }
 
-    const updated = await patchProfileMe({ interests: nextInterests }, accessToken);
-    setVolunteerProfile(updated.volunteerProfile);
+    const updated = await putSkillsAvailability({ interests: nextInterests }, accessToken);
+    setVolunteerProfile((current) =>
+      buildVolunteerProfileFromSkillsAvailability(profile?.id ?? session?.user?.id ?? '', current, updated.skillsAvailability)
+    );
   };
 
   const handleAvailabilityToggle = (key: AvailabilityKey) => {
@@ -219,10 +302,12 @@ export function ProfileSettingsPage() {
     setSaveNotice(null);
 
     try {
-      const updated = await patchProfileMe({ availability: availabilityForm }, accessToken);
-      setVolunteerProfile(updated.volunteerProfile);
-      setAvailabilityForm(normalizeAvailability(updated.volunteerProfile?.availability));
-      setSaveNotice('Availability updated successfully.');
+      const updated = await putSkillsAvailability({ availability: availabilityForm }, accessToken);
+      setVolunteerProfile((current) =>
+        buildVolunteerProfileFromSkillsAvailability(profile?.id ?? session?.user?.id ?? '', current, updated.skillsAvailability)
+      );
+      setAvailabilityForm(normalizeAvailability(updated.skillsAvailability.availability));
+      setSaveNotice(updated.message ?? 'Availability updated successfully.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save availability.';
       setSaveError(message);
@@ -239,10 +324,13 @@ export function ProfileSettingsPage() {
 
   const skills = volunteerProfile?.skills ?? [];
   const interests = volunteerProfile?.interests ?? [];
-  const availabilityRows = useMemo(() => buildAvailabilityGridRows(availabilityForm), [availabilityForm]);
+  const availabilityRows = useMemo(
+    () => buildAvailabilityGridRows(availabilityForm, availabilityDays, availabilityRowsMeta),
+    [availabilityDays, availabilityForm, availabilityRowsMeta]
+  );
   const selectedAvailabilityLabels = useMemo(
     () => availabilityOptions.filter((option) => availabilityForm[option.key]).map((option) => option.label),
-    [availabilityForm]
+    [availabilityForm, availabilityOptions]
   );
   const hasAvailability = selectedAvailabilityLabels.length > 0;
 
@@ -421,8 +509,8 @@ export function ProfileSettingsPage() {
                     <div className="vol-profile-slot-grid vol-profile-settings-slot-grid">
                       <div className="vol-profile-slot-grid-head">
                         <span />
-                        {availabilityDays.map((day, index) => (
-                          <span className={index > 4 ? 'is-weekend' : ''} key={day}>
+                        {availabilityDays.map((day) => (
+                          <span className={isWeekendDay(day) ? 'is-weekend' : ''} key={day}>
                             {day}
                           </span>
                         ))}
@@ -440,7 +528,7 @@ export function ProfileSettingsPage() {
                               className={[
                                 'vol-profile-slot-chip',
                                 active ? 'is-active' : '',
-                                index > 4 ? 'is-weekend' : '',
+                                isWeekendDay(availabilityDays[index]) ? 'is-weekend' : '',
                               ]
                                 .filter(Boolean)
                                 .join(' ')}

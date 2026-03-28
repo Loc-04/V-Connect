@@ -8,7 +8,7 @@ const feedbackColumns = 'id, participation_id, volunteer_id, organizer_id, ratin
 
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
 const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
-const validParticipationStatuses = new Set(['pending', 'approved', 'rejected', 'checked_in', 'cancelled']);
+const validParticipationStatuses = new Set(['assigned', 'pending', 'approved', 'rejected', 'checked_in', 'cancelled']);
 const activityWriteRoles = new Set(['admin', 'organizer']);
 const feedbackEligibleParticipationStatuses = new Set(['approved', 'checked_in']);
 

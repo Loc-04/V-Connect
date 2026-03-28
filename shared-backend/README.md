@@ -34,6 +34,9 @@ shared-backend listening on http://localhost:3000
 - `POST /auth/reset-password`
 - `GET /auth/me`
 - `POST /auth/register-profile`
+- `GET /profile/skills-availability`
+- `PUT /profile/skills-availability`
+- `GET /availability-slots`
 - `GET /activities`
 - `GET /activities/search`
 - `GET /activities/:id`
@@ -51,6 +54,9 @@ shared-backend listening on http://localhost:3000
 - `PUT /registrations/:id/reject`
 - `GET /recommendations/:userId`
 - `GET /recommendations/activity/:id`
+- `POST /recommendations/activity/:id/assignments`
+- `PUT /recommendations/assignments/:id/status`
+- `DELETE /recommendations/assignments/:id`
 - `GET /feedback`
 - `GET /feedback/review`
 - `GET /feedback/:id`
@@ -58,22 +64,13 @@ shared-backend listening on http://localhost:3000
 - `PUT /feedback/:id/flag`
 - `POST /feedback`
 - `GET /admin/users`
+- `GET /admin/notifications`
+- `POST /admin/notifications`
+- `PUT /admin/notifications/:id`
+- `DELETE /admin/notifications/:id`
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
 - `GET /organizer/reports/summary`
-
-### Activity Search API
-
-- `GET /activities/search`
-  - Query:
-    - `keyword=<text>` (or `search=<text>`)
-    - `status=all|draft|published|completed|cancelled`
-    - `mine=true|false`
-    - `date=YYYY-MM-DD` (exact day)
-    - `dateFrom=<ISO|YYYY-MM-DD>` and `dateTo=<ISO|YYYY-MM-DD>`
-    - `skill=<skill>` or `skill=skill1,skill2`
-    - `location=<text>`
-    - `limit=1..300`
 
 ### Attendance / Check-in API
 
@@ -122,6 +119,41 @@ shared-backend listening on http://localhost:3000
   - Organizer/admin only.
   - Returns recommended volunteers for a specific activity.
   - Query: `limit=1..50`
+- `POST /recommendations/activity/:id/assignments`
+  - Organizer/admin only.
+  - Body:
+
+```json
+{
+  "volunteerId": "<volunteer_uuid>"
+}
+```
+
+  - Creates or reopens an assignment using `activity_participations` with status `assigned`.
+- `PUT /recommendations/assignments/:id/status`
+  - Organizer/admin only.
+  - Body:
+
+```json
+{
+  "status": "approved"
+}
+```
+
+  - Allowed statuses: `assigned`, `approved`, `rejected`, `cancelled`
+- `DELETE /recommendations/assignments/:id`
+  - Organizer/admin only.
+  - Logical unassign. Sets status to `cancelled`.
+
+If your Supabase database still rejects the `assigned` status, run:
+
+- `shared-backend/scripts/allowAssignedParticipationStatus.sql`
+
+Or apply it from the terminal after setting `SUPABASE_DB_URL` in `shared-backend/.env`:
+
+```bash
+npm run db:apply -- --file=scripts/allowAssignedParticipationStatus.sql
+```
 
 ### Feedback API
 
@@ -235,6 +267,7 @@ Get-Process node | Stop-Process -Force
 - `PASSWORD_RESET_REDIRECT_TO` (optional, default `${FRONTEND_ORIGIN}/reset-password`)
 - `SUPABASE_URL` (or `EXPO_PUBLIC_SUPABASE_URL`)
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_DB_URL` (required only for local SQL apply scripts such as status/notification table migrations)
 
 ### Password Reset API
 

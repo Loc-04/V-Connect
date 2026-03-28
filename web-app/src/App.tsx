@@ -6,6 +6,7 @@ import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminFeedbackPage } from './pages/AdminFeedbackPage';
+import { AdminNotificationsPage } from './pages/AdminNotificationsPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { ActivityDetailPage } from './pages/ActivityDetailPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
@@ -229,6 +230,7 @@ function App() {
           >
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
+            <Route path="notifications" element={<AdminNotificationsPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
           </Route>

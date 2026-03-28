@@ -400,36 +400,6 @@ export function AdminFeedbackPage() {
         ) : (
           <div className="feedback-review-list">
             {filteredItems.map((item) => (
-              <article className="feedback-review-item" key={item.id}>
-                <div className="feedback-review-item-head">
-                  <div className="feedback-review-volunteer">
-                    <span className="feedback-review-avatar">{item.volunteerName.charAt(0).toUpperCase()}</span>
-                    <div>
-                      <strong>{item.volunteerName}</strong>
-                      <p>{item.activityTitle}</p>
-                    </div>
-                  </div>
-                  <small>{formatDateLabel(item.submittedAt)}</small>
-                </div>
-
-                <div className="feedback-review-item-meta">
-                  <Badge tone="info">{item.categoryLabel}</Badge>
-                  <RatingStars rating={item.rating} />
-                  {item.flaggedIssue && (
-                    <Badge tone="danger">
-                      <AlertTriangle size={12} />
-                      <span>Needs Attention</span>
-                    </Badge>
-                  )}
-                </div>
-
-                <p className="feedback-review-comment">{item.comment}</p>
-
-                <div className="feedback-review-item-actions">
-                  <Badge tone={item.sentiment === 'positive' ? 'success' : item.sentiment === 'neutral' ? 'info' : 'danger'}>
-                    {item.sentiment}
-                  </Badge>
-                  <Badge tone="info">{item.reviewStatus.replace('_', ' ')}</Badge>
               <FeedbackCard
                 action={
                   <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
@@ -448,6 +418,7 @@ export function AdminFeedbackPage() {
                 tags={
                   <>
                     <Badge tone="info">{item.categoryLabel}</Badge>
+                    <Badge tone="info">{item.reviewStatus.replace('_', ' ')}</Badge>
                     {item.flaggedIssue ? <IssueBadge label="Needs Attention" state="warning" /> : null}
                   </>
                 }

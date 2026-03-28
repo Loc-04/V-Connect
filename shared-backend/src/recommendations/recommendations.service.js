@@ -272,7 +272,7 @@ async function getRegisteredVolunteerIdsByActivityIds(activityIds) {
     .from('activity_participations')
     .select('activity_id, volunteer_id, status')
     .in('activity_id', activityIds)
-    .in('status', ['pending', 'approved', 'checked_in']);
+    .in('status', ['assigned', 'pending', 'approved', 'checked_in']);
 
   if (error) {
     throw new Error(error.message);

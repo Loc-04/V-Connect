@@ -20,3 +20,36 @@ export interface ProfileMeResponse {
   volunteerProfile: VolunteerProfile | null;
 }
 
+export interface SkillsAvailabilityRecord {
+  userId: string;
+  skills: string[];
+  interests: string[];
+  availability: VolunteerAvailability;
+  updatedAt: string | null;
+}
+
+export interface SkillsAvailabilityResponse {
+  skillsAvailability: SkillsAvailabilityRecord;
+  message?: string;
+}
+
+export interface AvailabilitySlotOption {
+  key: keyof VolunteerAvailability;
+  label: string;
+  description: string;
+  days: string[];
+  timeWindows: string[];
+}
+
+export interface AvailabilityGridRow {
+  key: string;
+  label: string;
+}
+
+export interface AvailabilitySlotsResponse {
+  availabilitySlots: AvailabilitySlotOption[];
+  availabilityGrid: {
+    days: string[];
+    rows: AvailabilityGridRow[];
+  };
+}
