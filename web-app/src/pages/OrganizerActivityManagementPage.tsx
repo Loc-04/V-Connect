@@ -13,6 +13,7 @@ import { useAuth } from '../auth/useAuth';
 import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
 import { Badge, Button, Card, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
+import { formatActivityLocation } from '../lib/activityLocation';
 import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
 import { checkInParticipation, listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
@@ -37,19 +38,7 @@ function formatDateLabel(value: string) {
 }
 
 function getLocationLabel(location: ActivityRecord['location']) {
-  if (!location) {
-    return 'Location TBD';
-  }
-
-  if (typeof location === 'string') {
-    return location;
-  }
-
-  if (location.address?.trim()) {
-    return location.address;
-  }
-
-  return 'Location TBD';
+  return formatActivityLocation(location);
 }
 
 function toTitleCase(value: string) {
@@ -524,6 +513,18 @@ export function OrganizerActivityManagementPage() {
                                 type="button"
                               >
                                 Manage Attendance
+                              </button>
+
+                              <button
+                                className="row-action-item"
+                                onClick={() => {
+                                  navigate(`/activities/${activity.id}/edit`);
+                                  setOpenMenuActivityId(null);
+                                  setOpenStatusPickerActivityId(null);
+                                }}
+                                type="button"
+                              >
+                                Edit Activity
                               </button>
 
                               <button

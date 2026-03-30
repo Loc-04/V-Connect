@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { activityColumns, validActivityStatuses } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
+import { getProvinceByCode, getWardByCode } from '../locations/locations.service.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
 import { normalizeActivityPayload } from './activities.validation.js';
 import { canWriteActivities, getActivityById } from './activities.service.js';
@@ -191,6 +192,82 @@ async function tryCreateNotification(payload) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Notification create failed: ${message}`);
   }
+}
+
+async function resolveStoredLocation(payload, existingActivity = null) {
+  const shouldResolve =
+    Object.hasOwn(payload, 'location') || Object.hasOwn(payload, 'province_code') || Object.hasOwn(payload, 'ward_code');
+
+  if (!shouldResolve) {
+    return payload;
+  }
+
+  const rawLocation = Object.hasOwn(payload, 'location') ? payload.location : existingActivity?.location ?? null;
+  if (!rawLocation || typeof rawLocation !== 'object') {
+    const error = new Error('location.address is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const address = typeof rawLocation.address === 'string' ? rawLocation.address.trim() : '';
+  if (!address) {
+    const error = new Error('location.address is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const provinceCode = Object.hasOwn(payload, 'province_code') ? payload.province_code : existingActivity?.province_code ?? null;
+  const wardCode = Object.hasOwn(payload, 'ward_code') ? payload.ward_code : existingActivity?.ward_code ?? null;
+
+  if (!provinceCode) {
+    const error = new Error('provinceCode is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!wardCode) {
+    const error = new Error('wardCode is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const [province, ward] = await Promise.all([getProvinceByCode(provinceCode), getWardByCode(wardCode)]);
+
+  if (!province) {
+    const error = new Error('Selected province was not found.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!ward) {
+    const error = new Error('Selected ward was not found.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (ward.province_code !== province.code) {
+    const error = new Error('Selected ward does not belong to the selected province.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const lat = Number(rawLocation.lat ?? 0);
+  const lng = Number(rawLocation.lng ?? 0);
+
+  return {
+    ...payload,
+    province_code: province.code,
+    ward_code: ward.code,
+    location: {
+      ...rawLocation,
+      address,
+      city: province.name,
+      province: province.name,
+      ward: ward.name,
+      lat: Number.isFinite(lat) ? lat : 0,
+      lng: Number.isFinite(lng) ? lng : 0,
+    },
+  };
 }
 
 async function handleActivityDetail(req, res) {
@@ -406,8 +483,10 @@ router.post('/activities', requireAuth, async (req, res) => {
   let payload;
   try {
     payload = normalizeActivityPayload(req.body, { partial: false });
+    payload = await resolveStoredLocation(payload);
   } catch (error) {
-    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
+    res.status(statusCode).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
     return;
   }
 
@@ -472,6 +551,14 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
     payload = normalizeActivityPayload(req.body, { partial: true });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  try {
+    payload = await resolveStoredLocation(payload, existingActivity);
+  } catch (error) {
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
+    res.status(statusCode).json({ message: error instanceof Error ? error.message : 'Invalid location payload.' });
     return;
   }
 

@@ -11,6 +11,8 @@ function normalizeActivityLocation(value) {
     return {
       address,
       city: '',
+      province: '',
+      ward: '',
       lat: 0,
       lng: 0,
     };
@@ -26,6 +28,8 @@ function normalizeActivityLocation(value) {
   }
 
   const city = typeof value.city === 'string' ? value.city.trim() : '';
+  const province = typeof value.province === 'string' ? value.province.trim() : '';
+  const ward = typeof value.ward === 'string' ? value.ward.trim() : '';
   const lat = Number(value.lat ?? 0);
   const lng = Number(value.lng ?? 0);
 
@@ -36,6 +40,8 @@ function normalizeActivityLocation(value) {
   return {
     address,
     city,
+    province,
+    ward,
     lat,
     lng,
   };
@@ -73,12 +79,7 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
   if (Object.hasOwn(body, 'location')) {
     payload.location = normalizeActivityLocation(body.location);
   } else if (!partial) {
-    payload.location = {
-      address: 'TBD',
-      city: '',
-      lat: 0,
-      lng: 0,
-    };
+    throw new Error('location is required.');
   }
 
   if (Object.hasOwn(body, 'startTime')) {
@@ -127,6 +128,8 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
       throw new Error('provinceCode must be a string or null.');
     }
     payload.province_code = body.provinceCode ? body.provinceCode.trim() : null;
+  } else if (!partial) {
+    throw new Error('provinceCode is required.');
   }
 
   if (Object.hasOwn(body, 'wardCode')) {
@@ -134,6 +137,8 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
       throw new Error('wardCode must be a string or null.');
     }
     payload.ward_code = body.wardCode ? body.wardCode.trim() : null;
+  } else if (!partial) {
+    throw new Error('wardCode is required.');
   }
 
   if (partial && Object.keys(payload).length === 0) {

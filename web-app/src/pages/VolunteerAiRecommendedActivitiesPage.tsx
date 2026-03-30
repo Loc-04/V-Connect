@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
+import { formatActivityLocation } from '../lib/activityLocation';
 import { createParticipation } from '../lib/participations';
 import { getRecommendedActivitiesForVolunteer } from '../lib/recommendations';
 import type { ActivityLocation } from '../types/activity';
@@ -47,16 +48,7 @@ function hashString(input: string) {
 }
 
 function formatLocation(location: ActivityLocation | string | null): string {
-  if (!location) {
-    return 'Location TBD';
-  }
-
-  if (typeof location === 'string') {
-    return location.trim() || 'Location TBD';
-  }
-
-  const addressParts = [location.address, location.city].filter(Boolean);
-  return addressParts.join(', ') || 'Location TBD';
+  return formatActivityLocation(location);
 }
 
 function formatDateTime(startTime: string, endTime: string) {

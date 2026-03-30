@@ -6,6 +6,7 @@ import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
+import { formatActivityLocation } from '../lib/activityLocation';
 import { getActivityById } from '../lib/activities';
 import { listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
@@ -102,16 +103,7 @@ function formatDateAndTime(startTime: string, endTime: string) {
 }
 
 function locationLabel(location: ActivityRecord['location']) {
-  if (!location) {
-    return 'Location TBD';
-  }
-  if (typeof location === 'string') {
-    return location;
-  }
-  if (location.address) {
-    return location.address;
-  }
-  return 'Location TBD';
+  return formatActivityLocation(location);
 }
 
 function hashString(input: string) {
