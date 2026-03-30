@@ -247,6 +247,71 @@
   gap: 0.32rem;
 }
 
+.admin-notification-user-picker {
+  position: relative;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.admin-notifications-user-search {
+  min-width: 100%;
+}
+
+.admin-notification-user-results {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0;
+  padding: 0.3rem;
+}
+
+.admin-notification-user-option {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.admin-notification-user-option:hover,
+.admin-notification-user-option.is-selected {
+  background: #f1f5f9;
+}
+
+.admin-notification-user-option strong {
+  color: #0f172a;
+  font-size: 0.85rem;
+}
+
+.admin-notification-user-option span {
+  color: #64748b;
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+.admin-notification-user-empty,
+.admin-notification-user-id-preview {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.admin-notification-user-empty {
+  padding: 0.7rem;
+}
+
 .admin-notification-field span {
   color: #334155;
   font-size: 0.76rem;

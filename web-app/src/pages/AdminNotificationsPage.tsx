@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '../auth/useAuth';
 import { Button, Card, Select } from '../components/ui';
+import { apiRequest } from '../lib/api';
 import {
   createAdminNotification,
   deleteAdminNotification,
@@ -20,6 +21,7 @@ import {
   type AdminNotificationPayload,
   type AdminNotificationRecord,
 } from '../lib/adminNotifications';
+import type { UserRecord } from '../types/domain';
 import './AdminNotificationsPage.css';
 
 const PAGE_SIZE = 12;
@@ -37,6 +39,7 @@ type NotificationMode = 'create' | 'edit';
 
 interface NotificationDraft {
   userId: string;
+  userSearch: string;
   title: string;
   message: string;
   type: string;
@@ -46,12 +49,17 @@ interface NotificationDraft {
 
 const emptyDraft: NotificationDraft = {
   userId: '',
+  userSearch: '',
   title: '',
   message: '',
   type: 'info',
   dataText: '{\n  "source": "admin-panel"\n}',
   markRead: false,
 };
+
+interface AdminUsersResponse {
+  users: UserRecord[];
+}
 
 function formatRelativeTime(value: string | null) {
   if (!value) {
@@ -93,9 +101,20 @@ function formatAbsoluteTime(value: string | null) {
   return timestamp.toLocaleString();
 }
 
-function normalizeDraftFromNotification(notification: AdminNotificationRecord): NotificationDraft {
+function formatUserLabel(user: UserRecord): string {
+  const name = user.full_name?.trim() || 'Unnamed user';
+  return `${name} • ${user.role} • ${user.id.slice(0, 8)}`;
+}
+
+function normalizeDraftFromNotification(
+  notification: AdminNotificationRecord,
+  users: UserRecord[] = []
+): NotificationDraft {
+  const matchedUser = users.find((user) => user.id === notification.userId) ?? null;
+
   return {
     userId: notification.userId,
+    userSearch: matchedUser ? formatUserLabel(matchedUser) : notification.userId,
     title: notification.title,
     message: notification.message,
     type: notification.type || 'info',
@@ -174,17 +193,41 @@ export function AdminNotificationsPage() {
   const accessToken = session?.access_token ?? null;
 
   const [notifications, setNotifications] = useState<AdminNotificationRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all');
   const [loading, setLoading] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [mode, setMode] = useState<NotificationMode>('create');
   const [draft, setDraft] = useState<NotificationDraft>(emptyDraft);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [userPickerOpen, setUserPickerOpen] = useState(false);
+
+  const loadUsers = useCallback(async () => {
+    if (!accessToken) {
+      setLoadingUsers(false);
+      return;
+    }
+
+    setLoadingUsers(true);
+
+    try {
+      const response = await apiRequest<AdminUsersResponse>('/admin/users', {
+        accessToken,
+      });
+      setUsers(response.users ?? []);
+    } catch (loadUsersError) {
+      setError((current) => current ?? (loadUsersError instanceof Error ? loadUsersError.message : 'Failed to load users.'));
+      setUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [accessToken]);
 
   const loadNotifications = useCallback(async () => {
     if (!accessToken) {
@@ -219,6 +262,10 @@ export function AdminNotificationsPage() {
   }, [loadNotifications]);
 
   useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [readFilter, searchTerm, typeFilter]);
 
@@ -243,10 +290,30 @@ export function AdminNotificationsPage() {
     [notifications]
   );
 
+  const filteredUserOptions = useMemo(() => {
+    const keyword = draft.userSearch.trim().toLowerCase();
+    const ranked = users.filter((user) => {
+      if (!keyword) {
+        return true;
+      }
+
+      return (
+        user.id.toLowerCase().includes(keyword) ||
+        String(user.role ?? '').toLowerCase().includes(keyword) ||
+        String(user.status ?? '').toLowerCase().includes(keyword) ||
+        String(user.full_name ?? '').toLowerCase().includes(keyword) ||
+        String(user.phone ?? '').toLowerCase().includes(keyword)
+      );
+    });
+
+    return ranked.slice(0, 8);
+  }, [draft.userSearch, users]);
+
   const beginCreate = () => {
     setMode('create');
     setSelectedNotificationId(null);
     setDraft(emptyDraft);
+    setUserPickerOpen(false);
     setError(null);
     setNotice(null);
   };
@@ -254,7 +321,8 @@ export function AdminNotificationsPage() {
   const beginEdit = (notification: AdminNotificationRecord) => {
     setMode('edit');
     setSelectedNotificationId(notification.id);
-    setDraft(normalizeDraftFromNotification(notification));
+    setDraft(normalizeDraftFromNotification(notification, users));
+    setUserPickerOpen(false);
     setError(null);
     setNotice(null);
   };
@@ -264,6 +332,24 @@ export function AdminNotificationsPage() {
       ...current,
       [field]: value,
     }));
+  };
+
+  const handleUserSearchChange = (value: string) => {
+    setDraft((current) => ({
+      ...current,
+      userSearch: value,
+      userId: '',
+    }));
+    setUserPickerOpen(true);
+  };
+
+  const handleUserSelect = (user: UserRecord) => {
+    setDraft((current) => ({
+      ...current,
+      userId: user.id,
+      userSearch: formatUserLabel(user),
+    }));
+    setUserPickerOpen(false);
   };
 
   const handleSubmit = async () => {
@@ -285,13 +371,13 @@ export function AdminNotificationsPage() {
         setSelectedNotificationId(created.id);
         setNotice('Notification created successfully.');
         setMode('edit');
-        setDraft(normalizeDraftFromNotification(created));
+        setDraft(normalizeDraftFromNotification(created, users));
       } else if (selectedNotificationId) {
         const updated = await updateAdminNotification(selectedNotificationId, payload, accessToken);
         setNotifications((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         setSelectedNotificationId(updated.id);
         setNotice('Notification updated successfully.');
-        setDraft(normalizeDraftFromNotification(updated));
+        setDraft(normalizeDraftFromNotification(updated, users));
       }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Failed to save notification.');
@@ -506,13 +592,50 @@ export function AdminNotificationsPage() {
 
           <div className="admin-notifications-form-grid">
             <label className="admin-notification-field">
-              <span>User ID</span>
-              <input
-                className="text-input"
-                onChange={(event) => handleDraftChange('userId', event.target.value)}
-                placeholder="UUID of the target user"
-                value={draft.userId}
-              />
+              <span>Target user</span>
+              <div className="admin-notification-user-picker">
+                <label className="users-search-wrap admin-notifications-user-search">
+                  <Search aria-hidden="true" className="users-icon users-search-icon" />
+                  <input
+                    className="text-input users-search-input"
+                    onChange={(event) => handleUserSearchChange(event.target.value)}
+                    onFocus={() => setUserPickerOpen(true)}
+                    placeholder="Search by name, role, phone, or UUID"
+                    value={draft.userSearch}
+                  />
+                </label>
+
+                {userPickerOpen && (
+                  <div className="admin-notification-user-results">
+                    {loadingUsers ? (
+                      <p className="admin-notification-user-empty">Loading users...</p>
+                    ) : filteredUserOptions.length === 0 ? (
+                      <p className="admin-notification-user-empty">No users matched your search.</p>
+                    ) : (
+                      filteredUserOptions.map((user) => (
+                        <button
+                          className={draft.userId === user.id ? 'admin-notification-user-option is-selected' : 'admin-notification-user-option'}
+                          key={user.id}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            handleUserSelect(user);
+                          }}
+                          type="button"
+                        >
+                          <strong>{user.full_name?.trim() || 'Unnamed user'}</strong>
+                          <span>
+                            {user.role} • {user.id}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <small className="admin-notification-user-id-preview">
+                  {draft.userId ? `Selected UUID: ${draft.userId}` : 'Choose a user from the list above.'}
+                </small>
+              </div>
             </label>
 
             <label className="admin-notification-field">
