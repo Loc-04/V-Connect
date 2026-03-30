@@ -54,7 +54,7 @@ function locationToString(loc: ActivityRecord['location']): string {
 }
 
 export default function EditActivityScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, readOnly } = useLocalSearchParams<{ id: string; readOnly?: string }>();
   const [state, setState] = useState<LoadState>('loading');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [original, setOriginal] = useState<ActivityRecord | null>(null);
@@ -284,7 +284,9 @@ export default function EditActivityScreen() {
     );
   }
 
-  const isDraft = original?.status === 'draft';
+  const isReadOnlyView = readOnly === '1';
+  const isDraft = !isReadOnlyView && original?.status === 'draft';
+  const shouldDimReadOnly = !isDraft && !isReadOnlyView;
   const selectedProvinceName = provinceOptions.find((p) => p.code === provinceCode)?.name;
   const selectedWardName = wardOptions.find((w) => w.code === wardCode)?.name;
 
@@ -298,18 +300,18 @@ export default function EditActivityScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {!isDraft && (
+        {!isDraft && !isReadOnlyView && (
           <View style={styles.readOnlyBanner}>
             <MaterialIcons name="lock-outline" size={16} color="#b45309" />
             <ThemedText style={styles.readOnlyBannerText}>
-              This activity is {original?.status}. Only draft activities can be edited.
+              {`This activity is ${original?.status}. Only draft activities can be edited.`}
             </ThemedText>
           </View>
         )}
 
         <FieldLabel label="Title" required />
         <TextInput
-          style={[styles.input, !isDraft && styles.inputDisabled]}
+          style={[styles.input, shouldDimReadOnly && styles.inputDisabled]}
           value={title}
           onChangeText={setTitle}
           placeholderTextColor="#9ca3af"
@@ -318,7 +320,7 @@ export default function EditActivityScreen() {
 
         <FieldLabel label="Description" />
         <TextInput
-          style={[styles.input, styles.textArea, !isDraft && styles.inputDisabled]}
+          style={[styles.input, styles.textArea, shouldDimReadOnly && styles.inputDisabled]}
           value={description}
           onChangeText={setDescription}
           multiline
@@ -329,7 +331,7 @@ export default function EditActivityScreen() {
 
         <FieldLabel label="Location" required />
         <TextInput
-          style={[styles.input, !isDraft && styles.inputDisabled]}
+          style={[styles.input, shouldDimReadOnly && styles.inputDisabled]}
           value={location}
           onChangeText={setLocation}
           placeholderTextColor="#9ca3af"
@@ -340,7 +342,7 @@ export default function EditActivityScreen() {
         <View style={styles.row}>
           <View style={styles.halfField}>
             <FieldLabel label="Province" />
-            <Pressable style={[styles.dropdown, !isDraft && styles.dropdownDisabled]} onPress={() => isDraft && setProvinceOpen((v) => !v)} disabled={!isDraft}>
+            <Pressable style={[styles.dropdown, shouldDimReadOnly && styles.dropdownDisabled]} onPress={() => isDraft && setProvinceOpen((v) => !v)} disabled={!isDraft}>
               <ThemedText style={provinceCode ? styles.dropdownText : styles.dropdownPlaceholder}>
                 {selectedProvinceName ?? 'Select province'}
               </ThemedText>
@@ -372,7 +374,7 @@ export default function EditActivityScreen() {
           <View style={styles.halfField}>
             <FieldLabel label="Ward" />
             <Pressable
-              style={[styles.dropdown, (!provinceCode || !isDraft) && styles.dropdownDisabled]}
+              style={[styles.dropdown, (!provinceCode || shouldDimReadOnly) && styles.dropdownDisabled]}
               onPress={() => isDraft && provinceCode && setWardOpen((v) => !v)}
               disabled={!isDraft || !provinceCode}
             >
@@ -410,14 +412,14 @@ export default function EditActivityScreen() {
         <View style={styles.row}>
           <View style={styles.halfField}>
             <FieldLabel label="Start Date" required />
-            <Pressable style={[styles.pickerTrigger, !isDraft && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('startDate')} disabled={!isDraft}>
+            <Pressable style={[styles.pickerTrigger, shouldDimReadOnly && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('startDate')} disabled={!isDraft}>
               <MaterialIcons name="calendar-today" size={18} color="#6b7280" />
               <ThemedText style={styles.pickerValue}>{formatDate(startDateTime)}</ThemedText>
             </Pressable>
           </View>
           <View style={styles.halfField}>
             <FieldLabel label="Start Time" required />
-            <Pressable style={[styles.pickerTrigger, !isDraft && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('startTime')} disabled={!isDraft}>
+            <Pressable style={[styles.pickerTrigger, shouldDimReadOnly && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('startTime')} disabled={!isDraft}>
               <MaterialIcons name="access-time" size={18} color="#6b7280" />
               <ThemedText style={styles.pickerValue}>{formatTime(startDateTime)}</ThemedText>
             </Pressable>
@@ -428,14 +430,14 @@ export default function EditActivityScreen() {
         <View style={styles.row}>
           <View style={styles.halfField}>
             <FieldLabel label="End Date" required />
-            <Pressable style={[styles.pickerTrigger, !isDraft && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('endDate')} disabled={!isDraft}>
+            <Pressable style={[styles.pickerTrigger, shouldDimReadOnly && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('endDate')} disabled={!isDraft}>
               <MaterialIcons name="calendar-today" size={18} color="#6b7280" />
               <ThemedText style={styles.pickerValue}>{formatDate(endDateTime)}</ThemedText>
             </Pressable>
           </View>
           <View style={styles.halfField}>
             <FieldLabel label="End Time" required />
-            <Pressable style={[styles.pickerTrigger, !isDraft && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('endTime')} disabled={!isDraft}>
+            <Pressable style={[styles.pickerTrigger, shouldDimReadOnly && styles.pickerDisabled]} onPress={() => isDraft && setActivePicker('endTime')} disabled={!isDraft}>
               <MaterialIcons name="access-time" size={18} color="#6b7280" />
               <ThemedText style={styles.pickerValue}>{formatTime(endDateTime)}</ThemedText>
             </Pressable>
@@ -458,7 +460,7 @@ export default function EditActivityScreen() {
 
         <FieldLabel label="Capacity" required />
         <TextInput
-          style={[styles.input, !isDraft && styles.inputDisabled]}
+          style={[styles.input, shouldDimReadOnly && styles.inputDisabled]}
           value={capacity}
           onChangeText={setCapacity}
           keyboardType="number-pad"
@@ -468,7 +470,7 @@ export default function EditActivityScreen() {
 
         {/* Required Skills multi-select */}
         <FieldLabel label="Required Skills" />
-        <Pressable style={[styles.dropdown, !isDraft && styles.dropdownDisabled]} onPress={() => isDraft && setSkillsOpen((v) => !v)} disabled={!isDraft}>
+        <Pressable style={[styles.dropdown, shouldDimReadOnly && styles.dropdownDisabled]} onPress={() => isDraft && setSkillsOpen((v) => !v)} disabled={!isDraft}>
           <ThemedText style={selectedSkills.length > 0 ? styles.dropdownText : styles.dropdownPlaceholder}>
             {selectedSkills.length > 0 ? selectedSkills.join(', ') : 'Select skills'}
           </ThemedText>
@@ -504,7 +506,7 @@ export default function EditActivityScreen() {
             return (
               <Pressable
                 key={opt}
-                style={[styles.statusChip, active && styles.statusChipActive, !isDraft && styles.statusChipDisabled]}
+                style={[styles.statusChip, active && styles.statusChipActive, shouldDimReadOnly && styles.statusChipDisabled]}
                 onPress={() => isDraft && setStatus(opt)}
                 disabled={!isDraft}
               >
@@ -529,10 +531,12 @@ export default function EditActivityScreen() {
           </Pressable>
         )}
 
-        <Pressable style={styles.deleteButton} onPress={handleDelete}>
-          <MaterialIcons name="delete-outline" size={18} color="#dc2626" />
-          <ThemedText style={styles.deleteButtonText}>Delete Activity</ThemedText>
-        </Pressable>
+        {!isReadOnlyView && (
+          <Pressable style={styles.deleteButton} onPress={handleDelete}>
+            <MaterialIcons name="delete-outline" size={18} color="#dc2626" />
+            <ThemedText style={styles.deleteButtonText}>Delete Activity</ThemedText>
+          </Pressable>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
