@@ -16,6 +16,7 @@ export const ROUTES = {
     HOME: '/(organizer)/(tabs)/home',
     EVENTS: '/(organizer)/(tabs)/events',
     PROFILE: '/(organizer)/(tabs)/profile',
+    ACTIVITY_MANAGEMENT: '/(organizer)/activity-management',
     ACTIVITY_NEW: '/(organizer)/activity/new',
     ACTIVITY_DETAIL: '/(organizer)/activity/[id]',
   },

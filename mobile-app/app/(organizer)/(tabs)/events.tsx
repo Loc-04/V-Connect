@@ -1,12 +1,11 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Picker } from '@react-native-picker/picker';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -14,7 +13,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  deleteActivity,
   listActivities,
   type ActivityRecord,
   type ActivityStatus,
@@ -25,11 +23,27 @@ import { ThemedText } from '@/src/shared/ui/themed-text';
 type LoadState = 'loading' | 'ready' | 'error';
 
 const STATUS_FILTERS: { label: string; value: ActivityStatus | 'all' }[] = [
-  { label: 'All', value: 'all' },
+  { label: 'All Status', value: 'all' },
   { label: 'Draft', value: 'draft' },
   { label: 'Published', value: 'published' },
   { label: 'Completed', value: 'completed' },
   { label: 'Cancelled', value: 'cancelled' },
+];
+
+const MONTH_FILTERS: { label: string; value: string }[] = [
+  { label: 'All Month', value: 'all' },
+  { label: 'January', value: '0' },
+  { label: 'February', value: '1' },
+  { label: 'March', value: '2' },
+  { label: 'April', value: '3' },
+  { label: 'May', value: '4' },
+  { label: 'June', value: '5' },
+  { label: 'July', value: '6' },
+  { label: 'August', value: '7' },
+  { label: 'September', value: '8' },
+  { label: 'October', value: '9' },
+  { label: 'November', value: '10' },
+  { label: 'December', value: '11' },
 ];
 
 function formatDate(iso: string): string {
@@ -59,6 +73,7 @@ export default function OrganizerEventsScreen() {
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ActivityStatus | 'all'>('all');
+  const [monthFilter, setMonthFilter] = useState<string>('all');
 
   const loadActivities = useCallback(async () => {
     setState('loading');
@@ -82,26 +97,14 @@ export default function OrganizerEventsScreen() {
     void loadActivities();
   }, [loadActivities]);
 
-  const handleDelete = useCallback(
-    (item: ActivityRecord) => {
-      Alert.alert('Delete Activity', `Are you sure you want to delete "${item.title}"?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteActivity(item.id);
-              setActivities((prev) => prev.filter((a) => a.id !== item.id));
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Delete failed.');
-            }
-          },
-        },
-      ]);
-    },
-    [],
-  );
+  const visibleActivities = useMemo(() => {
+    if (monthFilter === 'all') {
+      return activities;
+    }
+
+    const month = Number(monthFilter);
+    return activities.filter((activity) => new Date(activity.start_time).getMonth() === month);
+  }, [activities, monthFilter]);
 
   const renderItem = useCallback(
     ({ item }: { item: ActivityRecord }) => {
@@ -110,7 +113,10 @@ export default function OrganizerEventsScreen() {
         <Pressable
           style={styles.activityCard}
           onPress={() =>
-            router.push({ pathname: ROUTES.ORGANIZER.ACTIVITY_DETAIL, params: { id: item.id } })
+            router.push({
+              pathname: ROUTES.ORGANIZER.ACTIVITY_DETAIL,
+              params: { id: item.id, readOnly: '1' },
+            })
           }
         >
           <View style={styles.activityIconWrap}>
@@ -134,13 +140,10 @@ export default function OrganizerEventsScreen() {
               <ThemedText style={styles.metaText}>{item.capacity} cap.</ThemedText>
             </View>
           </View>
-          <Pressable hitSlop={8} onPress={() => handleDelete(item)} style={styles.deleteBtn}>
-            <MaterialIcons name="delete-outline" size={20} color="#dc2626" />
-          </Pressable>
         </Pressable>
       );
     },
-    [handleDelete],
+    [],
   );
 
   return (
@@ -156,39 +159,54 @@ export default function OrganizerEventsScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.searchRow}>
-        <View style={styles.searchInputWrap}>
-          <MaterialIcons name="search" size={18} color="#6b7280" />
-          <TextInput
-            placeholder="Search activities..."
-            placeholderTextColor="#9ca3af"
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-          />
+      <View style={styles.filterBarRow}>
+        <View style={styles.searchControl}>
+          <View style={styles.searchInputWrap}>
+            <MaterialIcons name="search" size={18} color="#6b7280" />
+            <TextInput
+              placeholder="Search..."
+              placeholderTextColor="#9ca3af"
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+            />
+          </View>
+        </View>
+
+        <View style={styles.filterControl}>
+
+          <View style={styles.pickerWrap}>
+            <Picker
+              mode="dropdown"
+              selectedValue={statusFilter}
+              onValueChange={(value) => setStatusFilter(value as ActivityStatus | 'all')}
+              style={styles.picker}
+              dropdownIconColor="#4b5563"
+            >
+              {STATUS_FILTERS.map((filter) => (
+                <Picker.Item key={filter.value} label={filter.label} value={filter.value} />
+              ))}
+            </Picker>
+          </View>
+        </View>
+
+        <View style={styles.filterControl}>
+
+          <View style={styles.pickerWrap}>
+            <Picker
+              mode="dropdown"
+              selectedValue={monthFilter}
+              onValueChange={(value) => setMonthFilter(String(value))}
+              style={styles.picker}
+              dropdownIconColor="#4b5563"
+            >
+              {MONTH_FILTERS.map((month) => (
+                <Picker.Item key={month.value} label={month.label} value={month.value} />
+              ))}
+            </Picker>
+          </View>
         </View>
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-      >
-        {STATUS_FILTERS.map((f) => {
-          const active = f.value === statusFilter;
-          return (
-            <Pressable
-              key={f.value}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-              onPress={() => setStatusFilter(f.value)}
-            >
-              <ThemedText style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                {f.label}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
 
       {state === 'loading' ? (
         <View style={styles.centered}>
@@ -202,7 +220,7 @@ export default function OrganizerEventsScreen() {
             <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
           </Pressable>
         </View>
-      ) : activities.length === 0 ? (
+      ) : visibleActivities.length === 0 ? (
         <View style={styles.centered}>
           <MaterialIcons name="event-busy" size={48} color="#d1d5db" />
           <ThemedText style={styles.emptyText}>No activities found.</ThemedText>
@@ -212,7 +230,7 @@ export default function OrganizerEventsScreen() {
         </View>
       ) : (
         <FlatList
-          data={activities}
+          data={visibleActivities}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
@@ -254,8 +272,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
-  searchRow: {
-    marginBottom: 10,
+  filterBarRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 12,
+  },
+  searchControl: {
+    width: '50%',
   },
   searchInputWrap: {
     flexDirection: 'row',
@@ -263,7 +287,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
     borderRadius: 10,
     paddingHorizontal: 12,
-    height: 44,
+    height: 50,
     gap: 8,
   },
   searchInput: {
@@ -271,26 +295,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1f2937',
   },
-  filterRow: {
-    gap: 8,
-    paddingBottom: 12,
+  filterControl: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
   },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: '#f3f4f6',
-  },
-  filterChipActive: {
-    backgroundColor: '#0f8a8a',
-  },
-  filterChipText: {
-    fontSize: 13,
+  filterLabel: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#4b5563',
   },
-  filterChipTextActive: {
-    color: '#ffffff',
+  pickerWrap: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    backgroundColor: '#f9fafb',
+  },
+  picker: {
+    height: 50,
+    fontSize: 12,
+    color: '#1f2937',
   },
   centered: {
     flex: 1,
@@ -382,8 +406,5 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 13,
     color: '#4b5563',
-  },
-  deleteBtn: {
-    padding: 6,
   },
 });

@@ -4,6 +4,7 @@ import type {
   CoreSkillOption,
   OrganizerManagedActivityItem,
   OrganizerProfileView,
+  OrganizerTopStats,
   OrganizerRecommendedVolunteerItem,
   ProfileStats,
   ProfileRole,
@@ -70,6 +71,11 @@ interface OrganizerActivityRow {
 
 interface OrganizerParticipationCountRow {
   activity_id: string | null;
+}
+
+interface OrganizerParticipationRow {
+  volunteer_id: string | null;
+  status: string | null;
 }
 
 interface RecommendationSeedRow {
@@ -169,6 +175,14 @@ function formatHoursLabel(start: string, end: string): string {
 
 function mapOrganizerActivityBadge(status: string | null): 'open' | 'closed' {
   return status === 'published' ? 'open' : 'closed';
+}
+
+function formatCompactCount(value: number): string {
+  if (value < 1000) {
+    return value.toString();
+  }
+  const compact = (value / 1000).toFixed(1);
+  return `${compact.endsWith('.0') ? compact.slice(0, -2) : compact}k`;
 }
 
 export async function getCoreSkills(): Promise<CoreSkillOption[]> {
@@ -430,6 +444,58 @@ export async function getOrganizerManagedActivities(
     capacity: activity.capacity ?? 0,
     badge: mapOrganizerActivityBadge(activity.status),
   }));
+}
+
+export async function getOrganizerTopStats(organizerId: string): Promise<OrganizerTopStats> {
+  const activitiesCountResult = await supabase
+    .from('activities')
+    .select('id', { count: 'exact', head: true })
+    .eq('organizer_id', organizerId);
+
+  if (activitiesCountResult.error) {
+    throw new Error(activitiesCountResult.error.message);
+  }
+
+  const participationsResult = await supabase
+    .from('activity_participations')
+    .select(
+      `
+        volunteer_id,
+        status,
+        activities!inner (
+          organizer_id
+        )
+      `,
+    )
+    .eq('activities.organizer_id', organizerId)
+    .in('status', ['approved', 'checked_in'])
+    .returns<OrganizerParticipationRow[]>();
+
+  if (participationsResult.error) {
+    throw new Error(participationsResult.error.message);
+  }
+
+  const totalEvents = activitiesCountResult.count ?? 0;
+  const participations = participationsResult.data ?? [];
+  const uniqueVolunteers = new Set<string>();
+  let checkedInCount = 0;
+  for (const row of participations) {
+    if (row.volunteer_id) {
+      uniqueVolunteers.add(row.volunteer_id);
+    }
+    if (row.status === 'checked_in') {
+      checkedInCount += 1;
+    }
+  }
+
+  const successRate =
+    participations.length > 0 ? Math.round((checkedInCount / participations.length) * 100) : 0;
+
+  return {
+    totalEvents: totalEvents.toString(),
+    volunteers: formatCompactCount(uniqueVolunteers.size),
+    successRate: `${successRate}%`,
+  };
 }
 
 export async function getOrganizerRecommendedVolunteers(

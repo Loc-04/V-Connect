@@ -1,9 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,23 +12,23 @@ import {
 
 import { useAuth } from '@/src/features/auth';
 import {
-  getOrganizerManagedActivities,
   getOrganizerProfile,
   getOrganizerRecommendedVolunteers,
-  type OrganizerManagedActivityItem,
+  getOrganizerTopStats,
   type OrganizerProfileView,
   type OrganizerRecommendedVolunteerItem,
   type OrganizerTopStats,
 } from '@/src/features/profile';
+import { ROUTES } from '@/src/shared/constants/route-constants';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 import { ThemedView } from '@/src/shared/ui/themed-view';
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
 
-const TOP_STATS: OrganizerTopStats = {
-  totalEvents: '42',
-  volunteers: '1.2k',
-  successRate: '98%',
+const EMPTY_TOP_STATS: OrganizerTopStats = {
+  totalEvents: '0',
+  volunteers: '0',
+  successRate: '0%',
 };
 
 function toInitials(fullName: string): string {
@@ -37,29 +37,12 @@ function toInitials(fullName: string): string {
   return parts.map((p) => p.charAt(0).toUpperCase()).join('');
 }
 
-function getActivityIcon(activityTitle: string): keyof typeof MaterialIcons.glyphMap {
-  const name = activityTitle.toLowerCase();
-  if (name.includes('park') || name.includes('clean') || name.includes('tree')) {
-    return 'park';
-  }
-  if (name.includes('workshop') || name.includes('teach') || name.includes('class')) {
-    return 'school';
-  }
-  return 'event-note';
-}
-
-function formatBadgeLabel(item: OrganizerManagedActivityItem): string {
-  return item.badge === 'open' ? 'OPEN' : 'CLOSED';
-}
-
 export default function DashboardScreen() {
   const { user } = useAuth();
   const [state, setState] = useState<LoadState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [profile, setProfile] = useState<OrganizerProfileView | null>(null);
-  const [activities, setActivities] = useState<OrganizerManagedActivityItem[]>([]);
-  const [allActivities, setAllActivities] = useState<OrganizerManagedActivityItem[]>([]);
-  const [isViewAllVisible, setIsViewAllVisible] = useState(false);
+  const [topStats, setTopStats] = useState<OrganizerTopStats>(EMPTY_TOP_STATS);
   const [recommendedVolunteers, setRecommendedVolunteers] = useState<
     OrganizerRecommendedVolunteerItem[]
   >([]);
@@ -80,22 +63,22 @@ export default function DashboardScreen() {
     setErrorMessage(null);
 
     try {
-      const [nextProfile, nextActivities, nextRecommended] = await Promise.all([
+      const [nextProfile, nextStats, nextRecommended] = await Promise.all([
         getOrganizerProfile(user.id),
-        getOrganizerManagedActivities(user.id, 5),
+        getOrganizerTopStats(user.id),
         getOrganizerRecommendedVolunteers(user.id, 6),
       ]);
 
       if (!nextProfile) {
         setProfile(null);
-        setActivities([]);
+        setTopStats(EMPTY_TOP_STATS);
         setRecommendedVolunteers([]);
         setState('empty');
         return;
       }
 
       setProfile(nextProfile);
-      setActivities(nextActivities);
+      setTopStats(nextStats);
       setRecommendedVolunteers(nextRecommended);
       setState('ready');
     } catch (error) {
@@ -111,24 +94,6 @@ export default function DashboardScreen() {
   useEffect(() => {
     void loadOrganizerProfile();
   }, [loadOrganizerProfile]);
-
-  const handleViewAllActivities = useCallback(async () => {
-    if (!user?.id) {
-      Alert.alert('Missing Account', 'Please sign in again.');
-      return;
-    }
-
-    try {
-      const items = await getOrganizerManagedActivities(user.id, 100);
-      setAllActivities(items);
-      setIsViewAllVisible(true);
-    } catch (error) {
-      Alert.alert(
-        'Unable to Load Activities',
-        error instanceof Error ? error.message : 'Please try again.',
-      );
-    }
-  }, [user?.id]);
 
   if (state === 'loading') {
     return (
@@ -203,71 +168,25 @@ export default function DashboardScreen() {
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <ThemedText style={styles.statValue}>{TOP_STATS.totalEvents}</ThemedText>
+            <ThemedText style={styles.statValue}>{topStats.totalEvents}</ThemedText>
             <ThemedText style={styles.statLabel}>TOTAL EVENTS</ThemedText>
           </View>
           <View style={styles.statCard}>
-            <ThemedText style={styles.statValue}>{TOP_STATS.volunteers}</ThemedText>
+            <ThemedText style={styles.statValue}>{topStats.volunteers}</ThemedText>
             <ThemedText style={styles.statLabel}>VOLUNTEERS</ThemedText>
           </View>
           <View style={styles.statCard}>
-            <ThemedText style={styles.statValue}>{TOP_STATS.successRate}</ThemedText>
+            <ThemedText style={styles.statValue}>{topStats.successRate}</ThemedText>
             <ThemedText style={styles.statLabel}>SUCCESS RATE</ThemedText>
           </View>
         </View>
 
-        <View style={styles.sectionHeader}>
-          <ThemedText style={styles.sectionTitle}>Managed Activities</ThemedText>
-          <Pressable onPress={() => void handleViewAllActivities()}>
-            <ThemedText style={styles.sectionAction}>View All</ThemedText>
-          </Pressable>
-        </View>
-
-        {activities.length > 0 ? (
-          activities.map((item) => (
-            <View key={item.activityId} style={styles.activityCard}>
-              <View style={styles.activityIconWrap}>
-                <MaterialIcons
-                  name={getActivityIcon(item.title)}
-                  size={22}
-                  color="#0f766e"
-                />
-              </View>
-              <View style={styles.activityContent}>
-                <View style={styles.activityTopRow}>
-                  <ThemedText type="defaultSemiBold" style={styles.activityTitle}>
-                    {item.title}
-                  </ThemedText>
-                  <View
-                    style={[
-                      styles.activityBadge,
-                      item.badge === 'open' ? styles.badgeOpen : styles.badgeClosed,
-                    ]}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.activityBadgeText,
-                        item.badge === 'open'
-                          ? styles.badgeOpenText
-                          : styles.badgeClosedText,
-                      ]}
-                    >
-                      {formatBadgeLabel(item)}
-                    </ThemedText>
-                  </View>
-                </View>
-                <View style={styles.volunteerMetaRow}>
-                  <MaterialIcons name="groups" size={14} color="#6b7280" />
-                  <ThemedText style={styles.volunteerMetaText}>
-                    {item.joinedVolunteers}/{item.capacity} Volunteers Joined
-                  </ThemedText>
-                </View>
-              </View>
-            </View>
-          ))
-        ) : (
-          <ThemedText style={styles.emptyInlineText}>No managed activities yet.</ThemedText>
-        )}
+        <Pressable
+          style={styles.editButton}
+          onPress={() => router.push(ROUTES.ORGANIZER.ACTIVITY_MANAGEMENT)}
+        >
+          <ThemedText style={styles.editButtonText}>Activity Management</ThemedText>
+        </Pressable>
 
         <View style={styles.aiHeaderRow}>
           <MaterialIcons name="auto-awesome" size={18} color="#0f766e" />
@@ -329,73 +248,6 @@ export default function DashboardScreen() {
         )}
       </ScrollView>
 
-      <Modal
-        visible={isViewAllVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setIsViewAllVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>All Managed Activities</ThemedText>
-              <Pressable onPress={() => setIsViewAllVisible(false)} hitSlop={6}>
-                <MaterialIcons name="close" size={22} color="#374151" />
-              </Pressable>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {allActivities.length > 0 ? (
-                allActivities.map((item) => (
-                  <View key={`all-${item.activityId}`} style={styles.modalActivityCard}>
-                    <View style={styles.activityIconWrap}>
-                      <MaterialIcons
-                        name={getActivityIcon(item.title)}
-                        size={20}
-                        color="#0f766e"
-                      />
-                    </View>
-                    <View style={styles.activityContent}>
-                      <View style={styles.activityTopRow}>
-                        <ThemedText type="defaultSemiBold" style={styles.activityTitle}>
-                          {item.title}
-                        </ThemedText>
-                        <View
-                          style={[
-                            styles.activityBadge,
-                            item.badge === 'open' ? styles.badgeOpen : styles.badgeClosed,
-                          ]}
-                        >
-                          <ThemedText
-                            style={[
-                              styles.activityBadgeText,
-                              item.badge === 'open'
-                                ? styles.badgeOpenText
-                                : styles.badgeClosedText,
-                            ]}
-                          >
-                            {formatBadgeLabel(item)}
-                          </ThemedText>
-                        </View>
-                      </View>
-                      <View style={styles.volunteerMetaRow}>
-                        <MaterialIcons name="groups" size={14} color="#6b7280" />
-                        <ThemedText style={styles.volunteerMetaText}>
-                          {item.joinedVolunteers}/{item.capacity} Volunteers Joined
-                        </ThemedText>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <ThemedText style={styles.emptyInlineText}>
-                  No activities found for this organizer.
-                </ThemedText>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </ThemedView>
   );
 }
@@ -551,6 +403,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#1f2937',
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   sectionAction: {
     fontSize: 15,
