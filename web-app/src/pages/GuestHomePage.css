@@ -1,0 +1,60 @@
+.guest-home-grid {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.guest-home-hero.card {
+  display: grid;
+  gap: 0.58rem;
+  padding: 1rem;
+}
+
+.guest-home-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--grad-end);
+}
+
+.guest-home-hero h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.6vw, 2rem);
+  line-height: 1.15;
+}
+
+.guest-home-hero p {
+  color: var(--muted);
+}
+
+.guest-home-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.guest-home-metric-card.card {
+  padding: 0.88rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.guest-home-metric-card svg {
+  color: var(--grad-end);
+}
+
+.guest-home-metric-card strong {
+  font-size: 1.2rem;
+}
+
+.guest-home-metric-card p {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 860px) {
+  .guest-home-metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

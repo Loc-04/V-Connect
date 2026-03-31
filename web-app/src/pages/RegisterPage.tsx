@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
 import { getRoleHomePath } from '../auth/rolePaths';
@@ -15,9 +15,23 @@ const initialForm: RegisterInput & { confirmPassword: string } = {
   phone: '',
   role: 'volunteer',
 };
+const GUEST_ENTRY_LABEL = 'Continue as Guest';
+
+function resolveSafeNextPath(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (!value.startsWith('/') || value.startsWith('//')) {
+    return null;
+  }
+
+  return value;
+}
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { register } = useAuth();
 
   const [form, setForm] = useState(initialForm);
@@ -56,7 +70,8 @@ export function RegisterPage() {
       }
 
       if (result.profile) {
-        navigate(getRoleHomePath(result.profile.role), { replace: true });
+        const nextPath = resolveSafeNextPath(new URLSearchParams(location.search).get('next'));
+        navigate(nextPath ?? getRoleHomePath(result.profile.role), { replace: true });
         return;
       }
 
@@ -154,9 +169,12 @@ export function RegisterPage() {
         <button className="primary-btn" disabled={submitting} type="submit">
           {submitting ? 'Creating...' : 'Create account'}
         </button>
+        <button className="secondary-btn" onClick={() => navigate('/', { replace: true })} type="button">
+          {GUEST_ENTRY_LABEL}
+        </button>
 
         <p className="muted">
-          Have an account? <Link to="/login">Sign in</Link>
+          Have an account? <Link to={`/login${location.search}`}>Sign in</Link>
         </p>
       </form>
     </main>
