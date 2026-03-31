@@ -36,6 +36,19 @@ const heroSlides = [
 
 const HERO_ROTATE_INTERVAL_MS = 6000;
 const HERO_FADE_MS = 900;
+const GUEST_ENTRY_LABEL = 'Continue as Guest';
+
+function resolveSafeNextPath(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (!value.startsWith('/') || value.startsWith('//')) {
+    return null;
+  }
+
+  return value;
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -89,10 +102,12 @@ export function LoginPage() {
 
     try {
       const profile = await signInWithPassword(email.trim(), password);
-      const target = (location.state as { from?: string } | null)?.from;
+      const queryTarget = resolveSafeNextPath(new URLSearchParams(location.search).get('next'));
+      const stateTarget = resolveSafeNextPath((location.state as { from?: string } | null)?.from);
+      const target = queryTarget ?? stateTarget;
       const roleHome = getRoleHomePath(profile.role);
 
-      if (target && profile.role === 'admin') {
+      if (target) {
         navigate(target, { replace: true });
         return;
       }
@@ -154,7 +169,7 @@ export function LoginPage() {
             <button className="auth-tab active" type="button">
               Login
             </button>
-            <Link className="auth-tab" to="/register">
+            <Link className="auth-tab" to={`/register${location.search}`}>
               Register
             </Link>
           </div>
@@ -207,6 +222,13 @@ export function LoginPage() {
           <button className="primary-btn login-submit" disabled={submitting} type="submit">
             {submitting ? 'Signing in...' : 'Sign in'}
           </button>
+          <button
+            className="secondary-btn login-guest-entry"
+            onClick={() => navigate('/', { replace: true })}
+            type="button"
+          >
+            {GUEST_ENTRY_LABEL}
+          </button>
 
           <div className="divider">
             <span>OR CONTINUE WITH</span>
@@ -222,7 +244,7 @@ export function LoginPage() {
           </button>
 
           <p className="signup-text">
-            Don&apos;t have an account? <Link to="/register">Sign up for free</Link>
+            Don&apos;t have an account? <Link to={`/register${location.search}`}>Sign up for free</Link>
           </p>
         </form>
       </section>

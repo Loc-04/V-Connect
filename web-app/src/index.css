@@ -1602,6 +1602,12 @@ th {
   animation: shimmer 1.2s ease-in-out infinite;
 }
 
+.login-guest-entry.secondary-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+  min-height: 46px;
+}
+
 .divider {
   text-align: center;
   margin: 0.95rem 0 0.75rem;

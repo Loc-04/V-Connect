@@ -1,0 +1,32 @@
+.auth-required-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  padding: 0.9rem;
+}
+
+.auth-required-modal.card {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 0.72rem;
+  border-radius: 14px;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.24);
+}
+
+.auth-required-modal h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.auth-required-actions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.auth-required-actions .primary-btn,
+.auth-required-actions .secondary-btn {
+  width: 100%;
+}

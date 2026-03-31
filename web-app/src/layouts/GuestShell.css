@@ -1,0 +1,70 @@
+.guest-shell {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+
+.guest-shell-header.app-header {
+  margin-bottom: 0;
+}
+
+.guest-shell-brand-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.guest-shell-brand-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+}
+
+.guest-shell-brand-wrap strong {
+  display: block;
+  line-height: 1.1;
+}
+
+.guest-shell-brand-wrap p {
+  margin-top: 0.1rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.guest-shell-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.guest-shell-auth-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.guest-shell-content {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.guest-shell-page-head.section-head {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .guest-shell-header.app-header {
+    gap: 0.65rem;
+  }
+
+  .guest-shell-nav,
+  .guest-shell-auth-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}

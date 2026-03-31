@@ -1,0 +1,24 @@
+.browse-advanced-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.guest-browse-org {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.guest-browse-join-btn.secondary-btn {
+  min-width: 88px;
+}
+
+@media (max-width: 900px) {
+  .browse-advanced-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .browse-advanced-filters {
+    grid-template-columns: 1fr;
+  }
+}
