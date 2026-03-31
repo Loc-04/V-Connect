@@ -8,10 +8,10 @@ type GuestNavKey = 'home' | 'browse';
 
 interface GuestShellProps {
   activeNav: GuestNavKey;
-  pageTitle: string;
-  pageSubtitle: string;
-  headerActions?: ReactNode;
   children: ReactNode;
+  headerActions?: ReactNode;
+  pageTitle?: string;
+  pageSubtitle?: string;
 }
 
 function toAuthPath(pathname: string, next: string) {
@@ -20,50 +20,56 @@ function toAuthPath(pathname: string, next: string) {
   return `${pathname}?${params.toString()}`;
 }
 
-export function GuestShell({ activeNav, pageTitle, pageSubtitle, headerActions, children }: GuestShellProps) {
+export function GuestShell({ activeNav, children, headerActions, pageTitle, pageSubtitle }: GuestShellProps) {
   const location = useLocation();
   const nextPath = `${location.pathname}${location.search}${location.hash}`;
+  const shouldRenderPageHead = Boolean(pageTitle || pageSubtitle || headerActions);
 
   return (
-    <div className="app-shell guest-shell">
-      <header className="app-header guest-shell-header">
-        <div className="guest-shell-brand-wrap">
+    <div className="app-shell guest-shell" id="top">
+      <header className="guest-shell-header">
+        <Link className="guest-shell-brand" to="/">
           <span className="guest-shell-brand-icon" aria-hidden="true">
             <Activity size={16} />
           </span>
-          <div>
-            <strong>V-Connect</strong>
-            <p>Continue as Guest</p>
-          </div>
-        </div>
+          <strong>V-Connect</strong>
+        </Link>
 
-        <nav className="guest-shell-nav" aria-label="Guest navigation">
-          <NavLink className={activeNav === 'home' ? 'nav-link active' : 'nav-link'} to="/">
+        <nav className="guest-shell-nav" aria-label="Public navigation">
+          <NavLink className={({ isActive }) => (isActive && activeNav === 'home' ? 'guest-shell-link is-active' : 'guest-shell-link')} to="/">
             Home
           </NavLink>
-          <NavLink className={activeNav === 'browse' ? 'nav-link active' : 'nav-link'} to="/guest/browse">
+          <NavLink
+            className={({ isActive }) => (isActive && activeNav === 'browse' ? 'guest-shell-link is-active' : 'guest-shell-link')}
+            to="/guest/browse"
+          >
             Browse Activities
           </NavLink>
+          <Link className="guest-shell-link" to="/#journey">
+            About
+          </Link>
         </nav>
 
         <div className="guest-shell-auth-actions">
-          <Link className="secondary-btn" to={toAuthPath('/login', nextPath)}>
-            Sign In
+          <Link className="guest-shell-auth-link" to={toAuthPath('/login', nextPath)}>
+            Login
           </Link>
-          <Link className="primary-btn" to={toAuthPath('/register', nextPath)}>
+          <Link className="primary-btn guest-shell-signup-btn" to={toAuthPath('/register', nextPath)}>
             Sign Up
           </Link>
         </div>
       </header>
 
       <main className="content-wrap guest-shell-content">
-        <section className="section-head guest-shell-page-head">
-          <div>
-            <h1>{pageTitle}</h1>
-            <p className="muted">{pageSubtitle}</p>
-          </div>
-          {headerActions && <div className="header-actions">{headerActions}</div>}
-        </section>
+        {shouldRenderPageHead ? (
+          <section className="section-head guest-shell-page-head">
+            <div>
+              {pageTitle ? <h1>{pageTitle}</h1> : null}
+              {pageSubtitle ? <p className="muted">{pageSubtitle}</p> : null}
+            </div>
+            {headerActions ? <div className="header-actions">{headerActions}</div> : null}
+          </section>
+        ) : null}
         {children}
       </main>
     </div>
