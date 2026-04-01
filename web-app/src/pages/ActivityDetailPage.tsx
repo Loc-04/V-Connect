@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { CalendarClock, Heart, MapPin, Share2, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
@@ -8,6 +8,7 @@ import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { getActivityById } from '../lib/activities';
+import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
 import type { ActivityDetailMock } from '../lib/participationMocks';
@@ -182,18 +183,45 @@ function getStatusTone(status: ViewStatus) {
   return 'info' as const;
 }
 
+function getGuestIntentMessage(action: GuestProtectedAction, canRegister: boolean) {
+  if (action === 'join') {
+    return canRegister
+      ? 'You are back on the same activity after signing in. Use the registration panel below to continue joining.'
+      : 'You are back on the same activity after signing in. Joining is currently available for volunteer accounts only.';
+  }
+
+  if (action === 'ai_match') {
+    return canRegister
+      ? 'You are back on the same activity after signing in. Open AI recommendations to compare your fit before joining.'
+      : 'You are back on the same activity after signing in. AI matching is available from the volunteer workspace.';
+  }
+
+  if (action === 'save') {
+    return 'You are back on the same activity after signing in. Continue reviewing the details from your authenticated workspace.';
+  }
+
+  return 'You are back on the same activity after signing in. Continue from the organizer details and activity actions.';
+}
+
 export function ActivityDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { session, profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [intentNotice, setIntentNotice] = useState<{ action: GuestProtectedAction; message: string } | null>(null);
   const [activity, setActivity] = useState<ActivityDetailViewModel | null>(null);
   const [usingMockFallback, setUsingMockFallback] = useState(false);
   const [participation, setParticipation] = useState<ParticipationRecord | null>(null);
+  const registrationPanelRef = useRef<HTMLDivElement | null>(null);
   const canRegister = profile?.role === 'volunteer';
+  const guestIntent = useMemo(
+    () => readGuestIntent(searchParams.get(getGuestIntentParamName())),
+    [searchParams]
+  );
 
   useEffect(() => {
     if (!id) {
@@ -277,6 +305,29 @@ export function ActivityDetailPage() {
     };
   }, [canRegister, id, session?.access_token]);
 
+  useEffect(() => {
+    if (!guestIntent) {
+      return;
+    }
+
+    setIntentNotice({
+      action: guestIntent,
+      message: getGuestIntentMessage(guestIntent, canRegister),
+    });
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete(getGuestIntentParamName());
+    setSearchParams(nextParams, { replace: true });
+  }, [canRegister, guestIntent, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (loading || error || !activity || intentNotice?.action !== 'join' || !registrationPanelRef.current) {
+      return;
+    }
+
+    registrationPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [activity, error, intentNotice, loading]);
+
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {
       setError(nextMessage);
@@ -322,6 +373,28 @@ export function ActivityDetailPage() {
       pageTitle={activity?.title ?? 'Activity Details'}
     >
       <section className="activity-detail-page">
+        {intentNotice ? (
+          <Card className={`activity-detail-intent-card is-${intentNotice.action}`}>
+            <div>
+              <strong>Continue where you left off</strong>
+              <p>{intentNotice.message}</p>
+            </div>
+            {intentNotice.action === 'join' ? (
+              <Button
+                onClick={() => registrationPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                type="button"
+                variant="secondary"
+              >
+                Go to registration
+              </Button>
+            ) : null}
+            {intentNotice.action === 'ai_match' && canRegister ? (
+              <Button onClick={() => navigate('/volunteer/ai-recommended-activities')} type="button" variant="secondary">
+                Open AI Match
+              </Button>
+            ) : null}
+          </Card>
+        ) : null}
         {message && <p className="form-success">{message}</p>}
 
         {loading && (
@@ -441,17 +514,26 @@ export function ActivityDetailPage() {
                     </div>
                   </div>
 
-                  <RegistrationAction
-                    accessToken={session?.access_token ?? null}
-                    activityId={activity.id}
-                    canRegister={canRegister}
-                    className="activity-detail-registration-action"
-                    currentStatus={participation?.status ?? 'none'}
-                    onNotice={handleRegistrationNotice}
-                    onRegistered={(nextParticipation) => {
-                      setParticipation(nextParticipation);
-                    }}
-                  />
+                  <div
+                    className={
+                      intentNotice?.action === 'join'
+                        ? 'activity-detail-registration-focus is-highlighted'
+                        : 'activity-detail-registration-focus'
+                    }
+                    ref={registrationPanelRef}
+                  >
+                    <RegistrationAction
+                      accessToken={session?.access_token ?? null}
+                      activityId={activity.id}
+                      canRegister={canRegister}
+                      className="activity-detail-registration-action"
+                      currentStatus={participation?.status ?? 'none'}
+                      onNotice={handleRegistrationNotice}
+                      onRegistered={(nextParticipation) => {
+                        setParticipation(nextParticipation);
+                      }}
+                    />
+                  </div>
                   <small className="activity-detail-guideline">By joining, you agree to our community guideline.</small>
                 </Card>
 

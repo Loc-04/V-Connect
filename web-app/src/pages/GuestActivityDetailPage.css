@@ -1,0 +1,303 @@
+.guest-detail-page {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.guest-detail-hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 360px;
+  border-radius: 30px;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+}
+
+.guest-detail-hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.guest-detail-hero-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 1.2rem 1.3rem 1.4rem;
+  background: linear-gradient(180deg, rgba(31, 36, 48, 0) 0%, rgba(72, 30, 112, 0.72) 66%, rgba(47, 24, 84, 0.92) 100%);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.guest-detail-hero-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.guest-detail-hero-badge.ui-badge,
+.guest-detail-status-badge.ui-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.66rem;
+}
+
+.guest-detail-hero-badge.is-open.ui-badge,
+.guest-detail-status-badge.is-open.ui-badge {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+}
+
+.guest-detail-hero-badge.is-filling_fast.ui-badge,
+.guest-detail-status-badge.is-filling_fast.ui-badge {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+}
+
+.guest-detail-hero-badge.is-waitlist.ui-badge,
+.guest-detail-status-badge.is-waitlist.ui-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.guest-detail-hero-overlay h1 {
+  color: #ffffff;
+  font-size: clamp(2.2rem, 4.6vw, 3.8rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  max-width: 10ch;
+}
+
+.guest-detail-hero-overlay p {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.9rem;
+}
+
+.guest-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.guest-detail-main-column,
+.guest-detail-side-column {
+  display: grid;
+  gap: 1rem;
+}
+
+.guest-detail-about-card.card,
+.guest-detail-cta-card.card,
+.guest-detail-organizer-card.card,
+.guest-detail-share-card.card,
+.guest-detail-map-card.card,
+.guest-detail-requirement-card.card,
+.guest-activity-state-card.card {
+  border-radius: 24px;
+}
+
+.guest-detail-about-card.card {
+  padding: 1.15rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.guest-detail-about-card h2,
+.guest-detail-requirements-section h2,
+.guest-detail-location-section h2 {
+  color: var(--text);
+  font-size: 1.55rem;
+}
+
+.guest-detail-about-card p,
+.guest-detail-requirement-card p,
+.guest-detail-organizer-note {
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.guest-detail-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.guest-detail-stat-card {
+  border: 1px solid #dce8ef;
+  border-radius: 18px;
+  background: var(--bg-soft);
+  padding: 0.85rem;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.guest-detail-stat-card small,
+.guest-detail-cta-top small,
+.guest-detail-side-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.guest-detail-stat-card strong,
+.guest-detail-cta-top strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.guest-detail-requirements-section,
+.guest-detail-location-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.guest-detail-requirements-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.guest-detail-requirement-card.card {
+  padding: 0.95rem 1rem;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.guest-detail-requirement-card strong {
+  color: var(--text);
+}
+
+.guest-detail-map-card.card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+
+.guest-detail-map-image {
+  width: 100%;
+  height: 280px;
+  object-fit: cover;
+  display: block;
+}
+
+.guest-detail-map-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  color: #ffffff;
+}
+
+.guest-detail-map-label {
+  position: absolute;
+  inset: auto 1rem 1rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 0.75rem 0.85rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.guest-detail-map-label span {
+  color: var(--grad-end);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.guest-detail-map-label strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.guest-detail-cta-card.card,
+.guest-detail-organizer-card.card,
+.guest-detail-share-card.card {
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.guest-detail-cta-top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.guest-detail-side-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.guest-detail-organizer-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.guest-detail-organizer-head img {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.guest-detail-organizer-head strong {
+  display: block;
+  color: var(--text);
+}
+
+.guest-detail-organizer-head p,
+.guest-detail-organizer-rating {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.guest-detail-organizer-rating span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.guest-activity-state {
+  display: grid;
+  padding: 1rem 0;
+}
+
+.guest-activity-state-card.card {
+  display: grid;
+  gap: 0.7rem;
+  justify-items: start;
+}
+
+@media (max-width: 1080px) {
+  .guest-detail-grid,
+  .guest-detail-stat-grid,
+  .guest-detail-requirements-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .guest-detail-hero {
+    min-height: 300px;
+  }
+
+  .guest-detail-side-actions,
+  .guest-detail-cta-top {
+    grid-template-columns: 1fr;
+  }
+}

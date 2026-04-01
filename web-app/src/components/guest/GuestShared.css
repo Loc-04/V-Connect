@@ -1,0 +1,223 @@
+.guest-opportunity-card.card {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 22px;
+  box-shadow: 0 16px 34px rgba(31, 36, 48, 0.08);
+  display: grid;
+  gap: 0;
+}
+
+.guest-opportunity-media {
+  position: relative;
+  min-height: 210px;
+}
+
+.guest-opportunity-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.guest-opportunity-badges {
+  position: absolute;
+  inset: 1rem 1rem auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.guest-opportunity-badge.ui-badge,
+.guest-opportunity-tag.ui-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.66rem;
+}
+
+.guest-opportunity-badge.is-open.ui-badge {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+}
+
+.guest-opportunity-badge.is-filling_fast.ui-badge {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+}
+
+.guest-opportunity-badge.is-waitlist.ui-badge {
+  background: rgba(71, 85, 105, 0.16);
+  color: #334155;
+}
+
+.guest-opportunity-body {
+  padding: 1rem 1rem 1.05rem;
+  display: grid;
+  gap: 0.82rem;
+}
+
+.guest-opportunity-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.guest-opportunity-topline span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.guest-opportunity-copy {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.guest-opportunity-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: wrap;
+}
+
+.guest-opportunity-copy h3 {
+  color: var(--text);
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.guest-opportunity-summary,
+.guest-opportunity-org,
+.guest-opportunity-location {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.guest-opportunity-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.guest-opportunity-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.guest-opportunity-actions .primary-btn,
+.guest-opportunity-actions .secondary-btn {
+  min-width: 132px;
+}
+
+.guest-opportunity-card.is-featured .guest-opportunity-media {
+  min-height: 180px;
+}
+
+.guest-opportunity-card.is-featured .guest-opportunity-copy h3 {
+  font-size: 1rem;
+}
+
+.guest-footer {
+  display: grid;
+  gap: 1.1rem;
+  padding: 2rem 0 0.25rem;
+}
+
+.guest-footer-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.guest-footer-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  max-width: 360px;
+}
+
+.guest-footer-brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-grid;
+  place-items: center;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  flex: none;
+}
+
+.guest-footer-brand strong {
+  display: block;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.guest-footer-brand p {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.guest-footer-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 1rem 1.5rem;
+  flex: 1;
+}
+
+.guest-footer-links div {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.guest-footer-links span {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.guest-footer-links a {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.guest-footer-meta {
+  border-top: 1px solid #d7e5ec;
+  padding-top: 1rem;
+  color: #94a3b8;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 760px) {
+  .guest-opportunity-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .guest-opportunity-actions .primary-btn,
+  .guest-opportunity-actions .secondary-btn {
+    width: 100%;
+  }
+
+  .guest-footer-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .guest-footer-links {
+    grid-template-columns: 1fr;
+  }
+}

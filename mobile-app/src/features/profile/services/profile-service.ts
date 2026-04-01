@@ -1,9 +1,10 @@
 import { supabase } from '@/src/data/clients';
+import { dayAvailabilityFromSlotKeys } from '@/src/features/availability/availability-schedule.model';
 import type {
-  AvailabilityMap,
   CoreSkillOption,
   OrganizerManagedActivityItem,
   OrganizerProfileView,
+  OrganizerTopStats,
   OrganizerRecommendedVolunteerItem,
   ProfileStats,
   ProfileRole,
@@ -23,8 +24,7 @@ interface VolunteerProfileRow {
   user_id: string;
   skills: string[] | null;
   interests: string[] | null;
-  availability: unknown;
-  availability_note: string | null;
+  available_choices: string[] | null;
   total_hours: number | null;
   impact_score: number | null;
 }
@@ -32,7 +32,7 @@ interface VolunteerProfileRow {
 interface VolunteerProfileLiteRow {
   user_id: string;
   skills: string[] | null;
-  availability_note: string | null;
+  available_choices: string[] | null;
 }
 
 interface ParticipationRow {
@@ -72,6 +72,11 @@ interface OrganizerParticipationCountRow {
   activity_id: string | null;
 }
 
+interface OrganizerParticipationRow {
+  volunteer_id: string | null;
+  status: string | null;
+}
+
 interface RecommendationSeedRow {
   volunteer_id: string | null;
   ai_match_score: number | null;
@@ -82,16 +87,6 @@ interface OrganizerVolunteerUserRow {
   full_name: string;
   avatar_url: string | null;
 }
-
-const DEFAULT_AVAILABILITY: AvailabilityMap = {
-  mon: false,
-  tue: false,
-  wed: false,
-  thu: false,
-  fri: false,
-  sat: false,
-  sun: false,
-};
 
 function toRole(value: string): ProfileRole {
   if (value === 'admin' || value === 'organizer' || value === 'volunteer') {
@@ -106,41 +101,6 @@ function toMemberSince(value: string): string {
     return new Date().getFullYear().toString();
   }
   return date.getFullYear().toString();
-}
-
-function normalizeAvailability(raw: unknown): AvailabilityMap {
-  if (!raw || typeof raw !== 'object') {
-    return { ...DEFAULT_AVAILABILITY };
-  }
-
-  const obj = raw as Record<string, unknown>;
-  const hasDailyKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].some(
-    (key) => typeof obj[key] === 'boolean',
-  );
-
-  if (hasDailyKeys) {
-    return {
-      mon: obj.mon === true,
-      tue: obj.tue === true,
-      wed: obj.wed === true,
-      thu: obj.thu === true,
-      fri: obj.fri === true,
-      sat: obj.sat === true,
-      sun: obj.sun === true,
-    };
-  }
-
-  const weekdays = obj.weekdays === true;
-  const weekends = obj.weekends === true;
-  return {
-    mon: weekdays,
-    tue: weekdays,
-    wed: weekdays,
-    thu: weekdays,
-    fri: weekdays,
-    sat: weekends,
-    sun: weekends,
-  };
 }
 
 function formatDateLabel(isoDate: string): string {
@@ -169,6 +129,14 @@ function formatHoursLabel(start: string, end: string): string {
 
 function mapOrganizerActivityBadge(status: string | null): 'open' | 'closed' {
   return status === 'published' ? 'open' : 'closed';
+}
+
+function formatCompactCount(value: number): string {
+  if (value < 1000) {
+    return value.toString();
+  }
+  const compact = (value / 1000).toFixed(1);
+  return `${compact.endsWith('.0') ? compact.slice(0, -2) : compact}k`;
 }
 
 export async function getCoreSkills(): Promise<CoreSkillOption[]> {
@@ -215,7 +183,7 @@ export async function getVolunteerProfile(userId: string): Promise<VolunteerProf
     supabase.from('users').select('id, full_name, avatar_url, role, created_at').eq('id', userId).maybeSingle<UserRow>(),
     supabase
       .from('volunteer_profiles')
-      .select('user_id, skills, interests, availability, availability_note, total_hours, impact_score')
+      .select('user_id, skills, interests, available_choices, total_hours, impact_score')
       .eq('user_id', userId)
       .maybeSingle<VolunteerProfileRow>(),
   ]);
@@ -239,8 +207,8 @@ export async function getVolunteerProfile(userId: string): Promise<VolunteerProf
     skills: profileResult.data.skills ?? [],
     interests: profileResult.data.interests ?? [],
     availability: {
-      days: normalizeAvailability(profileResult.data.availability),
-      note: profileResult.data.availability_note,
+      days: dayAvailabilityFromSlotKeys(profileResult.data.available_choices),
+      note: null,
     },
   };
 }
@@ -432,6 +400,58 @@ export async function getOrganizerManagedActivities(
   }));
 }
 
+export async function getOrganizerTopStats(organizerId: string): Promise<OrganizerTopStats> {
+  const activitiesCountResult = await supabase
+    .from('activities')
+    .select('id', { count: 'exact', head: true })
+    .eq('organizer_id', organizerId);
+
+  if (activitiesCountResult.error) {
+    throw new Error(activitiesCountResult.error.message);
+  }
+
+  const participationsResult = await supabase
+    .from('activity_participations')
+    .select(
+      `
+        volunteer_id,
+        status,
+        activities!inner (
+          organizer_id
+        )
+      `,
+    )
+    .eq('activities.organizer_id', organizerId)
+    .in('status', ['approved', 'checked_in'])
+    .returns<OrganizerParticipationRow[]>();
+
+  if (participationsResult.error) {
+    throw new Error(participationsResult.error.message);
+  }
+
+  const totalEvents = activitiesCountResult.count ?? 0;
+  const participations = participationsResult.data ?? [];
+  const uniqueVolunteers = new Set<string>();
+  let checkedInCount = 0;
+  for (const row of participations) {
+    if (row.volunteer_id) {
+      uniqueVolunteers.add(row.volunteer_id);
+    }
+    if (row.status === 'checked_in') {
+      checkedInCount += 1;
+    }
+  }
+
+  const successRate =
+    participations.length > 0 ? Math.round((checkedInCount / participations.length) * 100) : 0;
+
+  return {
+    totalEvents: totalEvents.toString(),
+    volunteers: formatCompactCount(uniqueVolunteers.size),
+    successRate: `${successRate}%`,
+  };
+}
+
 export async function getOrganizerRecommendedVolunteers(
   organizerId: string,
   limit = 6,
@@ -480,7 +500,7 @@ export async function getOrganizerRecommendedVolunteers(
       .returns<OrganizerVolunteerUserRow[]>(),
     supabase
       .from('volunteer_profiles')
-      .select('user_id, skills, availability_note')
+      .select('user_id, skills, available_choices')
       .in('user_id', volunteerIds)
       .returns<VolunteerProfileLiteRow[]>(),
   ]);
@@ -511,7 +531,8 @@ export async function getOrganizerRecommendedVolunteers(
       const rawScore = scoredByUser.get(volunteerId) ?? 0;
       const boundedScore = Math.max(0, Math.min(100, Math.round(rawScore * 100)));
       const tags = (profile?.skills ?? []).slice(0, 2);
-      const availabilityLabel = profile?.availability_note ?? 'Available';
+      const slotCount = profile?.available_choices?.length ?? 0;
+      const availabilityLabel = slotCount > 0 ? `${slotCount} time slots` : 'Available';
 
       return {
         userId: volunteerId,

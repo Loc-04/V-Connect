@@ -27,13 +27,21 @@ const mockVolunteerProfiles = [
   {
     skills: ['first-aid', 'driving', 'cooking'],
     interests: ['elderly-care', 'environment'],
-    availability: { weekdays: true, weekends: true, evenings: false },
+    available_choices: [
+      'mon_mor',
+      'mon_aft',
+      'tue_mor',
+      'wed_aft',
+      'sat_mor',
+      'sun_mor',
+      'sun_aft',
+    ],
     total_hours: 24,
   },
   {
     skills: ['teaching', 'photography'],
     interests: ['education', 'youth'],
-    availability: { weekdays: false, weekends: true, evenings: true },
+    available_choices: ['fri_eve', 'sat_mor', 'sat_aft', 'sun_mor', 'sun_eve'],
     total_hours: 12,
   },
 ];

@@ -1,7 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthProvider } from './auth/AuthContext';
-import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute, RoleHomeRedirect } from './auth/RouteGuards';
+import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute } from './auth/RouteGuards';
+import { getRoleHomePath } from './auth/rolePaths';
 import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -28,8 +29,36 @@ import { ProfileUiPage } from './pages/ProfileUiPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { GuestActivityDetailPage } from './pages/GuestActivityDetailPage';
+import { GuestBrowsePage } from './pages/GuestBrowsePage';
+import { GuestHomePage } from './pages/GuestHomePage';
 import { VolunteerAiRecommendedActivitiesPage } from './pages/VolunteerAiRecommendedActivitiesPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
+
+function RootRouteEntry() {
+  const { loading, error, session, profile } = useAuth();
+  const waitingForProfile = Boolean(session && !profile && !error);
+
+  if (loading || waitingForProfile) {
+    return (
+      <main className="page-wrap">
+        <div className="card">
+          <p className="muted">Loading session...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <GuestHomePage />;
+  }
+
+  if (!profile) {
+    return <Navigate replace to="/unauthorized" />;
+  }
+
+  return <Navigate replace to={getRoleHomePath(profile.role)} />;
+}
 
 function FeedbackRouteEntry() {
   const { profile } = useAuth();
@@ -51,7 +80,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<RoleHomeRedirect />} />
+          <Route path="/" element={<RootRouteEntry />} />
+          <Route path="/guest/browse" element={<GuestBrowsePage />} />
+          <Route path="/guest/activity/:id" element={<GuestActivityDetailPage />} />
           <Route
             path="/login"
             element={
