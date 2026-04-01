@@ -3,7 +3,7 @@ import type {
   AvailabilitySlotsResponse,
   ProfileMeResponse,
   SkillsAvailabilityResponse,
-  VolunteerAvailability,
+  VolunteerAvailabilityChoice,
 } from '../types/profile';
 
 export async function getProfileMe(accessToken: string): Promise<ProfileMeResponse> {
@@ -16,7 +16,7 @@ export interface PatchProfilePayload {
   avatarUrl?: string | null;
   skills?: string[];
   interests?: string[];
-  availability?: VolunteerAvailability;
+  availableChoices?: VolunteerAvailabilityChoice[];
 }
 
 export async function patchProfileMe(payload: PatchProfilePayload, accessToken: string): Promise<ProfileMeResponse> {
@@ -30,7 +30,7 @@ export async function patchProfileMe(payload: PatchProfilePayload, accessToken: 
 export interface PutSkillsAvailabilityPayload {
   skills?: string[];
   interests?: string[];
-  availability?: VolunteerAvailability;
+  availableChoices?: VolunteerAvailabilityChoice[];
 }
 
 export async function getSkillsAvailability(accessToken: string): Promise<SkillsAvailabilityResponse> {

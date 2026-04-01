@@ -5,8 +5,12 @@ export interface ActivityLocation {
   city?: string;
   province?: string;
   ward?: string;
-  lat?: number;
-  lng?: number;
+  formattedAddress?: string | null;
+  mapProvider?: string | null;
+  geocodedAt?: string | null;
+  geocodeConfidence?: number | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface ActivityRecord {

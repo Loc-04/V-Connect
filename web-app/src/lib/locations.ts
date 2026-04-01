@@ -1,5 +1,10 @@
 import { apiRequest } from './api';
-import type { ProvinceRecord, WardRecord } from '../types/location';
+import type {
+  GeocodeLocationPayload,
+  GeocodedLocationRecord,
+  ProvinceRecord,
+  WardRecord,
+} from '../types/location';
 
 interface ProvincesResponse {
   provinces: ProvinceRecord[];
@@ -7,6 +12,10 @@ interface ProvincesResponse {
 
 interface WardsResponse {
   wards: WardRecord[];
+}
+
+interface GeocodeLocationResponse {
+  geocodedLocation: GeocodedLocationRecord;
 }
 
 export async function listProvinces(accessToken: string): Promise<ProvinceRecord[]> {
@@ -23,4 +32,17 @@ export async function listWards(provinceCode: string, accessToken: string): Prom
   });
 
   return response.wards ?? [];
+}
+
+export async function geocodeLocation(
+  payload: GeocodeLocationPayload,
+  accessToken: string
+): Promise<GeocodedLocationRecord> {
+  const response = await apiRequest<GeocodeLocationResponse>('/locations/geocode', {
+    method: 'POST',
+    accessToken,
+    body: payload,
+  });
+
+  return response.geocodedLocation;
 }

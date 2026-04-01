@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { activityColumns, validActivityStatuses } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
-import { getProvinceByCode, getWardByCode } from '../locations/locations.service.js';
+import { buildFormattedAddress, resolveProvinceAndWard } from '../locations/locations.service.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
 import { normalizeActivityPayload } from './activities.validation.js';
 import { canWriteActivities, getActivityById } from './activities.service.js';
@@ -84,6 +84,7 @@ function getLocationText(location) {
 
   const parts = [
     typeof location.address === 'string' ? location.address : '',
+    typeof location.formattedAddress === 'string' ? location.formattedAddress : '',
     typeof location.city === 'string' ? location.city : '',
     typeof location.ward === 'string' ? location.ward : '',
     typeof location.district === 'string' ? location.district : '',
@@ -91,6 +92,15 @@ function getLocationText(location) {
   ];
 
   return parts.join(' ').toLowerCase();
+}
+
+function normalizeCoordinateValue(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function matchesSkillFilter(activity, skillFilters) {
@@ -231,41 +241,57 @@ async function resolveStoredLocation(payload, existingActivity = null) {
     throw error;
   }
 
-  const [province, ward] = await Promise.all([getProvinceByCode(provinceCode), getWardByCode(wardCode)]);
+  const resolvedArea = await resolveProvinceAndWard({ provinceCode, wardCode });
+  const previousLocation = existingActivity?.location && typeof existingActivity.location === 'object' ? existingActivity.location : null;
+  const formattedAddress = buildFormattedAddress({
+    address,
+    ward: resolvedArea.wardName,
+    province: resolvedArea.provinceName,
+  });
+  const addressChanged =
+    address !== String(previousLocation?.address ?? '').trim() ||
+    resolvedArea.provinceCode !== existingActivity?.province_code ||
+    resolvedArea.wardCode !== existingActivity?.ward_code;
 
-  if (!province) {
-    const error = new Error('Selected province was not found.');
-    error.statusCode = 400;
-    throw error;
-  }
+  const hasFreshCoordinates = rawLocation.lat != null && rawLocation.lng != null;
+  const lat = hasFreshCoordinates
+    ? normalizeCoordinateValue(rawLocation.lat)
+    : addressChanged
+      ? null
+      : normalizeCoordinateValue(previousLocation?.lat);
+  const lng = hasFreshCoordinates
+    ? normalizeCoordinateValue(rawLocation.lng)
+    : addressChanged
+      ? null
+      : normalizeCoordinateValue(previousLocation?.lng);
+  const hasValidCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
-  if (!ward) {
-    const error = new Error('Selected ward was not found.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  if (ward.province_code !== province.code) {
-    const error = new Error('Selected ward does not belong to the selected province.');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const lat = Number(rawLocation.lat ?? 0);
-  const lng = Number(rawLocation.lng ?? 0);
+  const mapProvider = hasValidCoordinates
+    ? String(rawLocation.mapProvider ?? previousLocation?.mapProvider ?? '').trim() || null
+    : null;
+  const geocodedAt = hasValidCoordinates
+    ? String(rawLocation.geocodedAt ?? previousLocation?.geocodedAt ?? '').trim() || null
+    : null;
+  const geocodeConfidenceValue = hasValidCoordinates
+    ? Number(rawLocation.geocodeConfidence ?? previousLocation?.geocodeConfidence ?? null)
+    : null;
+  const geocodeConfidence = Number.isFinite(geocodeConfidenceValue) ? geocodeConfidenceValue : null;
 
   return {
     ...payload,
-    province_code: province.code,
-    ward_code: ward.code,
+    province_code: resolvedArea.provinceCode,
+    ward_code: resolvedArea.wardCode,
     location: {
-      ...rawLocation,
       address,
-      city: province.name,
-      province: province.name,
-      ward: ward.name,
-      lat: Number.isFinite(lat) ? lat : 0,
-      lng: Number.isFinite(lng) ? lng : 0,
+      city: resolvedArea.provinceName,
+      province: resolvedArea.provinceName,
+      ward: resolvedArea.wardName,
+      formattedAddress,
+      mapProvider,
+      geocodedAt,
+      geocodeConfidence,
+      lat: hasValidCoordinates ? Number(lat.toFixed(7)) : null,
+      lng: hasValidCoordinates ? Number(lng.toFixed(7)) : null,
     },
   };
 }

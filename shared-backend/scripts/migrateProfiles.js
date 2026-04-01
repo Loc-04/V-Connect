@@ -158,11 +158,7 @@ async function ensureVolunteerProfile(userId) {
     user_id: userId,
     skills: [],
     interests: [],
-    availability: {
-      weekdays: false,
-      weekends: false,
-      evenings: false,
-    },
+    available_choices: [],
     total_hours: 0,
   });
 

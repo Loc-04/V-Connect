@@ -1,61 +1,17 @@
 import { Router } from 'express';
 import { userColumns, volunteerColumns } from '../config/constants.js';
 import { isPlainObject, normalizeStringArray } from '../common/utils/validators.js';
+import {
+  buildAvailabilitySlotsPayload,
+  expandLegacyAvailability,
+  normalizeAvailableChoicesInput,
+  serializeVolunteerProfile,
+} from '../common/utils/availability.js';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { getVolunteerProfileByUserId } from './users.service.js';
 
 const router = Router();
-const availabilitySlots = [
-  {
-    key: 'weekdays',
-    label: 'Weekdays',
-    description: 'Available on Monday to Friday daytime shifts.',
-    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    timeWindows: ['Morning', 'Afternoon'],
-  },
-  {
-    key: 'weekends',
-    label: 'Weekends',
-    description: 'Available on Saturday and Sunday daytime shifts.',
-    days: ['Sat', 'Sun'],
-    timeWindows: ['Morning', 'Afternoon'],
-  },
-  {
-    key: 'evenings',
-    label: 'Evenings',
-    description: 'Available for late-day or after-hours support.',
-    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    timeWindows: ['Evening'],
-  },
-];
-
-function normalizeAvailability(availability) {
-  return {
-    weekdays: availability?.weekdays ?? false,
-    weekends: availability?.weekends ?? false,
-    evenings: availability?.evenings ?? false,
-  };
-}
-
-function normalizeAvailabilityInput(value) {
-  if (!isPlainObject(value)) {
-    throw new Error('availability must be an object.');
-  }
-
-  const availabilityKeys = ['weekdays', 'weekends', 'evenings'];
-  for (const key of availabilityKeys) {
-    if (!Object.hasOwn(value, key) || typeof value[key] !== 'boolean') {
-      throw new Error(`availability.${key} must be a boolean.`);
-    }
-  }
-
-  return {
-    weekdays: value.weekdays,
-    weekends: value.weekends,
-    evenings: value.evenings,
-  };
-}
 
 function extractVolunteerProfileUpdates(body, { requireAtLeastOne = false } = {}) {
   if (!isPlainObject(body)) {
@@ -72,12 +28,17 @@ function extractVolunteerProfileUpdates(body, { requireAtLeastOne = false } = {}
     updates.interests = normalizeStringArray(body.interests, 'interests');
   }
 
+  if (Object.hasOwn(body, 'availableChoices') || Object.hasOwn(body, 'available_choices')) {
+    const rawChoices = Object.hasOwn(body, 'availableChoices') ? body.availableChoices : body.available_choices;
+    updates.available_choices = normalizeAvailableChoicesInput(rawChoices);
+  }
+
   if (Object.hasOwn(body, 'availability')) {
-    updates.availability = normalizeAvailabilityInput(body.availability);
+    updates.available_choices = expandLegacyAvailability(body.availability);
   }
 
   if (requireAtLeastOne && Object.keys(updates).length === 0) {
-    throw new Error('At least one field is required: skills, interests, availability.');
+    throw new Error('At least one field is required: skills, interests, availableChoices.');
   }
 
   return updates;
@@ -105,12 +66,13 @@ async function upsertVolunteerProfile(userId, updates) {
 }
 
 function buildSkillsAvailabilityResponse(userId, volunteerProfile) {
+  const serialized = serializeVolunteerProfile(volunteerProfile);
   return {
     userId,
-    skills: Array.isArray(volunteerProfile?.skills) ? volunteerProfile.skills : [],
-    interests: Array.isArray(volunteerProfile?.interests) ? volunteerProfile.interests : [],
-    availability: normalizeAvailability(volunteerProfile?.availability),
-    updatedAt: volunteerProfile?.updated_at ?? null,
+    skills: serialized?.skills ?? [],
+    interests: serialized?.interests ?? [],
+    availableChoices: serialized?.availableChoices ?? [],
+    updatedAt: serialized?.updated_at ?? null,
   };
 }
 
@@ -118,7 +80,7 @@ router.get('/profile/me', requireAuth, async (req, res) => {
   try {
     let volunteerProfile = null;
     if (req.auth?.profile?.role === 'volunteer') {
-      volunteerProfile = await getVolunteerProfileByUserId(req.auth.user.id);
+      volunteerProfile = serializeVolunteerProfile(await getVolunteerProfileByUserId(req.auth.user.id));
     }
 
     res.json({
@@ -175,17 +137,7 @@ router.put('/profile/skills-availability', requireAuth, async (req, res) => {
 });
 
 router.get('/availability-slots', requireAuth, (_req, res) => {
-  res.json({
-    availabilitySlots,
-    availabilityGrid: {
-      days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      rows: [
-        { key: 'morning', label: 'Morning' },
-        { key: 'afternoon', label: 'Afternoon' },
-        { key: 'evening', label: 'Evening' },
-      ],
-    },
-  });
+  res.json(buildAvailabilitySlotsPayload());
 });
 
 router.patch('/profile/me', requireAuth, async (req, res) => {
@@ -270,7 +222,7 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
   }
 
   if (hasVolunteerUpdates && req.auth.profile.role !== 'volunteer') {
-    res.status(403).json({ message: 'Only volunteer profiles can update skills/interests/availability.' });
+    res.status(403).json({ message: 'Only volunteer profiles can update skills/interests/availableChoices.' });
     return;
   }
 
@@ -306,6 +258,7 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
       } else {
         volunteerProfile = await getVolunteerProfileByUserId(req.auth.user.id);
       }
+      volunteerProfile = serializeVolunteerProfile(volunteerProfile);
     }
 
     res.json({

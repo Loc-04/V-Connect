@@ -27,12 +27,8 @@ export interface RecommendedVolunteerRecord {
   explanation: string;
   skills: string[];
   interests: string[];
-  availability: {
-    weekdays?: boolean;
-    weekends?: boolean;
-    evenings?: boolean;
-  } | null;
-  availabilityNote: string | null;
+  availableChoices: string[];
+  availabilitySummary: string;
   totalHours: number;
 }
 
