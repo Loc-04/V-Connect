@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Activity, ClipboardList, LayoutDashboard, MapPin, Sparkles } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
-import { createActivity } from '../lib/activities';
-import type { ActivityStatus } from '../types/activity';
+import { createActivity, getActivityById, updateActivity } from '../lib/activities';
+import { listProvinces, listWards } from '../lib/locations';
+import type { ActivityRecord, ActivityStatus } from '../types/activity';
+import type { ProvinceRecord, WardRecord } from '../types/location';
 import './CreateActivityPage.css';
 
 function combineDateAndTime(date: string, time: string) {
@@ -19,18 +21,51 @@ function normalizeRole(role: string | null | undefined) {
   return String(role ?? '').toLowerCase();
 }
 
+function splitDateAndTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: '', time: '' };
+  }
+
+  const iso = new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString();
+  return {
+    date: iso.slice(0, 10),
+    time: iso.slice(11, 16),
+  };
+}
+
+function getAddressValue(location: ActivityRecord['location']) {
+  if (!location) {
+    return '';
+  }
+
+  if (typeof location === 'string') {
+    return location;
+  }
+
+  return location.address ?? '';
+}
+
 export function CreateActivityPage() {
   const navigate = useNavigate();
+  const { id: activityId } = useParams<{ id?: string }>();
   const { profile, session, signOut } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [provinceCode, setProvinceCode] = useState('');
+  const [wardCode, setWardCode] = useState('');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [capacity, setCapacity] = useState('10');
   const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
   const [skillDraft, setSkillDraft] = useState('');
+  const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
+  const [wards, setWards] = useState<WardRecord[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(Boolean(activityId));
+  const [loadingProvinces, setLoadingProvinces] = useState(true);
+  const [loadingWards, setLoadingWards] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -38,6 +73,128 @@ export function CreateActivityPage() {
   const role = normalizeRole(profile?.role);
   const canManageActivities = role === 'organizer' || role === 'admin';
   const organizerHomePath = role === 'admin' ? '/admin/dashboard' : '/organizer/activities';
+  const isEditing = Boolean(activityId);
+
+  const selectedProvince = useMemo(
+    () => provinces.find((province) => province.code === provinceCode) ?? null,
+    [provinceCode, provinces]
+  );
+  const selectedWard = useMemo(() => wards.find((ward) => ward.code === wardCode) ?? null, [wardCode, wards]);
+
+  useEffect(() => {
+    if (!session?.access_token) {
+      setLoadingProvinces(false);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingProvinces(true);
+
+    void listProvinces(session.access_token)
+      .then((rows) => {
+        if (!isMounted) {
+          return;
+        }
+        setProvinces(rows);
+      })
+      .catch((loadError) => {
+        if (!isMounted) {
+          return;
+        }
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load provinces.');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingProvinces(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.access_token]);
+
+  useEffect(() => {
+    if (!session?.access_token || !provinceCode) {
+      setWards([]);
+      setLoadingWards(false);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingWards(true);
+
+    void listWards(provinceCode, session.access_token)
+      .then((rows) => {
+        if (!isMounted) {
+          return;
+        }
+        setWards(rows);
+        setWardCode((current) => (rows.some((ward) => ward.code === current) ? current : ''));
+      })
+      .catch((loadError) => {
+        if (!isMounted) {
+          return;
+        }
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load wards.');
+        setWards([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingWards(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [provinceCode, session?.access_token]);
+
+  useEffect(() => {
+    if (!session?.access_token || !activityId) {
+      setLoadingActivity(false);
+      return;
+    }
+
+    let isMounted = true;
+    setLoadingActivity(true);
+    setError(null);
+
+    void getActivityById(activityId, session.access_token)
+      .then((activity) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const start = splitDateAndTime(activity.start_time);
+        const end = splitDateAndTime(activity.end_time);
+        setTitle(activity.title ?? '');
+        setDescription(activity.description ?? '');
+        setStreetAddress(getAddressValue(activity.location));
+        setProvinceCode(activity.province_code ?? '');
+        setWardCode(activity.ward_code ?? '');
+        setDate(start.date);
+        setStartTime(start.time);
+        setEndTime(end.time);
+        setCapacity(String(activity.capacity ?? 10));
+        setRequiredSkills(Array.isArray(activity.required_skills) ? activity.required_skills : []);
+      })
+      .catch((loadError) => {
+        if (!isMounted) {
+          return;
+        }
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load activity.');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoadingActivity(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activityId, session?.access_token]);
 
   const addSkill = () => {
     const nextSkill = skillDraft.trim();
@@ -80,6 +237,18 @@ export function CreateActivityPage() {
         throw new Error('Activity title is required.');
       }
 
+      if (!streetAddress.trim()) {
+        throw new Error('Street address is required.');
+      }
+
+      if (!provinceCode) {
+        throw new Error('Please select a city/province.');
+      }
+
+      if (!wardCode) {
+        throw new Error('Please select a ward/commune.');
+      }
+
       if (!date || !startTime || !endTime) {
         throw new Error('Date, start time, and end time are required.');
       }
@@ -95,27 +264,32 @@ export function CreateActivityPage() {
         throw new Error('Volunteer capacity must be a positive integer.');
       }
 
-      const createdActivity = await createActivity(
-        {
-          title: title.trim(),
-          description: description.trim(),
-          location: {
-            address: location.trim() || 'TBD',
-            city: '',
-            lat: 0,
-            lng: 0,
-          },
-          startTime: startIso,
-          endTime: endIso,
-          capacity: capacityValue,
-          requiredSkills,
-          status,
+      const payload = {
+        title: title.trim(),
+        description: description.trim(),
+        location: {
+          address: streetAddress.trim(),
         },
-        session.access_token
+        provinceCode,
+        wardCode,
+        startTime: startIso,
+        endTime: endIso,
+        capacity: capacityValue,
+        requiredSkills,
+        status,
+      };
+
+      const savedActivity = isEditing && activityId
+        ? await updateActivity(activityId, payload, session.access_token)
+        : await createActivity(payload, session.access_token);
+
+      setSuccess(
+        isEditing
+          ? `Activity "${savedActivity.title}" updated successfully.`
+          : `Activity "${savedActivity.title}" saved as ${savedActivity.status}.`
       );
 
-      setSuccess(`Activity "${createdActivity.title}" saved as ${createdActivity.status}.`);
-      if (status === 'published') {
+      if (isEditing || status === 'published') {
         navigate(organizerHomePath);
       }
     } catch (saveError) {
@@ -163,15 +337,19 @@ export function CreateActivityPage() {
             <span aria-hidden="true">/</span>
             <span>Activities</span>
             <span aria-hidden="true">/</span>
-            <strong>Create</strong>
+            <strong>{isEditing ? 'Edit' : 'Create'}</strong>
           </div>
 
           <section className="create-activity-title">
-            <h1>Create New Activity</h1>
-            <p>Fill in the details below to launch a new volunteering opportunity and connect with the community.</p>
+            <h1>{isEditing ? 'Edit Activity' : 'Create New Activity'}</h1>
+            <p>
+              {isEditing
+                ? 'Update the activity details, schedule, and selected location.'
+                : 'Fill in the details below to launch a new volunteering opportunity and connect with the community.'}
+            </p>
           </section>
 
-          {!canManageActivities && <p className="form-error">Only organizer/admin accounts can create activities.</p>}
+          {!canManageActivities && <p className="form-error">Only organizer/admin accounts can manage activities.</p>}
           {error && <p className="form-error">{error}</p>}
           {success && <p className="form-success">{success}</p>}
 
@@ -267,16 +445,69 @@ export function CreateActivityPage() {
                 </label>
               </div>
 
-              <div className="activity-grid two-cols is-wide-first">
-                <label className="activity-field">
-                  <span>Location</span>
+              <div className="activity-grid three-cols location-grid">
+                <label className="activity-field location-grid__wide">
+                  <span>Street / House Number</span>
                   <input
-                    onChange={(event) => setLocation(event.target.value)}
-                    placeholder="Search for a location or address"
+                    onChange={(event) => setStreetAddress(event.target.value)}
+                    placeholder="e.g., 123 Nguyen Hue Street"
                     type="text"
-                    value={location}
+                    value={streetAddress}
                   />
                 </label>
+
+                <label className="activity-field">
+                  <span>City / Province</span>
+                  <select
+                    disabled={loadingProvinces}
+                    onChange={(event) => {
+                      setProvinceCode(event.target.value);
+                      setWardCode('');
+                    }}
+                    value={provinceCode}
+                  >
+                    <option value="">{loadingProvinces ? 'Loading provinces...' : 'Select city / province'}</option>
+                    {provinces.map((province) => (
+                      <option key={province.code} value={province.code}>
+                        {province.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="activity-field">
+                  <span>Ward / Commune</span>
+                  <select
+                    disabled={!provinceCode || loadingWards}
+                    onChange={(event) => setWardCode(event.target.value)}
+                    value={wardCode}
+                  >
+                    <option value="">
+                      {!provinceCode
+                        ? 'Select province first'
+                        : loadingWards
+                          ? 'Loading wards...'
+                          : 'Select ward / commune'}
+                    </option>
+                    {wards.map((ward) => (
+                      <option key={ward.code} value={ward.code}>
+                        {ward.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="activity-grid two-cols is-wide-first">
+                <label className="activity-field">
+                  <span>Selected location summary</span>
+                  <div className="activity-location-summary" role="status">
+                    {streetAddress || selectedWard || selectedProvince
+                      ? [streetAddress.trim(), selectedWard?.name, selectedProvince?.name].filter(Boolean).join(', ')
+                      : 'Select province, ward, and street address.'}
+                  </div>
+                </label>
+
                 <label className="activity-field">
                   <span>Volunteer Capacity</span>
                   <input
@@ -290,6 +521,14 @@ export function CreateActivityPage() {
 
               <div className="map-preview" aria-hidden="true">
                 <span>Map Preview</span>
+                <div className="map-preview__content">
+                  <strong>
+                    {streetAddress || selectedWard || selectedProvince
+                      ? [streetAddress.trim(), selectedWard?.name, selectedProvince?.name].filter(Boolean).join(', ')
+                      : 'Select address, province, and ward'}
+                  </strong>
+                  <p>Map integration will be added later. This area is reserved for the live map picker/preview.</p>
+                </div>
               </div>
             </section>
 
@@ -300,19 +539,19 @@ export function CreateActivityPage() {
               <div className="activity-action-bar__right">
                 <button
                   className="action-btn is-secondary"
-                  disabled={saving || !canManageActivities}
+                  disabled={saving || !canManageActivities || loadingActivity}
                   onClick={() => void handleSave('draft')}
                   type="button"
                 >
-                  {saving ? 'Saving...' : 'Save Draft'}
+                  {saving ? 'Saving...' : isEditing ? 'Save Draft Changes' : 'Save Draft'}
                 </button>
                 <button
                   className="action-btn is-primary"
-                  disabled={saving || !canManageActivities}
+                  disabled={saving || !canManageActivities || loadingActivity}
                   onClick={() => void handleSave('published')}
                   type="button"
                 >
-                  {saving ? 'Saving...' : 'Save & Publish'}
+                  {saving ? 'Saving...' : isEditing ? 'Save & Publish Updates' : 'Save & Publish'}
                 </button>
               </div>
             </div>

@@ -43,6 +43,7 @@ shared-backend listening on http://localhost:3000
 - `POST /activities`
 - `PATCH /activities/:id`
 - `DELETE /activities/:id`
+- `POST /locations/geocode`
 - `GET /participations`
 - `POST /participations`
 - `POST /participations/:id/check-in`
@@ -71,6 +72,108 @@ shared-backend listening on http://localhost:3000
 - `PATCH /admin/users/:id`
 - `GET /admin/dashboard`
 - `GET /organizer/reports/summary`
+
+### Volunteer Skills / Availability Payload
+
+`GET /profile/skills-availability` returns `availableChoices` as a string array.
+
+Example:
+
+```json
+{
+  "skillsAvailability": {
+    "userId": "<volunteer_uuid>",
+    "skills": ["Teamwork", "First Aid"],
+    "interests": ["Football", "Community Events"],
+    "availableChoices": ["mon_mor", "wed_eve", "sat_aft"],
+    "updatedAt": "2026-04-01T10:00:00.000Z"
+  }
+}
+```
+
+`PUT /profile/skills-availability` accepts:
+
+```json
+{
+  "availableChoices": ["mon_mor", "fri_aft", "sun_eve"]
+}
+```
+
+Slot format:
+
+- Days: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`
+- Sessions: `mor`, `aft`, `eve`
+
+### Activity Location Schema For Map Support
+
+`activities.location` now supports both display text and optional map metadata.
+
+Example:
+
+```json
+{
+  "address": "74 Phan Thanh",
+  "ward": "Phường Thanh Khê",
+  "province": "Thành phố Đà Nẵng",
+  "city": "Thành phố Đà Nẵng",
+  "formattedAddress": "74 Phan Thanh, Phường Thanh Khê, Thành phố Đà Nẵng",
+  "mapProvider": "nominatim",
+  "geocodedAt": "2026-04-01T11:00:00.000Z",
+  "geocodeConfidence": 0.7123,
+  "lat": 16.0689012,
+  "lng": 108.2011123
+}
+```
+
+Notes:
+
+- `formattedAddress` is the normalized address string used for map display/open-in-map.
+- `lat` / `lng` are optional until the frontend geocoding flow is integrated.
+- if the organizer changes address/province/ward without sending fresh coordinates, the backend clears stale map coordinates automatically.
+
+### Location Geocoding API
+
+- `POST /locations/geocode`
+  - Any authenticated user.
+  - Body:
+
+```json
+{
+  "address": "74 Phan Thanh",
+  "provinceCode": "48",
+  "wardCode": "20188"
+}
+```
+
+  - Response:
+
+```json
+{
+  "geocodedLocation": {
+    "address": "74 Phan Thanh",
+    "ward": "Phường Thanh Khê",
+    "province": "Thành phố Đà Nẵng",
+    "city": "Thành phố Đà Nẵng",
+    "provinceCode": "48",
+    "wardCode": "20188",
+    "formattedAddress": "74 Phan Thanh, Phường Thanh Khê, Thành phố Đà Nẵng",
+    "mapProvider": "nominatim",
+    "geocodedAt": "2026-04-01T11:00:00.000Z",
+    "geocodeConfidence": 0.7123,
+    "lat": 16.0689012,
+    "lng": 108.2011123,
+    "providerDisplayName": "74 Phan Thanh, ..."
+  }
+}
+```
+
+Environment variables for the geocoding provider:
+
+- `MAP_GEOCODING_PROVIDER` (default `nominatim`)
+- `MAP_GEOCODING_BASE_URL` (default `https://nominatim.openstreetmap.org/`)
+- `MAP_GEOCODING_USER_AGENT`
+- `MAP_GEOCODING_EMAIL` (optional, recommended for Nominatim usage policy)
+- `MAP_GEOCODING_COUNTRY_CODES` (default `vn`)
 
 ### Attendance / Check-in API
 

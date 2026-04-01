@@ -2,6 +2,11 @@ import { supabaseAdmin } from '../database/supabase.js';
 import { computeDurationHours, getActivityById } from '../activities/activities.service.js';
 import { getProfileByUserId } from '../users/users.service.js';
 import { isPlainObject } from '../common/utils/validators.js';
+import {
+  buildAvailableChoicesSummary,
+  computeAvailabilityMatch,
+  getAvailableChoices,
+} from '../common/utils/availability.js';
 
 function normalizeStringSet(values) {
   if (!Array.isArray(values)) {
@@ -26,55 +31,6 @@ function getActivityText(activity) {
     .toLowerCase();
 }
 
-function buildAvailabilityFlags(rawAvailability) {
-  if (!isPlainObject(rawAvailability)) {
-    return {
-      weekdays: false,
-      weekends: false,
-      evenings: false,
-    };
-  }
-
-  return {
-    weekdays: Boolean(rawAvailability.weekdays),
-    weekends: Boolean(rawAvailability.weekends),
-    evenings: Boolean(rawAvailability.evenings),
-  };
-}
-
-function computeAvailabilityMatch(availability, startTime, endTime) {
-  const flags = buildAvailabilityFlags(availability);
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return { score: 0, reasons: [] };
-  }
-
-  const day = start.getDay();
-  const isWeekend = day === 0 || day === 6;
-  const isEvening = start.getHours() >= 17 || end.getHours() >= 17;
-  const reasons = [];
-  let score = 0;
-
-  if (flags.weekdays && !isWeekend) {
-    score += 8;
-    reasons.push('Weekday availability match');
-  }
-  if (flags.weekends && isWeekend) {
-    score += 8;
-    reasons.push('Weekend availability match');
-  }
-  if (flags.evenings && isEvening) {
-    score += 7;
-    reasons.push('Evening availability match');
-  }
-
-  return {
-    score: Math.min(15, score),
-    reasons,
-  };
-}
-
 function uniqueReasons(reasons) {
   return Array.from(new Set(reasons.filter((reason) => String(reason).trim().length > 0)));
 }
@@ -87,7 +43,7 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
 
   const matchedSkills = Array.from(requiredSkills).filter((skill) => volunteerSkills.has(skill));
   const matchedInterests = Array.from(interests).filter((interest) => activityText.includes(interest));
-  const availabilityMatch = computeAvailabilityMatch(profile?.availability, activity?.start_time, activity?.end_time);
+  const availabilityMatch = computeAvailabilityMatch(profile?.available_choices, activity?.start_time, activity?.end_time);
 
   let skillScore = 0;
   if (requiredSkills.size === 0) {
@@ -199,7 +155,7 @@ async function getVolunteerProfileBundle(volunteerId) {
     getProfileByUserId(volunteerId),
     supabaseAdmin
       .from('volunteer_profiles')
-      .select('user_id, skills, interests, availability, total_hours, availability_note')
+      .select('user_id, skills, interests, available_choices, total_hours')
       .eq('user_id', volunteerId)
       .maybeSingle(),
   ]);
@@ -214,9 +170,8 @@ async function getVolunteerProfileBundle(volunteerId) {
       user_id: volunteerId,
       skills: [],
       interests: [],
-      availability: { weekdays: false, weekends: false, evenings: false },
+      available_choices: [],
       total_hours: 0,
-      availability_note: null,
     },
   };
 }
@@ -241,7 +196,7 @@ async function listVolunteerCandidates() {
 
   const { data: profiles, error: profilesError } = await supabaseAdmin
     .from('volunteer_profiles')
-    .select('user_id, skills, interests, availability, total_hours, availability_note')
+    .select('user_id, skills, interests, available_choices, total_hours')
     .in('user_id', volunteerIds);
 
   if (profilesError) {
@@ -256,9 +211,8 @@ async function listVolunteerCandidates() {
       user_id: user.id,
       skills: [],
       interests: [],
-      availability: { weekdays: false, weekends: false, evenings: false },
+      available_choices: [],
       total_hours: 0,
-      availability_note: null,
     },
   }));
 }
@@ -396,8 +350,8 @@ async function getVolunteerRecommendationsForActivity(activityId, limit = 10) {
         explanation: score.explanation,
         skills: Array.isArray(candidate.profile.skills) ? candidate.profile.skills : [],
         interests: Array.isArray(candidate.profile.interests) ? candidate.profile.interests : [],
-        availability: candidate.profile.availability ?? null,
-        availabilityNote: candidate.profile.availability_note ?? null,
+        availableChoices: getAvailableChoices(candidate.profile.available_choices),
+        availabilitySummary: buildAvailableChoicesSummary(candidate.profile.available_choices),
         totalHours: Number(candidate.profile.total_hours ?? 0),
       };
     })
@@ -476,7 +430,8 @@ async function getOrganizerRecommendationsForUser(userId, limit = 10) {
           matchedActivityId: activity.id,
           matchedActivityTitle: activity.title,
           skills: Array.isArray(candidate.profile.skills) ? candidate.profile.skills : [],
-          availabilityNote: candidate.profile.availability_note ?? null,
+          availableChoices: getAvailableChoices(candidate.profile.available_choices),
+          availabilitySummary: buildAvailableChoicesSummary(candidate.profile.available_choices),
         });
       }
     }

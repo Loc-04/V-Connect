@@ -11,49 +11,27 @@ import { ProfileInterestsCard } from '../components/profile/ProfileInterestsCard
 import { ProfileSkillsCard } from '../components/profile/ProfileSkillsCard';
 import { Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
+import {
+  buildAvailabilityRows,
+  fallbackAvailabilityDays,
+  fallbackAvailabilityRows,
+  isQuickAvailabilitySelected,
+  normalizeAvailableChoices,
+  quickAvailabilityOptions,
+  toAvailabilityChoice,
+  toggleQuickAvailabilitySelection,
+} from '../lib/availability';
 import { getAvailabilitySlots, getProfileMe, getSkillsAvailability, putSkillsAvailability } from '../lib/profile';
 import type { UserRecord } from '../types/domain';
 import type {
+  AvailabilityGridDay,
   AvailabilityGridRow,
-  AvailabilitySlotOption,
   SkillsAvailabilityRecord,
-  VolunteerAvailability,
   VolunteerProfile,
 } from '../types/profile';
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80';
-const fallbackAvailabilityDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const fallbackAvailabilityOptions: AvailabilitySlotOption[] = [
-  {
-    key: 'weekdays',
-    label: 'Weekdays',
-    description: 'Best for regular Monday to Friday volunteering.',
-    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    timeWindows: ['Morning', 'Afternoon'],
-  },
-  {
-    key: 'weekends',
-    label: 'Weekends',
-    description: 'Suitable for Saturday and Sunday commitments.',
-    days: ['Sat', 'Sun'],
-    timeWindows: ['Morning', 'Afternoon'],
-  },
-  {
-    key: 'evenings',
-    label: 'Evenings',
-    description: 'Useful for after-hours programs and support shifts.',
-    days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    timeWindows: ['Evening'],
-  },
-] as const;
-const fallbackAvailabilityRows: AvailabilityGridRow[] = [
-  { key: 'morning', label: 'Morning' },
-  { key: 'afternoon', label: 'Afternoon' },
-  { key: 'evening', label: 'Evening' },
-];
-
-type AvailabilityKey = keyof VolunteerAvailability;
 
 function buildVolunteerProfileFromSkillsAvailability(
   userId: string,
@@ -64,7 +42,7 @@ function buildVolunteerProfileFromSkillsAvailability(
     user_id: next.userId || current?.user_id || userId,
     skills: next.skills,
     interests: next.interests,
-    availability: next.availability,
+    availableChoices: normalizeAvailableChoices(next.availableChoices),
     total_hours: current?.total_hours ?? null,
     updated_at: next.updatedAt,
   };
@@ -84,93 +62,27 @@ function formatMonthYear(value: string | null | undefined): string {
 }
 
 function getAvailabilityHint(key: string): string {
-  if (key === 'morning') {
+  if (key === 'mor') {
     return '8 AM - 12 PM';
   }
-  if (key === 'afternoon') {
+  if (key === 'aft') {
     return '12 PM - 5 PM';
   }
-  if (key === 'evening') {
+  if (key === 'eve') {
     return '5 PM - 9 PM';
   }
   return 'Recurring window';
 }
 
-function isWeekendDay(day: string): boolean {
-  const token = day.trim().slice(0, 3).toLowerCase();
-  return token === 'sat' || token === 'sun';
+function isWeekendDay(dayKey: string): boolean {
+  return dayKey === 'sat' || dayKey === 'sun';
 }
 
-function buildAvailabilityGridRows(
-  availability: VolunteerAvailability,
-  days: string[],
-  rows: AvailabilityGridRow[]
-) {
-  const baseDayAvailability = days.map((day) => (isWeekendDay(day) ? availability.weekends : availability.weekdays));
-  const eveningAvailability = baseDayAvailability.map((active, index) => {
-    if (!availability.evenings) {
-      return false;
-    }
-
-    if (active) {
-      return true;
-    }
-
-    return !availability.weekdays && !availability.weekends && (index === Math.max(days.length - 2, 0) || index === days.length - 1);
-  });
-
-  return rows.map((row) => ({
-    label: row.label,
-    hint: getAvailabilityHint(row.key),
-    cells: row.key === 'evening' ? eveningAvailability : baseDayAvailability,
-  }));
-}
-
-function buildAvailabilitySummary(availability: VolunteerAvailability): string {
-  if (availability.weekdays && availability.weekends && availability.evenings) {
-    return 'You are available on weekdays, weekends, and evenings.';
-  }
-
-  if (availability.weekdays && availability.weekends) {
-    return 'You are available across weekdays and weekends.';
-  }
-
-  if (availability.weekdays && availability.evenings) {
-    return 'You prefer weekdays and evening shifts.';
-  }
-
-  if (availability.weekends && availability.evenings) {
-    return 'You prefer weekend and evening shifts.';
-  }
-
-  if (availability.weekdays) {
-    return 'You are available on weekdays.';
-  }
-
-  if (availability.weekends) {
-    return 'You are available on weekends.';
-  }
-
-  if (availability.evenings) {
-    return 'You are mainly available in the evenings.';
-  }
-
-  return 'Set your weekly schedule to help organizers assign suitable activities.';
-}
-
-function normalizeAvailability(availability: VolunteerAvailability | null | undefined): VolunteerAvailability {
-  return {
-    weekdays: availability?.weekdays ?? false,
-    weekends: availability?.weekends ?? false,
-    evenings: availability?.evenings ?? false,
-  };
-}
-
-function getCompletionPercent(skillsCount: number, interestsCount: number, availability: VolunteerAvailability): number {
+function getCompletionPercent(skillsCount: number, interestsCount: number, availableChoices: string[]): number {
   const score =
     (skillsCount > 0 ? 35 : 0) +
     (interestsCount > 0 ? 35 : 0) +
-    ((availability.weekdays || availability.weekends || availability.evenings) ? 30 : 0);
+    (availableChoices.length > 0 ? 30 : 0);
 
   return Math.max(10, score);
 }
@@ -184,14 +96,9 @@ export function ProfileSettingsPage() {
 
   const [profile, setProfile] = useState<UserRecord | null>(null);
   const [volunteerProfile, setVolunteerProfile] = useState<VolunteerProfile | null>(null);
-  const [availabilityOptions, setAvailabilityOptions] = useState<AvailabilitySlotOption[]>(fallbackAvailabilityOptions);
-  const [availabilityDays, setAvailabilityDays] = useState<string[]>(fallbackAvailabilityDays);
+  const [availabilityDays, setAvailabilityDays] = useState<AvailabilityGridDay[]>(fallbackAvailabilityDays);
   const [availabilityRowsMeta, setAvailabilityRowsMeta] = useState<AvailabilityGridRow[]>(fallbackAvailabilityRows);
-  const [availabilityForm, setAvailabilityForm] = useState<VolunteerAvailability>({
-    weekdays: false,
-    weekends: false,
-    evenings: false,
-  });
+  const [availableChoicesForm, setAvailableChoicesForm] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -227,15 +134,11 @@ export function ProfileSettingsPage() {
         : profileResponse.volunteerProfile;
 
       setVolunteerProfile(nextVolunteerProfile);
-      setAvailabilityForm(
-        normalizeAvailability(skillsAvailabilityResponse?.skillsAvailability.availability ?? nextVolunteerProfile?.availability)
+      setAvailableChoicesForm(
+        normalizeAvailableChoices(
+          skillsAvailabilityResponse?.skillsAvailability.availableChoices ?? nextVolunteerProfile?.availableChoices
+        )
       );
-
-      if (availabilitySlotsResponse?.availabilitySlots?.length) {
-        setAvailabilityOptions(availabilitySlotsResponse.availabilitySlots);
-      } else {
-        setAvailabilityOptions(fallbackAvailabilityOptions);
-      }
 
       if (availabilitySlotsResponse?.availabilityGrid?.days?.length) {
         setAvailabilityDays(availabilitySlotsResponse.availabilityGrid.days);
@@ -282,11 +185,19 @@ export function ProfileSettingsPage() {
     );
   };
 
-  const handleAvailabilityToggle = (key: AvailabilityKey) => {
-    setAvailabilityForm((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
+  const handleAvailabilityToggle = (dayKey: string, rowKey: string) => {
+    const choice = toAvailabilityChoice(dayKey, rowKey);
+    setAvailableChoicesForm((current) => {
+      const normalized = normalizeAvailableChoices(current);
+      if (normalized.includes(choice)) {
+        return normalized.filter((item) => item !== choice);
+      }
+      return normalizeAvailableChoices([...normalized, choice]);
+    });
+  };
+
+  const handleQuickAvailabilityToggle = (quickChoice: 'weekdays' | 'weekends' | 'evenings') => {
+    setAvailableChoicesForm((current) => toggleQuickAvailabilitySelection(current, quickChoice, availabilityDays));
   };
 
   const handleSaveAvailability = async (event: FormEvent<HTMLFormElement>) => {
@@ -302,11 +213,11 @@ export function ProfileSettingsPage() {
     setSaveNotice(null);
 
     try {
-      const updated = await putSkillsAvailability({ availability: availabilityForm }, accessToken);
+      const updated = await putSkillsAvailability({ availableChoices: availableChoicesForm }, accessToken);
       setVolunteerProfile((current) =>
         buildVolunteerProfileFromSkillsAvailability(profile?.id ?? session?.user?.id ?? '', current, updated.skillsAvailability)
       );
-      setAvailabilityForm(normalizeAvailability(updated.skillsAvailability.availability));
+      setAvailableChoicesForm(normalizeAvailableChoices(updated.skillsAvailability.availableChoices));
       setSaveNotice(updated.message ?? 'Availability updated successfully.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save availability.';
@@ -317,7 +228,7 @@ export function ProfileSettingsPage() {
   };
 
   const resetAvailability = () => {
-    setAvailabilityForm(normalizeAvailability(volunteerProfile?.availability));
+    setAvailableChoicesForm(normalizeAvailableChoices(volunteerProfile?.availableChoices));
     setSaveError(null);
     setSaveNotice(null);
   };
@@ -325,19 +236,26 @@ export function ProfileSettingsPage() {
   const skills = volunteerProfile?.skills ?? [];
   const interests = volunteerProfile?.interests ?? [];
   const availabilityRows = useMemo(
-    () => buildAvailabilityGridRows(availabilityForm, availabilityDays, availabilityRowsMeta),
-    [availabilityDays, availabilityForm, availabilityRowsMeta]
+    () =>
+      buildAvailabilityRows(availableChoicesForm, availabilityDays, availabilityRowsMeta).map((row) => ({
+        ...row,
+        hint: getAvailabilityHint(row.key),
+      })),
+    [availabilityDays, availabilityRowsMeta, availableChoicesForm]
   );
-  const selectedAvailabilityLabels = useMemo(
-    () => availabilityOptions.filter((option) => availabilityForm[option.key]).map((option) => option.label),
-    [availabilityForm, availabilityOptions]
+  const quickAvailabilityState = useMemo(
+    () =>
+      quickAvailabilityOptions.map((option) => ({
+        ...option,
+        selected: isQuickAvailabilitySelected(availableChoicesForm, option.key, availabilityDays),
+      })),
+    [availabilityDays, availableChoicesForm]
   );
-  const hasAvailability = selectedAvailabilityLabels.length > 0;
 
   const displayName = profile?.full_name?.trim() || session?.user?.email || 'Volunteer';
   const avatarUrl = profile?.avatar_url || fallbackAvatar;
   const memberSince = formatMonthYear(profile?.created_at);
-  const completionPercent = getCompletionPercent(skills.length, interests.length, availabilityForm);
+  const completionPercent = getCompletionPercent(skills.length, interests.length, availableChoicesForm);
 
   return (
     <VolunteerShell
@@ -456,53 +374,22 @@ export function ProfileSettingsPage() {
 
                 <form className="vol-profile-edit-form vol-profile-settings-availability-form" onSubmit={handleSaveAvailability}>
                   <div className="vol-profile-settings-toggle-grid">
-                    {availabilityOptions.map((option) => {
-                      const selected = availabilityForm[option.key];
-
-                      return (
-                        <label
-                          className={
-                            selected
-                              ? 'vol-profile-settings-toggle-card is-selected'
-                              : 'vol-profile-settings-toggle-card'
-                          }
-                          key={option.key}
-                        >
-                          <input
-                            checked={selected}
-                            onChange={() => handleAvailabilityToggle(option.key)}
-                            type="checkbox"
-                          />
-                          <span className="vol-profile-settings-toggle-pill">{selected ? 'Selected' : 'Optional'}</span>
-                          <strong>{option.label}</strong>
-                          <p>{option.description}</p>
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  <div className="vol-profile-settings-availability-summary">
-                    <div className="vol-profile-settings-availability-summary-copy">
-                      <span className="vol-profile-settings-summary-label">Current recurring availability</span>
-                      <strong>
-                        {hasAvailability
-                          ? buildAvailabilitySummary(availabilityForm)
-                          : 'No recurring availability selected yet.'}
-                      </strong>
-                    </div>
-                    <div className="vol-profile-settings-availability-tags">
-                      {hasAvailability ? (
-                        selectedAvailabilityLabels.map((label) => (
-                          <span className="vol-profile-settings-availability-tag" key={label}>
-                            {label}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="vol-profile-settings-availability-tag is-empty">
-                          Add at least one recurring window to improve activity matching.
-                        </span>
-                      )}
-                    </div>
+                    {quickAvailabilityState.map((option) => (
+                      <button
+                        className={[
+                          'vol-profile-settings-toggle-card',
+                          option.selected ? 'is-selected' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        key={option.key}
+                        onClick={() => handleQuickAvailabilityToggle(option.key)}
+                        type="button"
+                      >
+                        <strong>{option.label}</strong>
+                        <p>{option.description}</p>
+                      </button>
+                    ))}
                   </div>
 
                   <div className="vol-profile-settings-grid-shell">
@@ -510,8 +397,8 @@ export function ProfileSettingsPage() {
                       <div className="vol-profile-slot-grid-head">
                         <span />
                         {availabilityDays.map((day) => (
-                          <span className={isWeekendDay(day) ? 'is-weekend' : ''} key={day}>
-                            {day}
+                          <span className={isWeekendDay(day.key) ? 'is-weekend' : ''} key={day.key}>
+                            {day.label}
                           </span>
                         ))}
                       </div>
@@ -523,18 +410,22 @@ export function ProfileSettingsPage() {
                             <small>{row.hint}</small>
                           </div>
                           {row.cells.map((active, index) => (
-                            <span
-                              aria-label={`${row.label} on ${availabilityDays[index]} ${active ? 'available' : 'unavailable'}`}
+                            <button
+                              aria-label={`${row.label} on ${availabilityDays[index].label} ${active ? 'available' : 'unavailable'}`}
                               className={[
                                 'vol-profile-slot-chip',
                                 active ? 'is-active' : '',
-                                isWeekendDay(availabilityDays[index]) ? 'is-weekend' : '',
+                                isWeekendDay(availabilityDays[index].key) ? 'is-weekend' : '',
                               ]
                                 .filter(Boolean)
                                 .join(' ')}
-                              key={`${row.label}-${availabilityDays[index]}`}
-                              title={`${availabilityDays[index]} ${row.label}: ${active ? 'Available' : 'Unavailable'}`}
-                            />
+                              key={`${row.label}-${availabilityDays[index].key}`}
+                              onClick={() => handleAvailabilityToggle(availabilityDays[index].key, row.key)}
+                              title={`${availabilityDays[index].label} ${row.label}: ${active ? 'Available' : 'Unavailable'}`}
+                              type="button"
+                            >
+                              {active ? '✓' : ''}
+                            </button>
                           ))}
                         </div>
                       ))}
@@ -544,8 +435,8 @@ export function ProfileSettingsPage() {
                   <div className="vol-profile-settings-availability-note">
                     <strong>Availability matching guide</strong>
                     <p>
-                      Detailed time blocks are visual guidance only. Your saved settings still map to the supported
-                      backend preferences: weekdays, weekends, and evenings.
+                      Quick choices add common slot groups in one click. You can still fine-tune any single day and
+                      session below. Each saved slot is stored as a `day_session` value such as `mon_mor` or `fri_eve`.
                     </p>
                   </div>
 

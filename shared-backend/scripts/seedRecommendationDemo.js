@@ -150,7 +150,7 @@ function buildTimeWindow(dayOfWeek, startHour, durationHours) {
 async function ensureVolunteerProfile(volunteerId) {
   const { data: existing, error } = await supabase
     .from('volunteer_profiles')
-    .select('user_id, skills, interests, availability, total_hours, availability_note')
+    .select('user_id, skills, interests, available_choices, total_hours')
     .eq('user_id', volunteerId)
     .maybeSingle();
 
@@ -162,14 +162,14 @@ async function ensureVolunteerProfile(volunteerId) {
     user_id: volunteerId,
     skills: uniqueStrings([...(existing?.skills ?? []), 'Teamwork', 'Softskill']),
     interests: uniqueStrings([...(existing?.interests ?? []), 'Football', 'Play video-games']),
-    availability: {
-      weekdays: Boolean(existing?.availability?.weekdays),
-      weekends: true,
-      evenings: true,
-    },
+    available_choices: uniqueStrings([
+      ...(existing?.available_choices ?? []),
+      'sat_mor',
+      'sat_aft',
+      'sun_eve',
+      'wed_eve',
+    ]),
     total_hours: Math.max(Number(existing?.total_hours ?? 0), 18),
-    availability_note:
-      existing?.availability_note ?? 'Available on weekends and evening community sessions for Sprint 3 demo.',
   };
 
   const { error: upsertError } = await supabase.from('volunteer_profiles').upsert(nextPayload, {

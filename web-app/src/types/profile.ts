@@ -1,16 +1,12 @@
 import type { UserRecord } from './domain';
 
-export interface VolunteerAvailability {
-  weekdays: boolean;
-  weekends: boolean;
-  evenings: boolean;
-}
+export type VolunteerAvailabilityChoice = string;
 
 export interface VolunteerProfile {
   user_id: string;
   skills: string[] | null;
   interests: string[] | null;
-  availability: VolunteerAvailability | null;
+  availableChoices: VolunteerAvailabilityChoice[];
   total_hours: number | null;
   updated_at: string | null;
 }
@@ -24,7 +20,7 @@ export interface SkillsAvailabilityRecord {
   userId: string;
   skills: string[];
   interests: string[];
-  availability: VolunteerAvailability;
+  availableChoices: VolunteerAvailabilityChoice[];
   updatedAt: string | null;
 }
 
@@ -34,22 +30,31 @@ export interface SkillsAvailabilityResponse {
 }
 
 export interface AvailabilitySlotOption {
-  key: keyof VolunteerAvailability;
+  key: VolunteerAvailabilityChoice;
   label: string;
   description: string;
-  days: string[];
-  timeWindows: string[];
+  dayKey: string;
+  dayLabel: string;
+  sessionKey: string;
+  sessionLabel: string;
 }
 
 export interface AvailabilityGridRow {
   key: string;
   label: string;
+  fullLabel?: string;
+}
+
+export interface AvailabilityGridDay {
+  key: string;
+  label: string;
+  fullLabel?: string;
 }
 
 export interface AvailabilitySlotsResponse {
   availabilitySlots: AvailabilitySlotOption[];
   availabilityGrid: {
-    days: string[];
+    days: AvailabilityGridDay[];
     rows: AvailabilityGridRow[];
   };
 }

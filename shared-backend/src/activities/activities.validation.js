@@ -1,5 +1,6 @@
 import { validActivityStatuses } from '../config/constants.js';
 import { isPlainObject, normalizeStringArray, toIsoDateString } from '../common/utils/validators.js';
+import { normalizeActivityMapLocation } from '../locations/locations.validation.js';
 
 function normalizeActivityLocation(value) {
   if (typeof value === 'string') {
@@ -11,8 +12,14 @@ function normalizeActivityLocation(value) {
     return {
       address,
       city: '',
-      lat: 0,
-      lng: 0,
+      province: '',
+      ward: '',
+      formattedAddress: address,
+      mapProvider: null,
+      geocodedAt: null,
+      geocodeConfidence: null,
+      lat: null,
+      lng: null,
     };
   }
 
@@ -20,24 +27,23 @@ function normalizeActivityLocation(value) {
     throw new Error('location must be an object or string.');
   }
 
-  const address = typeof value.address === 'string' ? value.address.trim() : '';
+  const normalizedLocation = normalizeActivityMapLocation(value);
+  const address = normalizedLocation.address;
   if (!address) {
     throw new Error('location.address is required.');
   }
 
-  const city = typeof value.city === 'string' ? value.city.trim() : '';
-  const lat = Number(value.lat ?? 0);
-  const lng = Number(value.lng ?? 0);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    throw new Error('location.lat and location.lng must be numbers.');
-  }
-
   return {
     address,
-    city,
-    lat,
-    lng,
+    city: normalizedLocation.city,
+    province: normalizedLocation.province,
+    ward: normalizedLocation.ward,
+    formattedAddress: normalizedLocation.formattedAddress || address,
+    mapProvider: normalizedLocation.mapProvider || null,
+    geocodedAt: normalizedLocation.geocodedAt || null,
+    geocodeConfidence: normalizedLocation.geocodeConfidence,
+    lat: normalizedLocation.lat,
+    lng: normalizedLocation.lng,
   };
 }
 
@@ -73,12 +79,7 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
   if (Object.hasOwn(body, 'location')) {
     payload.location = normalizeActivityLocation(body.location);
   } else if (!partial) {
-    payload.location = {
-      address: 'TBD',
-      city: '',
-      lat: 0,
-      lng: 0,
-    };
+    throw new Error('location is required.');
   }
 
   if (Object.hasOwn(body, 'startTime')) {
@@ -127,6 +128,8 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
       throw new Error('provinceCode must be a string or null.');
     }
     payload.province_code = body.provinceCode ? body.provinceCode.trim() : null;
+  } else if (!partial) {
+    throw new Error('provinceCode is required.');
   }
 
   if (Object.hasOwn(body, 'wardCode')) {
@@ -134,6 +137,8 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
       throw new Error('wardCode must be a string or null.');
     }
     payload.ward_code = body.wardCode ? body.wardCode.trim() : null;
+  } else if (!partial) {
+    throw new Error('wardCode is required.');
   }
 
   if (partial && Object.keys(payload).length === 0) {

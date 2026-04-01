@@ -20,16 +20,21 @@ import { useAuth } from '../auth/useAuth';
 import { ProfileEmptyState, ProfileSectionCard } from '../components/profile/ProfileSectionCard';
 import { Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
+import {
+  computeWeekBarsFromChoices,
+  formatAvailabilityChoice,
+  normalizeAvailableChoices,
+  summarizeAvailableChoices,
+} from '../lib/availability';
 import { listParticipations } from '../lib/participations';
 import { getProfileMe, patchProfileMe } from '../lib/profile';
 import type { UserRecord } from '../types/domain';
 import type { ParticipationRecord } from '../types/participation';
-import type { VolunteerAvailability, VolunteerProfile } from '../types/profile';
+import type { VolunteerProfile } from '../types/profile';
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80';
 
-const availabilityLabels = ['Weekdays', 'Weekends', 'Evenings'] as const;
 const settingsRoute = '/volunteer/profile-settings';
 const skillToneClassNames = [
   'vol-profile-chip-green',
@@ -106,59 +111,6 @@ function buildActivityBadge(value: string | null | undefined): string {
   }
 
   return formatShortDate(value).toUpperCase();
-}
-
-function buildAvailabilityNote(availability: VolunteerAvailability): string {
-  if (availability.weekends && !availability.weekdays) {
-    return 'Your preferred schedule is mainly weekends.';
-  }
-  if (availability.weekdays && !availability.weekends) {
-    return availability.evenings
-      ? 'You are most available on weekdays and evenings.'
-      : 'Your availability is strongest during weekdays.';
-  }
-  if (availability.weekdays && availability.weekends) {
-    return availability.evenings
-      ? 'You are available across weekdays, weekends, and evenings.'
-      : 'You are available across weekdays and weekends.';
-  }
-  if (availability.evenings) {
-    return 'Evenings are currently your preferred volunteering window.';
-  }
-  return 'Set your availability to help coordinators match the right opportunities.';
-}
-
-function computeWeekBars(availability: VolunteerAvailability) {
-  const baseHeights = [34, 48, 18, 40, 66, 74, 20];
-
-  return ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => {
-    let height = baseHeights[index];
-    let active = false;
-
-    if (availability.weekdays && index < 5) {
-      active = true;
-      height = [42, 58, 24, 50, 80][index];
-    }
-
-    if (availability.weekends && index >= 5) {
-      active = true;
-      height = index === 5 ? 82 : 84;
-    }
-
-    if (availability.evenings && index >= 3 && index <= 5) {
-      height = Math.min(88, height + 8);
-      active = active || index === 4 || index === 5;
-    }
-
-    const label = active && (index === 4 || index === 5) ? (index === 4 ? 'Fri' : 'Sat') : null;
-
-    return {
-      day,
-      height,
-      active,
-      label,
-    };
-  });
 }
 
 function toEditForm(profile: UserRecord | null): EditFormState {
@@ -288,28 +240,15 @@ export function ProfileUiPage() {
     };
   }, [accessToken]);
 
-  const availability: VolunteerAvailability = volunteerProfile?.availability ?? {
-    weekdays: false,
-    weekends: false,
-    evenings: false,
-  };
-
-  const weekBars = computeWeekBars(availability);
+  const availableChoices = normalizeAvailableChoices(volunteerProfile?.availableChoices);
+  const weekBars = computeWeekBarsFromChoices(availableChoices);
 
   const skills = volunteerProfile?.skills ?? [];
   const interests = volunteerProfile?.interests ?? [];
   const totalHours = volunteerProfile?.total_hours ?? 0;
   const memberSince = formatMonthYear(profile?.created_at);
-  const hasAvailability = availability.weekdays || availability.weekends || availability.evenings;
-  const activeAvailabilityLabels = availabilityLabels.filter((label) => {
-    if (label === 'Weekdays') {
-      return availability.weekdays;
-    }
-    if (label === 'Weekends') {
-      return availability.weekends;
-    }
-    return availability.evenings;
-  });
+  const hasAvailability = availableChoices.length > 0;
+  const activeAvailabilityLabels = availableChoices.slice(0, 6).map(formatAvailabilityChoice);
 
   const completedParticipations = useMemo(
     () =>
@@ -802,7 +741,7 @@ export function ProfileUiPage() {
                         ))}
                       </div>
 
-                      <p className="vol-profile-mini-note">{buildAvailabilityNote(availability)}</p>
+                      <p className="vol-profile-mini-note">{summarizeAvailableChoices(availableChoices)}</p>
                     </>
                   ) : (
                     <ProfileEmptyState

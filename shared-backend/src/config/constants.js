@@ -1,5 +1,5 @@
 const userColumns = 'id, role, full_name, phone, avatar_url, status, created_at, updated_at, deleted_at';
-const volunteerColumns = 'user_id, skills, interests, availability, total_hours, updated_at';
+const volunteerColumns = 'user_id, skills, interests, available_choices, total_hours, updated_at';
 const activityColumns =
   'id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id, province_code, ward_code, created_at, updated_at, deleted_at';
 const notificationColumns = 'id, user_id, title, message, type, data, created_at, read_at';

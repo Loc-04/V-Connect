@@ -990,14 +990,21 @@
 
 .vol-profile-settings-slot-grid .vol-profile-slot-chip {
   min-height: 42px;
+  width: 100%;
+  padding: 0;
   border-radius: 12px;
   border-color: #dde5ef;
   background: #eef3f8;
+  cursor: pointer;
 }
 
 .vol-profile-settings-slot-grid .vol-profile-slot-chip.is-weekend {
   background: #f5f3ff;
   border-color: #e6ddff;
+}
+
+.vol-profile-settings-slot-grid .vol-profile-slot-chip:hover {
+  border-color: #cbd5e1;
 }
 
 .vol-profile-settings-slot-grid .vol-profile-slot-chip.is-active {

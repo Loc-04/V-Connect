@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
+import { hasWeekendAvailability, summarizeAvailableChoices } from '../lib/availability';
 import { listActivities } from '../lib/activities';
 import { listParticipations } from '../lib/participations';
 import {
@@ -60,20 +61,7 @@ function activityCanUseRecommendations(activity: ActivityRecord) {
 }
 
 function availabilityLabel(volunteer: RecommendedVolunteerRecord) {
-  const flags = volunteer.availability ?? {};
-  const labels = [];
-
-  if (flags.weekdays) {
-    labels.push('Weekdays');
-  }
-  if (flags.weekends) {
-    labels.push('Weekends');
-  }
-  if (flags.evenings) {
-    labels.push('Evenings');
-  }
-
-  return labels.length > 0 ? labels.join(', ') : 'No availability set';
+  return volunteer.availabilitySummary || summarizeAvailableChoices(volunteer.availableChoices);
 }
 
 function isStrongFit(volunteer: RecommendedVolunteerRecord) {
@@ -81,7 +69,7 @@ function isStrongFit(volunteer: RecommendedVolunteerRecord) {
 }
 
 function isWeekendReady(volunteer: RecommendedVolunteerRecord) {
-  return Boolean(volunteer.availability?.weekends);
+  return hasWeekendAvailability(volunteer.availableChoices);
 }
 
 function isExperienced(volunteer: RecommendedVolunteerRecord) {
@@ -664,7 +652,6 @@ export function OrganizerRecommendationsPage() {
                 <div className="org-reco-note">
                   <h4>Availability</h4>
                   <p>{availabilityLabel(selectedVolunteer)}</p>
-                  {selectedVolunteer.availabilityNote && <p>{selectedVolunteer.availabilityNote}</p>}
                 </div>
 
                 <div className="org-reco-note">

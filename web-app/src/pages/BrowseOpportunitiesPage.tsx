@@ -6,6 +6,7 @@ import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
+import { formatActivityLocation } from '../lib/activityLocation';
 import { searchActivities } from '../lib/activities';
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
@@ -71,19 +72,7 @@ function formatDateLabel(value: string) {
 }
 
 function getLocationLabel(location: ActivityRecord['location']) {
-  if (!location) {
-    return 'Location TBD';
-  }
-
-  if (typeof location === 'string') {
-    return location;
-  }
-
-  if (typeof location.address === 'string' && location.address.trim()) {
-    return location.address;
-  }
-
-  return 'Location TBD';
+  return formatActivityLocation(location);
 }
 
 function toOpportunity(activity: ActivityRecord, index: number): OpportunityViewModel {

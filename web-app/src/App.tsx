@@ -110,6 +110,14 @@ function App() {
             }
           />
           <Route
+            path="/activities/:id/edit"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer', 'admin']}>
+                <CreateActivityPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
             path="/browse"
             element={
               <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>

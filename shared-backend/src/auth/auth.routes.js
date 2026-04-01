@@ -94,11 +94,7 @@ router.post('/auth/register-profile', requireAuth, async (req, res) => {
         user_id: req.auth.user.id,
         skills: [],
         interests: [],
-        availability: {
-          weekdays: false,
-          weekends: false,
-          evenings: false,
-        },
+        available_choices: [],
         total_hours: 0,
       },
       { onConflict: 'user_id' }

@@ -2,9 +2,15 @@ export type ActivityStatus = 'draft' | 'published' | 'completed' | 'cancelled';
 
 export interface ActivityLocation {
   address: string;
-  city: string;
-  lat: number;
-  lng: number;
+  city?: string;
+  province?: string;
+  ward?: string;
+  formattedAddress?: string | null;
+  mapProvider?: string | null;
+  geocodedAt?: string | null;
+  geocodeConfidence?: number | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface ActivityRecord {
@@ -18,6 +24,8 @@ export interface ActivityRecord {
   required_skills: string[] | null;
   status: ActivityStatus | string;
   organizer_id: string;
+  province_code?: string | null;
+  ward_code?: string | null;
   created_at: string | null;
   updated_at: string | null;
   deleted_at: string | null;
@@ -27,6 +35,8 @@ export interface ActivityPayload {
   title: string;
   description: string;
   location: ActivityLocation | string;
+  provinceCode: string;
+  wardCode: string;
   startTime: string;
   endTime: string;
   capacity: number;
