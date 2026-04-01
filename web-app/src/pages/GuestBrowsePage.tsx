@@ -1,275 +1,290 @@
 import { useMemo, useState } from 'react';
+import { Search, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, FilterX, MapPin, Search } from 'lucide-react';
 
 import { AuthRequiredModal } from '../components/auth/AuthRequiredModal';
-import { Badge, Button, Card, Input } from '../components/ui';
+import { GuestActivityCard, GuestFooter } from '../components/guest';
+import { Button, Card, Input } from '../components/ui';
+import { buildGuestActivityIntentPath, type GuestProtectedAction } from '../lib/guestAuth';
+import { getGuestAvailabilityMeta, listGuestActivities, type GuestActivityRecord } from '../lib/guestActivities';
 import { GuestShell } from '../layouts/GuestShell';
-import { listGuestActivities, type GuestActivityRecord, type GuestActivityStatus } from '../lib/guestActivities';
-import './BrowseOpportunitiesPage.css';
 import './GuestBrowsePage.css';
 
-type CategoryTone = 'accent' | 'neutral' | 'success' | 'danger' | 'info';
+type DateFilter = 'any' | 'week' | 'month';
+type AvailabilityFilter = 'all' | 'open' | 'filling_fast' | 'waitlist';
 
-const statusFilters: Array<{ label: string; value: GuestActivityStatus | 'all' }> = [
-  { label: 'Published', value: 'published' },
-  { label: 'All', value: 'all' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Cancelled', value: 'cancelled' },
-];
+const INITIAL_VISIBLE_COUNT = 6;
+const LOAD_MORE_COUNT = 6;
 
-function formatDateLabel(startTime: string) {
+function normalizeText(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isWithinDateFilter(startTime: string, dateFilter: DateFilter) {
+  if (dateFilter === 'any') {
+    return true;
+  }
+
   const date = new Date(startTime);
   if (Number.isNaN(date.getTime())) {
-    return 'Date TBD';
+    return false;
   }
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
 
-function mapStatusToTone(status: GuestActivityStatus): CategoryTone {
-  if (status === 'completed') {
-    return 'success';
-  }
-  if (status === 'cancelled') {
-    return 'danger';
-  }
-  if (status === 'published') {
-    return 'accent';
-  }
-  return 'info';
-}
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-function getLocationLabel(activity: GuestActivityRecord) {
-  const address = activity.location.address.trim();
-  const city = activity.location.city.trim();
-  return [address, city].filter(Boolean).join(', ') || 'Location TBD';
+  if (dateFilter === 'week') {
+    return diffDays >= 0 && diffDays <= 7;
+  }
+
+  return diffDays >= 0 && diffDays <= 31;
 }
 
 export function GuestBrowsePage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<GuestActivityStatus | 'all'>('published');
-  const [skillFilter, setSkillFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('any');
   const [locationFilter, setLocationFilter] = useState('');
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [authPrompt, setAuthPrompt] = useState<{ action: GuestProtectedAction; activity: GuestActivityRecord } | null>(null);
 
   const activities = useMemo(() => listGuestActivities(), []);
+  const categories = useMemo(() => ['all', ...new Set(activities.map((activity) => activity.domain))], [activities]);
 
   const filteredActivities = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-    const skillKeyword = skillFilter.trim().toLowerCase();
-    const locationKeyword = locationFilter.trim().toLowerCase();
+    const keyword = normalizeText(searchTerm);
+    const locationKeyword = normalizeText(locationFilter);
 
     return activities.filter((activity) => {
-      if (statusFilter !== 'all' && activity.status !== statusFilter) {
+      if (categoryFilter !== 'all' && activity.domain !== categoryFilter) {
+        return false;
+      }
+
+      if (!isWithinDateFilter(activity.startTime, dateFilter)) {
+        return false;
+      }
+
+      if (availabilityFilter !== 'all' && getGuestAvailabilityMeta(activity).tone !== availabilityFilter) {
         return false;
       }
 
       if (keyword) {
-        const searchable = [activity.title, activity.description, activity.organization, activity.requiredSkills.join(' ')]
+        const searchable = [
+          activity.title,
+          activity.organization,
+          activity.cardSummary,
+          activity.requiredSkills.join(' '),
+          activity.tags.join(' '),
+        ]
           .join(' ')
           .toLowerCase();
+
         if (!searchable.includes(keyword)) {
           return false;
         }
       }
 
-      if (skillKeyword) {
-        const skills = activity.requiredSkills.map((skill) => skill.toLowerCase()).join(' ');
-        if (!skills.includes(skillKeyword)) {
-          return false;
-        }
-      }
-
       if (locationKeyword) {
-        const locationText = getLocationLabel(activity).toLowerCase();
-        if (!locationText.includes(locationKeyword)) {
+        const haystack = [activity.location.address, activity.location.city, activity.location.meetingPoint]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(locationKeyword)) {
           return false;
         }
       }
 
       return true;
     });
-  }, [activities, locationFilter, searchTerm, skillFilter, statusFilter]);
+  }, [activities, availabilityFilter, categoryFilter, dateFilter, locationFilter, searchTerm]);
 
-  const hasAdvancedFilters = Boolean(skillFilter.trim() || locationFilter.trim());
+  const visibleActivities = filteredActivities.slice(0, visibleCount);
+  const hasMore = visibleActivities.length < filteredActivities.length;
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setCategoryFilter('all');
+    setDateFilter('any');
+    setLocationFilter('');
+    setAvailabilityFilter('all');
+    setVisibleCount(INITIAL_VISIBLE_COUNT);
+  };
+
+  const handleProtectedAction = (action: GuestProtectedAction, activity: GuestActivityRecord) => {
+    setAuthPrompt({ action, activity });
+  };
+
+  const handleShare = async (activity: GuestActivityRecord) => {
+    const shareUrl = `${window.location.origin}/guest/activity/${activity.id}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: activity.title, text: activity.cardSummary, url: shareUrl });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      }
+      setShareNotice(`Share link ready for ${activity.title}.`);
+    } catch {
+      setShareNotice('Sharing was cancelled or is not available in this browser.');
+    }
+  };
 
   return (
-    <GuestShell
-      activeNav="browse"
-      headerActions={
-        <Button onClick={() => navigate('/login')} type="button" variant="secondary">
-          Sign In
-        </Button>
-      }
-      pageSubtitle="Start exploring opportunities that match your interests."
-      pageTitle="Browse Activities"
-    >
-      <section className="browse-page">
-        <Card as="section" className="browse-toolbar-card">
-          <div className="browse-toolbar-copy">
-            <h2>Explore Volunteer Activities</h2>
-            <p>Discover meaningful volunteer opportunities in public guest mode.</p>
-          </div>
+    <GuestShell activeNav="browse">
+      <section className="guest-browse-hero">
+        <div>
+          <p className="guest-section-label">Discover Impact.</p>
+          <h1>Join a community of purposeful contributors.</h1>
+          <p>
+            Find opportunities to lend your skills and grow alongside others. Guests can browse public published activities
+            in read-only mode.
+          </p>
+        </div>
+      </section>
 
-          <div className="browse-search-wrap">
-            <label className="browse-search-input-shell" htmlFor="guest-browse-search-input">
-              <Search className="browse-icon" />
-              <Input
-                aria-label="Search activities"
-                className="browse-search-input"
-                id="guest-browse-search-input"
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search activities"
-                type="search"
-                value={searchTerm}
-              />
+      <Card as="section" className="guest-browse-toolbar">
+        <div className="guest-browse-search-row">
+          <label className="guest-browse-search-shell" htmlFor="guest-browse-search-input">
+            <Search size={16} />
+            <Input
+              className="guest-browse-search-input"
+              id="guest-browse-search-input"
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
+                setVisibleCount(INITIAL_VISIBLE_COUNT);
+              }}
+              placeholder="Search activities, keywords, or skills..."
+              type="search"
+              value={searchTerm}
+            />
+          </label>
+
+          <div className="guest-browse-filter-grid">
+            <label>
+              <span>Category</span>
+              <select
+                className="text-input small"
+                onChange={(event) => {
+                  setCategoryFilter(event.target.value);
+                  setVisibleCount(INITIAL_VISIBLE_COUNT);
+                }}
+                value={categoryFilter}
+              >
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category === 'all' ? 'All Categories' : category}
+                  </option>
+                ))}
+              </select>
             </label>
 
-            <div aria-label="Activity status filters" className="browse-filters" role="tablist">
-              {statusFilters.map((status) => (
-                <Button
-                  aria-pressed={statusFilter === status.value}
-                  className={statusFilter === status.value ? 'browse-filter-btn is-active' : 'browse-filter-btn'}
-                  key={status.value}
-                  onClick={() => setStatusFilter(status.value)}
-                  type="button"
-                  variant="secondary"
-                >
-                  {status.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div aria-label="Advanced filters" className="browse-advanced-filters">
-            <label className="browse-advanced-field" htmlFor="guest-filter-skill">
-              <span>Skill</span>
-              <Input
-                id="guest-filter-skill"
-                onChange={(event) => setSkillFilter(event.target.value)}
-                placeholder="e.g. teamwork"
-                sizeMode="small"
-                type="text"
-                value={skillFilter}
-              />
+            <label>
+              <span>Date</span>
+              <select
+                className="text-input small"
+                onChange={(event) => {
+                  setDateFilter(event.target.value as DateFilter);
+                  setVisibleCount(INITIAL_VISIBLE_COUNT);
+                }}
+                value={dateFilter}
+              >
+                <option value="any">Any Date</option>
+                <option value="week">Next 7 Days</option>
+                <option value="month">Next 30 Days</option>
+              </select>
             </label>
 
-            <label className="browse-advanced-field" htmlFor="guest-filter-location">
+            <label>
               <span>Location</span>
               <Input
-                id="guest-filter-location"
-                onChange={(event) => setLocationFilter(event.target.value)}
-                placeholder="address / city"
+                onChange={(event) => {
+                  setLocationFilter(event.target.value);
+                  setVisibleCount(INITIAL_VISIBLE_COUNT);
+                }}
+                placeholder="Location"
                 sizeMode="small"
                 type="text"
                 value={locationFilter}
               />
             </label>
 
-            <Button
-              className="browse-clear-filters-btn"
-              disabled={!hasAdvancedFilters}
-              onClick={() => {
-                setSkillFilter('');
-                setLocationFilter('');
-              }}
-              type="button"
-              variant="secondary"
-            >
-              <FilterX size={14} />
-              <span>Clear filters</span>
-            </Button>
-          </div>
-        </Card>
-
-        {filteredActivities.length === 0 ? (
-          <Card className="browse-empty-card">
-            <p className="muted">No activities found</p>
-          </Card>
-        ) : (
-          <section aria-label="Guest public opportunities" className="browse-grid">
-            {filteredActivities.map((activity) => (
-              <Card
-                as="article"
-                className="browse-card"
-                key={activity.id}
-                onClick={() => navigate(`/guest/activity/${activity.id}`)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    navigate(`/guest/activity/${activity.id}`);
-                  }
+            <label>
+              <span>Status</span>
+              <select
+                className="text-input small"
+                onChange={(event) => {
+                  setAvailabilityFilter(event.target.value as AvailabilityFilter);
+                  setVisibleCount(INITIAL_VISIBLE_COUNT);
                 }}
-                role="button"
-                tabIndex={0}
+                value={availabilityFilter}
               >
-                <div className="browse-card-image-wrap">
-                  <img alt={activity.title} className="browse-card-image" src={activity.imageUrl} />
-                  <Badge className="browse-category" tone={mapStatusToTone(activity.status)}>
-                    {activity.status}
-                  </Badge>
-                </div>
+                <option value="all">Published</option>
+                <option value="open">Open</option>
+                <option value="filling_fast">Filling Fast</option>
+                <option value="waitlist">Waitlist Only</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </Card>
 
-                <div className="browse-card-body">
-                  <div className="browse-meta-line">
-                    <CalendarDays className="browse-icon-sm" />
-                    <span>{formatDateLabel(activity.startTime)}</span>
-                  </div>
+      {shareNotice ? <p className="form-success">{shareNotice}</p> : null}
 
-                  <h2>{activity.title}</h2>
-
-                  <p className="guest-browse-org muted">{activity.organization}</p>
-
-                  <div className="browse-meta-line browse-location-line">
-                    <MapPin className="browse-icon-sm" />
-                    <span>{getLocationLabel(activity)}</span>
-                  </div>
-
-                  <div className="browse-tags">
-                    {activity.requiredSkills.length === 0 ? (
-                      <Badge className="browse-tag" tone="neutral">
-                        General
-                      </Badge>
-                    ) : (
-                      activity.requiredSkills.slice(0, 3).map((tag) => (
-                        <Badge className="browse-tag" key={`${activity.id}-${tag}`} tone="accent">
-                          {tag}
-                        </Badge>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="browse-card-footer">
-                    <span>
-                      {activity.currentParticipants}/{activity.capacity} participants
-                    </span>
-                    <Button
-                      className="guest-browse-join-btn"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setShowAuthModal(true);
-                      }}
-                      type="button"
-                      variant="secondary"
-                    >
-                      Join Activity
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+      {filteredActivities.length === 0 ? (
+        <Card className="guest-browse-empty-card">
+          <h2>No published activities match the current filters.</h2>
+          <p className="muted">Try broadening the search, location, or availability filters.</p>
+          <Button onClick={resetFilters} type="button" variant="secondary">
+            Reset Filters
+          </Button>
+        </Card>
+      ) : (
+        <>
+          <section aria-label="Published guest activities" className="guest-browse-grid">
+            {visibleActivities.map((activity) => (
+              <div className="guest-browse-card-wrap" key={activity.id}>
+                <GuestActivityCard
+                  activity={activity}
+                  onProtectedAction={handleProtectedAction}
+                  onViewDetails={(activityId) => navigate(`/guest/activity/${activityId}`)}
+                />
+                <button className="guest-browse-share-btn" onClick={() => void handleShare(activity)} type="button">
+                  <Share2 size={14} />
+                  <span>Share</span>
+                </button>
+              </div>
             ))}
           </section>
-        )}
-      </section>
 
-      <AuthRequiredModal intent="register" onClose={() => setShowAuthModal(false)} open={showAuthModal} />
+          <div className="guest-browse-load-more">
+            {hasMore ? (
+              <Button
+                onClick={() => setVisibleCount((current) => current + LOAD_MORE_COUNT)}
+                type="button"
+                variant="secondary"
+              >
+                Load More Opportunities
+              </Button>
+            ) : (
+              <Button disabled type="button" variant="secondary">
+                No More Results
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+
+      <GuestFooter />
+
+      <AuthRequiredModal
+        action={authPrompt?.action}
+        nextPath={authPrompt ? buildGuestActivityIntentPath(authPrompt.activity.id, authPrompt.action) : undefined}
+        onClose={() => setAuthPrompt(null)}
+        open={Boolean(authPrompt)}
+      />
     </GuestShell>
   );
 }
