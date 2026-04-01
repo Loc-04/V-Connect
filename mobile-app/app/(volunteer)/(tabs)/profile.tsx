@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View, Image } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import { router } from 'expo-router';
 
 import { useAuth } from '@/src/features/auth';
 import {
@@ -9,27 +10,18 @@ import {
   getVolunteerProfile,
   getVolunteerStats,
   updateVolunteerSkills,
-  type AvailabilityDay,
   type CoreSkillOption,
   type RecentParticipationItem,
   type VolunteerProfileView,
   type ProfileStats,
 } from '@/src/features/profile';
+import { ROUTES } from '@/src/shared/constants/route-constants';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 import { ThemedView } from '@/src/shared/ui/themed-view';
 
 type LoadState = 'loading' | 'ready' | 'empty' | 'error';
 
-const DAY_ORDER: AvailabilityDay[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-const DAY_LABELS: Record<AvailabilityDay, string> = {
-  mon: 'MON',
-  tue: 'TUE',
-  wed: 'WED',
-  thu: 'THU',
-  fri: 'FRI',
-  sat: 'SAT',
-  sun: 'SUN',
-};
+
 const PICKER_PLACEHOLDER = '__placeholder__';
 
 export default function ProfileScreen() {
@@ -180,6 +172,12 @@ export default function ProfileScreen() {
         <Pressable style={styles.retryButton} onPress={() => void loadProfileData()}>
           <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
         </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
+          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+          <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
+        </Pressable>
         {renderSignOutButton()}
       </ThemedView>
     );
@@ -194,6 +192,12 @@ export default function ProfileScreen() {
         </ThemedText>
         <Pressable style={styles.retryButton} onPress={() => void loadProfileData()}>
           <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
+          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+          <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
         </Pressable>
         {renderSignOutButton()}
       </ThemedView>
@@ -240,6 +244,14 @@ export default function ProfileScreen() {
             <ThemedText style={styles.statValue}>{stats.impactScore}%</ThemedText>
           </View>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open availability settings"
+          onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
+          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+          <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
+        </Pressable>
 
         <ThemedText style={styles.sectionTitle}>CORE SKILLS</ThemedText>
         <View style={styles.pickerWrapper}>
@@ -296,32 +308,7 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        <ThemedText style={styles.sectionTitle}>AVAILABILITY</ThemedText>
-        <View style={styles.availabilityCard}>
-          <View style={styles.dayRow}>
-            {DAY_ORDER.map((day) => (
-              <View
-                key={day}
-                style={[
-                  styles.dayPill,
-                  profile.availability.days[day] && styles.dayPillActive,
-                ]}
-              >
-                <ThemedText
-                  style={[
-                    styles.dayText,
-                    profile.availability.days[day] && styles.dayTextActive,
-                  ]}
-                >
-                  {DAY_LABELS[day]}
-                </ThemedText>
-              </View>
-            ))}
-          </View>
-          <ThemedText style={styles.availabilityNote}>
-            {profile.availability.note ?? 'No availability note provided.'}
-          </ThemedText>
-        </View>
+
 
         <View style={styles.recentHeaderRow}>
           <ThemedText style={styles.sectionTitle}>RECENT PARTICIPATION</ThemedText>
@@ -455,6 +442,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  availabilityNavButton: {
+    marginTop: 14,
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAF6FE',
+    borderWidth: 1,
+    borderColor: '#B8E6FF',
+  },
+  availabilityNavButtonPressed: {
+    opacity: 0.88,
+  },
+  availabilityNavButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#07B5FF',
+  },
   statCard: {
     flex: 1,
     backgroundColor: '#f6f8f8',
@@ -525,39 +531,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
   },
-  availabilityCard: {
-    borderRadius: 16,
-    padding: 12,
-    backgroundColor: '#f6f8f8',
-  },
-  dayRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  dayPill: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#dce6e6',
-  },
-  dayPillActive: {
-    backgroundColor: '#0f766e',
-  },
-  dayText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#5b6464',
-  },
-  dayTextActive: {
-    color: '#ffffff',
-  },
-  availabilityNote: {
-    marginTop: 10,
-    opacity: 0.65,
-    fontSize: 13,
-  },
+
   recentHeaderRow: {
     marginTop: 12,
     flexDirection: 'row',

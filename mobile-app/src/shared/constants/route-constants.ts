@@ -9,6 +9,7 @@ export const ROUTES = {
     MY_ACTIVITIES: '/(volunteer)/(tabs)/my-activities',
     NOTIFICATIONS: '/(volunteer)/(tabs)/notifications',
     PROFILE: '/(volunteer)/(tabs)/profile',
+    AVAILABILITY: '/(volunteer)/availability',
     ACTIVITY_DETAIL: '/(volunteer)/activity',
     ACTIVITY_CHECK_IN: '/(volunteer)/activity/check-in',
   },
