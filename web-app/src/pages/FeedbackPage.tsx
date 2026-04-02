@@ -87,7 +87,6 @@ function validateFeedbackFields(input: {
 }): FeedbackFieldErrors {
   const errors: FeedbackFieldErrors = {};
   const normalizedDetails = input.details.trim();
-  const wordCount = countWords(normalizedDetails);
 
   if (!input.activityId) {
     errors.activityId = 'Please choose a completed activity.';
@@ -103,8 +102,6 @@ function validateFeedbackFields(input: {
 
   if (!normalizedDetails) {
     errors.details = 'Please enter detailed feedback.';
-  } else if (wordCount <= 20) {
-    errors.details = 'Detailed feedback must be more than 20 words.';
   }
 
   return errors;
@@ -403,7 +400,6 @@ export function FeedbackPage() {
               <p className={fieldErrors.details ? 'feedback-word-count is-invalid' : 'feedback-word-count'}>
                 {detailsWordCount} word{detailsWordCount === 1 ? '' : 's'}
               </p>
-              <p className="feedback-inline-note">Please write more than 20 words.</p>
             </div>
             {fieldErrors.details && <p className="feedback-field-error">{fieldErrors.details}</p>}
           </div>
