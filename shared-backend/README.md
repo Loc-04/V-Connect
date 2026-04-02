@@ -357,6 +357,9 @@ create table if not exists public.participation_feedback (
   rating smallint not null check (rating between 1 and 5),
   comment text,
   ai_label text,
+  reviewed_at timestamptz,
+  reviewed_by uuid,
+  updated_at timestamptz default now(),
   created_at timestamptz not null default now()
 );
 ```
@@ -364,6 +367,8 @@ create table if not exists public.participation_feedback (
 You can run the ready-made SQL file in this repo:
 
 - `shared-backend/scripts/createFeedbackTable.sql`
+- `shared-backend/scripts/addFeedbackAiLabelColumn.sql` (for existing tables missing `ai_label`)
+- `shared-backend/scripts/addFeedbackModerationColumns.sql` (for existing tables missing `ai_label/reviewed_at/updated_at`)
 
 ### Organizer Report / Analytics API
 

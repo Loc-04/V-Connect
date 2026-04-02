@@ -134,21 +134,21 @@ function inferIncidentFlag(feedback) {
   );
 }
 
-function normalizeModerationStatus(statusValue, fallbackFlaggedValue) {
+function normalizeModerationStatus(statusValue) {
   if (typeof statusValue !== 'string') {
-    return fallbackFlaggedValue ? 'in_review' : 'pending';
+    return null;
   }
 
   const normalized = statusValue.trim().toLowerCase();
   if (!normalized) {
-    return fallbackFlaggedValue ? 'in_review' : 'pending';
+    return null;
   }
 
   if (moderationStatusValues.has(normalized)) {
     return normalized;
   }
 
-  return fallbackFlaggedValue ? 'in_review' : 'pending';
+  return null;
 }
 
 function normalizeSpamLabel(aiLabelRaw) {
@@ -193,10 +193,7 @@ function mapFeedbackRecord(feedback, layout) {
   const explicitFlagValue = layout.flagColumn ? feedback[layout.flagColumn] : null;
   const explicitAiLabelValue = layout.aiLabelColumn ? feedback[layout.aiLabelColumn] : feedback.ai_label;
   const inferredFlag = typeof explicitFlagValue === 'boolean' ? explicitFlagValue : inferIncidentFlag(feedback);
-  const normalizedStatus = normalizeModerationStatus(
-    layout.statusColumn ? feedback[layout.statusColumn] : null,
-    inferredFlag
-  );
+  const normalizedStatus = normalizeModerationStatus(layout.statusColumn ? feedback[layout.statusColumn] : null);
 
   return {
     ...enrichFeedbackWithAiLabel(feedback, explicitAiLabelValue),
@@ -875,9 +872,6 @@ router.put('/feedback/:id/flag', requireAuth, async (req, res) => {
       [columnLayout.flagColumn]: nextFlag,
     };
 
-    if (columnLayout.statusColumn && nextFlag) {
-      payload[columnLayout.statusColumn] = 'in_review';
-    }
     if (columnLayout.reasonColumn) {
       payload[columnLayout.reasonColumn] = nextFlag ? reason || null : null;
     }

@@ -31,7 +31,6 @@ interface FeedbackViewModel {
   aiLabel: SpamLabel;
   aiSpamReasons: string[];
   isSpam: boolean;
-  reviewStatus: string;
 }
 
 interface FeedbackPaginationState {
@@ -180,7 +179,6 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       aiLabel,
       aiSpamReasons,
       isSpam: typeof feedback.is_spam === 'boolean' ? feedback.is_spam : aiLabel === 'spam',
-      reviewStatus: String(feedback.review_status ?? 'pending'),
     };
   });
 }
@@ -208,57 +206,160 @@ function formatExcelDate(value: string | null): string {
 }
 
 function createFeedbackExportWorkbook(
-  xlsx: typeof import('xlsx'),
+  exceljs: typeof import('exceljs'),
   items: FeedbackViewModel[],
   filters: { ratingFilter: RatingFilter; periodFilter: PeriodFilter }
 ) {
+  const thinBorder = {
+    top: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+    left: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+    bottom: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+    right: { style: 'thin' as const, color: { argb: 'FFD1D5DB' } },
+  };
+  const spamBrown = 'FF5C3A21';
+
+  const workbook = new exceljs.Workbook();
+  workbook.creator = 'V-Connect';
+  workbook.created = new Date();
+
   const generatedAt = new Date();
-  const rows = items.map((item) => ({
-    Activity: item.activityTitle,
-    Volunteer: item.volunteerName,
-    Role: item.volunteerRole,
-    Rating: item.rating,
-    Sentiment: item.sentiment,
-    'AI Label': item.aiLabel,
-    'Is Spam': item.isSpam ? 'Yes' : 'No',
-    'Spam Signals': item.aiSpamReasons.join(', '),
-    'Needs Attention': item.flaggedIssue ? 'Yes' : 'No',
-    'Review Status': item.reviewStatus,
-    'Submitted At': formatExcelDate(item.submittedAt),
-    Comment: item.comment,
-  }));
+  const summarySheet = workbook.addWorksheet('Summary');
+  summarySheet.columns = [
+    { header: 'Field', key: 'field', width: 24 },
+    { header: 'Value', key: 'value', width: 46 },
+  ];
+  summarySheet.mergeCells('A1:B1');
+  summarySheet.getCell('A1').value = 'Feedback Review Export Summary';
+  summarySheet.getCell('A1').font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13 };
+  summarySheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+  summarySheet.getCell('A1').fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF1D4ED8' },
+  };
+  summarySheet.getCell('A1').border = thinBorder;
+  summarySheet.getRow(1).height = 24;
 
   const summaryRows = [
-    { Field: 'Generated At', Value: generatedAt.toLocaleString() },
-    { Field: 'Total Rows', Value: String(items.length) },
-    { Field: 'Rating Filter', Value: filters.ratingFilter },
-    { Field: 'Period Filter', Value: filters.periodFilter },
+    { field: 'Generated At', value: generatedAt.toLocaleString() },
+    { field: 'Total Rows', value: String(items.length) },
+    { field: 'Rating Filter', value: filters.ratingFilter },
+    { field: 'Period Filter', value: filters.periodFilter },
   ];
+  summaryRows.forEach((row) => summarySheet.addRow(row));
+  for (let rowIndex = 2; rowIndex <= summarySheet.rowCount; rowIndex += 1) {
+    const labelCell = summarySheet.getCell(`A${rowIndex}`);
+    const valueCell = summarySheet.getCell(`B${rowIndex}`);
+    labelCell.font = { bold: true, color: { argb: 'FF0F172A' } };
+    labelCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE2E8F0' },
+    };
+    labelCell.border = thinBorder;
+    valueCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF8FAFC' },
+    };
+    valueCell.alignment = { vertical: 'middle', wrapText: true };
+    valueCell.border = thinBorder;
+  }
 
-  const detailsSheet = xlsx.utils.json_to_sheet(rows);
-  detailsSheet['!cols'] = [
-    { wch: 30 },
-    { wch: 24 },
-    { wch: 12 },
-    { wch: 8 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 28 },
-    { wch: 16 },
-    { wch: 14 },
-    { wch: 22 },
-    { wch: 65 },
+  const detailsSheet = workbook.addWorksheet('Feedback Review', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+  detailsSheet.columns = [
+    { header: 'Activity', key: 'activity', width: 34 },
+    { header: 'Volunteer', key: 'volunteer', width: 26 },
+    { header: 'Role', key: 'role', width: 14 },
+    { header: 'Rating', key: 'rating', width: 10 },
+    { header: 'Sentiment', key: 'sentiment', width: 14 },
+    { header: 'AI Label', key: 'aiLabel', width: 14 },
+    { header: 'Is Spam', key: 'isSpam', width: 11 },
+    { header: 'Spam Signals', key: 'spamSignals', width: 32 },
+    { header: 'Needs Attention', key: 'needsAttention', width: 18 },
+    { header: 'Submitted At', key: 'submittedAt', width: 24 },
+    { header: 'Comment', key: 'comment', width: 72 },
   ];
-  detailsSheet['!autofilter'] = { ref: 'A1:L1' };
-  detailsSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+  detailsSheet.autoFilter = 'A1:K1';
 
-  const summarySheet = xlsx.utils.json_to_sheet(summaryRows);
-  summarySheet['!cols'] = [{ wch: 22 }, { wch: 42 }];
+  const headerColor = 'FF1E3A5F';
+  detailsSheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: headerColor },
+    };
+    cell.border = thinBorder;
+  });
 
-  const workbook = xlsx.utils.book_new();
-  xlsx.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-  xlsx.utils.book_append_sheet(workbook, detailsSheet, 'Feedback Review');
+  items.forEach((item) => {
+    const row = detailsSheet.addRow({
+      activity: item.activityTitle,
+      volunteer: item.volunteerName,
+      role: item.volunteerRole,
+      rating: item.rating,
+      sentiment: item.sentiment,
+      aiLabel: item.aiLabel,
+      isSpam: item.isSpam ? 'Yes' : 'No',
+      spamSignals: item.aiSpamReasons.join(', '),
+      needsAttention: item.flaggedIssue ? 'Yes' : 'No',
+      submittedAt: formatExcelDate(item.submittedAt),
+      comment: item.comment,
+    });
+    row.height = 22;
+    row.alignment = { vertical: 'middle' };
+
+    row.eachCell((cell) => {
+      cell.border = thinBorder;
+    });
+
+    row.getCell('D').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFFF7E6' },
+    };
+    row.getCell('F').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: item.aiLabel === 'spam' ? 'FFFFE4E6' : 'FFECFDF5' },
+    };
+    row.getCell('G').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: item.isSpam ? 'FFFFE4E6' : 'FFECFDF5' },
+    };
+    row.getCell('I').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: item.flaggedIssue ? 'FFFFF1F2' : 'FFF8FAFC' },
+    };
+    row.getCell('H').alignment = { vertical: 'top', wrapText: true };
+    row.getCell('K').alignment = { vertical: 'top', wrapText: true };
+
+    if (item.isSpam) {
+      row.getCell('F').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: spamBrown },
+      };
+      row.getCell('G').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: spamBrown },
+      };
+      row.getCell('F').font = { color: { argb: 'FFFFFFFF' }, bold: true };
+      row.getCell('G').font = { color: { argb: 'FFFFFFFF' }, bold: true };
+      row.getCell('H').font = { color: { argb: spamBrown }, bold: true };
+    }
+    if (item.flaggedIssue) {
+      row.getCell('I').font = { color: { argb: 'FFB45309' }, bold: true };
+    }
+  });
+
   return workbook;
 }
 
@@ -300,6 +401,7 @@ export function AdminFeedbackPage() {
   const [manualLabel, setManualLabel] = useState<ManualSpamLabel>('auto');
   const [updatingLabel, setUpdatingLabel] = useState(false);
   const [labelError, setLabelError] = useState<string | null>(null);
+  const [labelWritable, setLabelWritable] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<FeedbackPaginationState>({
@@ -323,7 +425,7 @@ export function AdminFeedbackPage() {
 
     try {
       const numericRating = ratingFilter === 'all' ? undefined : Number(ratingFilter);
-      const [{ feedbacks, pagination: paginationMeta }, participations] = await Promise.all([
+      const [{ feedbacks, pagination: paginationMeta, moderation }, participations] = await Promise.all([
         listFeedbackReview({
           accessToken: session.access_token,
           limit: reviewPageSize,
@@ -346,6 +448,7 @@ export function AdminFeedbackPage() {
         hasPrev: paginationMeta.hasPrev,
         hasNext: paginationMeta.hasNext,
       });
+      setLabelWritable(Boolean(moderation.labelWritable));
       setLastSync(new Date().toLocaleString());
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Failed to load feedback.';
@@ -426,10 +529,19 @@ export function AdminFeedbackPage() {
   const handleExportExcel = useCallback(async () => {
     try {
       setExporting(true);
-      const xlsx = await import('xlsx');
-      const workbook = createFeedbackExportWorkbook(xlsx, filteredItems, { ratingFilter, periodFilter });
+      const exceljs = await import('exceljs');
+      const workbook = createFeedbackExportWorkbook(exceljs, filteredItems, { ratingFilter, periodFilter });
       const stamp = new Date().toISOString().slice(0, 10);
-      xlsx.writeFile(workbook, `feedback-review-${stamp}.xlsx`, { compression: true });
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `feedback-review-${stamp}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(url);
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Failed to export Excel file.');
     } finally {
@@ -439,6 +551,10 @@ export function AdminFeedbackPage() {
 
   const handleApplyManualLabel = useCallback(async () => {
     if (!isAdmin) {
+      return;
+    }
+    if (!labelWritable) {
+      setLabelError("Manual AI label is unavailable because column 'ai_label' is missing in the current schema.");
       return;
     }
     if (!session?.access_token || !selectedFeedback) {
@@ -468,12 +584,16 @@ export function AdminFeedbackPage() {
         )
       );
     } catch (updateError) {
-      const message = updateError instanceof Error ? updateError.message : 'Failed to update AI label.';
+      let message = updateError instanceof Error ? updateError.message : 'Failed to update AI label.';
+      if (message.toLowerCase().includes('ai_label column is not available')) {
+        message =
+          "Manual AI label is unavailable because column 'ai_label' is missing. Run the feedback ai_label migration SQL and retry.";
+      }
       setLabelError(message);
     } finally {
       setUpdatingLabel(false);
     }
-  }, [isAdmin, manualLabel, selectedFeedback, session?.access_token]);
+  }, [isAdmin, labelWritable, manualLabel, selectedFeedback, session?.access_token]);
 
   const reviewBody = (
     <section className="feedback-review-page">
@@ -601,7 +721,6 @@ export function AdminFeedbackPage() {
                   <Badge tone={item.sentiment === 'positive' ? 'success' : item.sentiment === 'neutral' ? 'info' : 'danger'}>
                     {item.sentiment}
                   </Badge>
-                  <Badge tone="info">{item.reviewStatus.replace('_', ' ')}</Badge>
                   <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
                     View Detail
                   </Button>
@@ -693,7 +812,7 @@ export function AdminFeedbackPage() {
                 <p className="feedback-review-ai-reasons">No spam signals detected by backend classifier.</p>
               )}
 
-              {isAdmin && (
+              {isAdmin && labelWritable && (
                 <div className="feedback-review-ai-actions">
                   <Select
                     sizeMode="small"
@@ -708,6 +827,11 @@ export function AdminFeedbackPage() {
                     {updatingLabel ? 'Applying...' : 'Apply Label'}
                   </Button>
                 </div>
+              )}
+              {isAdmin && !labelWritable && (
+                <p className="feedback-review-ai-reasons">
+                  Manual label update is disabled because `ai_label` column is missing in current database schema.
+                </p>
               )}
               {labelError && <p className="form-error">{labelError}</p>}
             </section>
