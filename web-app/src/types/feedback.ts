@@ -6,6 +6,9 @@ export interface FeedbackRecord {
   rating: number;
   comment: string | null;
   created_at: string | null;
+  ai_label?: string | null;
+  is_spam?: boolean | null;
+  ai_spam_reasons?: string[] | null;
   review_status?: string | null;
   is_flagged?: boolean | null;
   flag_reason?: string | null;

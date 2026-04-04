@@ -139,6 +139,22 @@
   gap: 0.66rem;
 }
 
+.feedback-review-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  border-top: 1px solid #e5ebf5;
+  padding-top: 0.66rem;
+}
+
+.feedback-review-pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
 .feedback-review-card.feedback-shared-card {
   border-left: 3px solid #4f46e5;
 }
@@ -331,6 +347,54 @@
   line-height: 1.6;
 }
 
+.feedback-review-ai-panel {
+  border: 1px solid #e5ebf5;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.64rem 0.72rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.feedback-review-ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.feedback-review-ai-head small {
+  color: #64748b;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.feedback-review-ai-reasons {
+  margin: 0;
+  color: #334155;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.feedback-review-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.44rem;
+  flex-wrap: wrap;
+}
+
+.feedback-review-ai-actions .text-input.small {
+  min-width: 180px;
+}
+
+.feedback-review-ai-actions .primary-btn,
+.feedback-review-ai-actions .secondary-btn {
+  min-height: 34px;
+  border-radius: 999px;
+}
+
 .feedback-review-modal-foot {
   display: inline-flex;
   align-items: center;
@@ -364,5 +428,10 @@
 
   .feedback-review-modal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .feedback-review-ai-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

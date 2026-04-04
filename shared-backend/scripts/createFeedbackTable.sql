@@ -10,6 +10,7 @@ create table if not exists public.participation_feedback (
   organizer_id uuid,
   rating smallint not null check (rating >= 1 and rating <= 5),
   comment text,
+  ai_label text,
   created_at timestamp with time zone not null default now(),
   constraint participation_feedback_pkey primary key (id),
   constraint participation_feedback_participation_id_fkey foreign key (participation_id) references public.activity_participations (id),
