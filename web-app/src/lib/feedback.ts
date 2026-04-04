@@ -14,6 +14,15 @@ interface FeedbackReviewResponse {
   moderation?: {
     statusWritable?: boolean;
     flagWritable?: boolean;
+    labelWritable?: boolean;
+  };
+  pagination?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    totalPages?: number;
+    hasPrev?: boolean;
+    hasNext?: boolean;
   };
 }
 
@@ -22,6 +31,7 @@ interface FeedbackDetailResponse {
   moderation?: {
     statusWritable?: boolean;
     flagWritable?: boolean;
+    labelWritable?: boolean;
   };
 }
 
@@ -40,6 +50,24 @@ export interface ReviewFeedbackOptions {
   keyword?: string;
   rating?: number;
   limit?: number;
+  page?: number;
+}
+
+export interface FeedbackReviewResult {
+  feedbacks: FeedbackRecord[];
+  moderation: {
+    statusWritable: boolean;
+    flagWritable: boolean;
+    labelWritable: boolean;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasPrev: boolean;
+    hasNext: boolean;
+  };
 }
 
 function createQueryString(options: Omit<ListFeedbackOptions & ReviewFeedbackOptions, 'accessToken'>) {
@@ -59,6 +87,10 @@ function createQueryString(options: Omit<ListFeedbackOptions & ReviewFeedbackOpt
 
   if (typeof options.limit === 'number' && Number.isFinite(options.limit)) {
     params.set('limit', String(Math.trunc(options.limit)));
+  }
+
+  if (typeof options.page === 'number' && Number.isFinite(options.page)) {
+    params.set('page', String(Math.trunc(options.page)));
   }
 
   if (options.status) {
@@ -102,20 +134,57 @@ export async function createFeedback(payload: FeedbackPayload, accessToken: stri
   return response.feedback;
 }
 
-export async function listFeedbackReview(options: ReviewFeedbackOptions): Promise<FeedbackRecord[]> {
+export async function listFeedbackReview(options: ReviewFeedbackOptions): Promise<FeedbackReviewResult> {
   const query = createQueryString({
     status: options.status,
     flagged: options.flagged,
     keyword: options.keyword,
     rating: options.rating,
     limit: options.limit,
+    page: options.page,
   });
 
   const response = await apiRequest<FeedbackReviewResponse>(`/feedback/review${query}`, {
     accessToken: options.accessToken,
   });
 
-  return response.feedbacks;
+  const fallbackLimit =
+    typeof options.limit === 'number' && Number.isFinite(options.limit) ? Math.max(1, Math.trunc(options.limit)) : 100;
+  const fallbackPage =
+    typeof options.page === 'number' && Number.isFinite(options.page) ? Math.max(1, Math.trunc(options.page)) : 1;
+  const fallbackTotal = Array.isArray(response.feedbacks) ? response.feedbacks.length : 0;
+  const fallbackTotalPages = Math.max(1, Math.ceil(fallbackTotal / fallbackLimit));
+  const pagination = response.pagination ?? {};
+  const moderation = response.moderation ?? {};
+
+  return {
+    feedbacks: response.feedbacks ?? [],
+    moderation: {
+      statusWritable: Boolean(moderation.statusWritable),
+      flagWritable: Boolean(moderation.flagWritable),
+      labelWritable: Boolean(moderation.labelWritable),
+    },
+    pagination: {
+      page:
+        typeof pagination.page === 'number' && Number.isFinite(pagination.page)
+          ? Math.max(1, Math.trunc(pagination.page))
+          : fallbackPage,
+      limit:
+        typeof pagination.limit === 'number' && Number.isFinite(pagination.limit)
+          ? Math.max(1, Math.trunc(pagination.limit))
+          : fallbackLimit,
+      total:
+        typeof pagination.total === 'number' && Number.isFinite(pagination.total)
+          ? Math.max(0, Math.trunc(pagination.total))
+          : fallbackTotal,
+      totalPages:
+        typeof pagination.totalPages === 'number' && Number.isFinite(pagination.totalPages)
+          ? Math.max(1, Math.trunc(pagination.totalPages))
+          : fallbackTotalPages,
+      hasPrev: typeof pagination.hasPrev === 'boolean' ? pagination.hasPrev : fallbackPage > 1,
+      hasNext: typeof pagination.hasNext === 'boolean' ? pagination.hasNext : fallbackPage < fallbackTotalPages,
+    },
+  };
 }
 
 export async function getFeedbackById(feedbackId: string, accessToken: string): Promise<FeedbackRecord> {
@@ -150,6 +219,20 @@ export async function updateFeedbackFlag(
     method: 'PUT',
     accessToken,
     body: { flag, reason },
+  });
+
+  return response.feedback;
+}
+
+export async function updateFeedbackAiLabel(
+  feedbackId: string,
+  label: 'spam' | 'not_spam' | 'auto',
+  accessToken: string
+): Promise<FeedbackRecord> {
+  const response = await apiRequest<FeedbackDetailResponse>(`/feedback/${feedbackId}/ai-label`, {
+    method: 'PUT',
+    accessToken,
+    body: { label },
   });
 
   return response.feedback;

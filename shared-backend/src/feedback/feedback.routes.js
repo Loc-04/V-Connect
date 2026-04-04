@@ -4,14 +4,17 @@ import { isPlainObject, isUuid } from '../common/utils/validators.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { normalizeFeedbackPayload } from './feedback.validation.js';
+import { classifyFeedbackSpam } from './feedback.spam.js';
 
 const router = Router();
 
 const moderationStatusValues = new Set(['pending', 'in_review', 'resolved', 'dismissed']);
+const manualAiLabelValues = new Set(['spam', 'not_spam', 'auto']);
 const moderationColumnLayouts = [
   {
     statusColumn: 'review_status',
     flagColumn: 'is_flagged',
+    aiLabelColumn: 'ai_label',
     reasonColumn: 'flag_reason',
     reviewedAtColumn: 'reviewed_at',
     reviewedByColumn: 'reviewed_by',
@@ -20,6 +23,7 @@ const moderationColumnLayouts = [
   {
     statusColumn: 'moderation_status',
     flagColumn: 'is_flagged',
+    aiLabelColumn: 'ai_label',
     reasonColumn: 'flag_reason',
     reviewedAtColumn: 'reviewed_at',
     reviewedByColumn: 'reviewed_by',
@@ -28,6 +32,7 @@ const moderationColumnLayouts = [
   {
     statusColumn: 'status',
     flagColumn: 'flagged',
+    aiLabelColumn: 'ai_label',
     reasonColumn: 'flag_reason',
     reviewedAtColumn: 'reviewed_at',
     reviewedByColumn: 'reviewed_by',
@@ -36,6 +41,7 @@ const moderationColumnLayouts = [
   {
     statusColumn: null,
     flagColumn: null,
+    aiLabelColumn: null,
     reasonColumn: null,
     reviewedAtColumn: null,
     reviewedByColumn: null,
@@ -48,10 +54,11 @@ const baseFeedbackColumns = feedbackColumns
   .map((column) => column.trim())
   .filter(Boolean);
 
-function createFeedbackSelectColumns(layout) {
+function createFeedbackSelectColumns(layout, { includeAiLabel = true } = {}) {
   const extraColumns = [
     layout.statusColumn,
     layout.flagColumn,
+    includeAiLabel ? layout.aiLabelColumn : null,
     layout.reasonColumn,
     layout.reviewedAtColumn,
     layout.reviewedByColumn,
@@ -68,6 +75,25 @@ function isMissingColumnError(error) {
 
 function isModerationSchemaUnsupported(error) {
   return String(error?.message ?? '').toLowerCase().includes('moderation columns are not available');
+}
+
+function parseManualAiLabelValue(rawValue) {
+  if (typeof rawValue !== 'string') {
+    throw new Error(`label must be one of: ${Array.from(manualAiLabelValues).join(', ')}.`);
+  }
+
+  const normalized = rawValue.trim().toLowerCase();
+  if (normalized === 'spam') {
+    return 'spam';
+  }
+  if (normalized === 'not_spam' || normalized === 'not spam' || normalized === 'ham') {
+    return 'not_spam';
+  }
+  if (normalized === 'auto' || normalized === 'reset' || normalized === 'clear') {
+    return null;
+  }
+
+  throw new Error(`label must be one of: ${Array.from(manualAiLabelValues).join(', ')}.`);
 }
 
 function parseBooleanQuery(rawValue, fieldName) {
@@ -108,33 +134,69 @@ function inferIncidentFlag(feedback) {
   );
 }
 
-function normalizeModerationStatus(statusValue, fallbackFlaggedValue) {
+function normalizeModerationStatus(statusValue) {
   if (typeof statusValue !== 'string') {
-    return fallbackFlaggedValue ? 'in_review' : 'pending';
+    return null;
   }
 
   const normalized = statusValue.trim().toLowerCase();
   if (!normalized) {
-    return fallbackFlaggedValue ? 'in_review' : 'pending';
+    return null;
   }
 
   if (moderationStatusValues.has(normalized)) {
     return normalized;
   }
 
-  return fallbackFlaggedValue ? 'in_review' : 'pending';
+  return null;
+}
+
+function normalizeSpamLabel(aiLabelRaw) {
+  if (typeof aiLabelRaw !== 'string') {
+    return null;
+  }
+
+  const normalized = aiLabelRaw.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === 'not_spam' || normalized === 'not spam' || normalized === 'ham') {
+    return 'not_spam';
+  }
+
+  if (
+    normalized === 'spam' ||
+    normalized.startsWith('spam:') ||
+    normalized === 'is_spam' ||
+    (normalized.includes('spam') && !normalized.includes('not'))
+  ) {
+    return 'spam';
+  }
+
+  return null;
+}
+
+function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_label) {
+  const spamClassification = classifyFeedbackSpam(feedback.comment);
+  const persistedLabel = normalizeSpamLabel(persistedAiLabelRaw);
+  const aiLabel = persistedLabel ?? spamClassification.label;
+  return {
+    ...feedback,
+    ai_label: aiLabel,
+    is_spam: aiLabel === 'spam',
+    ai_spam_reasons: spamClassification.reasons,
+  };
 }
 
 function mapFeedbackRecord(feedback, layout) {
   const explicitFlagValue = layout.flagColumn ? feedback[layout.flagColumn] : null;
+  const explicitAiLabelValue = layout.aiLabelColumn ? feedback[layout.aiLabelColumn] : feedback.ai_label;
   const inferredFlag = typeof explicitFlagValue === 'boolean' ? explicitFlagValue : inferIncidentFlag(feedback);
-  const normalizedStatus = normalizeModerationStatus(
-    layout.statusColumn ? feedback[layout.statusColumn] : null,
-    inferredFlag
-  );
+  const normalizedStatus = normalizeModerationStatus(layout.statusColumn ? feedback[layout.statusColumn] : null);
 
   return {
-    ...feedback,
+    ...enrichFeedbackWithAiLabel(feedback, explicitAiLabelValue),
     review_status: normalizedStatus,
     is_flagged: inferredFlag,
     flag_reason: layout.reasonColumn ? feedback[layout.reasonColumn] ?? null : null,
@@ -163,24 +225,47 @@ function canModerateFeedback(role, userId, feedback) {
   return role === 'organizer' && feedback.organizer_id === userId;
 }
 
+function parsePositiveInteger(value, fallbackValue, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallbackValue;
+  }
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
+function escapeIlikePattern(value) {
+  return String(value).replace(/[\\%_]/g, '\\$&');
+}
+
 async function queryFeedbackWithBestLayout(buildQuery, { allowFallback = true } = {}) {
   const layouts = allowFallback
     ? moderationColumnLayouts
-    : moderationColumnLayouts.filter((layout) => layout.statusColumn || layout.flagColumn);
+    : moderationColumnLayouts.filter((layout) => layout.statusColumn || layout.flagColumn || layout.aiLabelColumn);
 
   for (const layout of layouts) {
-    const selectColumns = createFeedbackSelectColumns(layout);
-    const { data, error } = await buildQuery(selectColumns);
+    for (const includeAiLabel of [true, false]) {
+      const selectColumns = createFeedbackSelectColumns(layout, { includeAiLabel });
+      const { data, error, count } = await buildQuery(selectColumns, layout);
 
-    if (!error) {
-      return { data: data ?? [], layout, error: null };
+      if (!error) {
+        return {
+          data: data ?? [],
+          layout: { ...layout, aiLabelColumn: includeAiLabel ? layout.aiLabelColumn : null },
+          count: typeof count === 'number' ? count : null,
+          error: null,
+        };
+      }
+
+      if (isMissingColumnError(error) && includeAiLabel) {
+        continue;
+      }
+
+      if (isMissingColumnError(error) && (layout.statusColumn || layout.flagColumn || layout.aiLabelColumn)) {
+        break;
+      }
+
+      return { data: null, layout, error };
     }
-
-    if (isMissingColumnError(error) && (layout.statusColumn || layout.flagColumn)) {
-      continue;
-    }
-
-    return { data: null, layout, error };
   }
 
   return {
@@ -193,25 +278,35 @@ async function queryFeedbackWithBestLayout(buildQuery, { allowFallback = true } 
 async function getFeedbackByIdWithBestLayout(feedbackId, { allowFallback = true } = {}) {
   const layouts = allowFallback
     ? moderationColumnLayouts
-    : moderationColumnLayouts.filter((layout) => layout.statusColumn || layout.flagColumn);
+    : moderationColumnLayouts.filter((layout) => layout.statusColumn || layout.flagColumn || layout.aiLabelColumn);
 
   for (const layout of layouts) {
-    const selectColumns = createFeedbackSelectColumns(layout);
-    const { data, error } = await supabaseAdmin
-      .from('participation_feedback')
-      .select(selectColumns)
-      .eq('id', feedbackId)
-      .maybeSingle();
+    for (const includeAiLabel of [true, false]) {
+      const selectColumns = createFeedbackSelectColumns(layout, { includeAiLabel });
+      const { data, error } = await supabaseAdmin
+        .from('participation_feedback')
+        .select(selectColumns)
+        .eq('id', feedbackId)
+        .maybeSingle();
 
-    if (!error) {
-      return { data: data ?? null, layout, error: null };
+      if (!error) {
+        return {
+          data: data ?? null,
+          layout: { ...layout, aiLabelColumn: includeAiLabel ? layout.aiLabelColumn : null },
+          error: null,
+        };
+      }
+
+      if (isMissingColumnError(error) && includeAiLabel) {
+        continue;
+      }
+
+      if (isMissingColumnError(error) && (layout.statusColumn || layout.flagColumn || layout.aiLabelColumn)) {
+        break;
+      }
+
+      return { data: null, layout, error };
     }
-
-    if (isMissingColumnError(error) && (layout.statusColumn || layout.flagColumn)) {
-      continue;
-    }
-
-    return { data: null, layout, error };
   }
 
   return {
@@ -223,7 +318,7 @@ async function getFeedbackByIdWithBestLayout(feedbackId, { allowFallback = true 
 
 async function updateFeedbackWithBestLayout(feedbackId, buildPayload) {
   for (const layout of moderationColumnLayouts) {
-    if (!layout.statusColumn && !layout.flagColumn) {
+    if (!layout.statusColumn && !layout.flagColumn && !layout.aiLabelColumn) {
       continue;
     }
 
@@ -232,29 +327,60 @@ async function updateFeedbackWithBestLayout(feedbackId, buildPayload) {
       continue;
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('participation_feedback')
-      .update(payload)
-      .eq('id', feedbackId)
-      .select(createFeedbackSelectColumns(layout))
-      .maybeSingle();
+    for (const includeAiLabel of [true, false]) {
+      const { data, error } = await supabaseAdmin
+        .from('participation_feedback')
+        .update(payload)
+        .eq('id', feedbackId)
+        .select(createFeedbackSelectColumns(layout, { includeAiLabel }))
+        .maybeSingle();
 
-    if (!error) {
-      return { data: data ?? null, layout, error: null };
+      if (!error) {
+        return {
+          data: data ?? null,
+          layout: { ...layout, aiLabelColumn: includeAiLabel ? layout.aiLabelColumn : null },
+          error: null,
+        };
+      }
+
+      if (isMissingColumnError(error) && includeAiLabel) {
+        continue;
+      }
+
+      if (isMissingColumnError(error)) {
+        break;
+      }
+
+      return { data: null, layout, error };
     }
-
-    if (isMissingColumnError(error)) {
-      continue;
-    }
-
-    return { data: null, layout, error };
   }
 
   return {
     data: null,
     layout: moderationColumnLayouts[moderationColumnLayouts.length - 1],
+    count: null,
     error: new Error('Feedback moderation columns are not available in the current database schema.'),
   };
+}
+
+async function queryFeedbackListWithAiLabel(buildQuery) {
+  const selectColumnsCandidates = [
+    `${feedbackColumns}, ai_label`,
+    feedbackColumns,
+  ];
+
+  for (const selectColumns of selectColumnsCandidates) {
+    const { data, error } = await buildQuery(selectColumns);
+    if (!error) {
+      return { data: data ?? [], error: null };
+    }
+    if (isMissingColumnError(error) && selectColumns.includes('ai_label')) {
+      continue;
+    }
+    return { data: null, error };
+  }
+
+  return { data: null, error: new Error('Unable to query feedback list.') };
 }
 
 router.get('/feedback', requireAuth, async (req, res) => {
@@ -307,37 +433,37 @@ router.get('/feedback', requireAuth, async (req, res) => {
     ratingFilter = parsedRating;
   }
 
-  let query = supabaseAdmin.from('participation_feedback').select(feedbackColumns).order('created_at', {
-    ascending: false,
-  });
+  const { data, error } = await queryFeedbackListWithAiLabel((selectColumns) => {
+    let query = supabaseAdmin.from('participation_feedback').select(selectColumns).order('created_at', {
+      ascending: false,
+    });
 
-  if (role === 'admin') {
-    if (mine) {
+    if (role === 'admin') {
+      if (mine) {
+        query = query.eq('volunteer_id', req.auth.user.id);
+      }
+    } else if (role === 'organizer') {
+      query = query.eq('organizer_id', req.auth.user.id);
+    } else {
       query = query.eq('volunteer_id', req.auth.user.id);
     }
-  } else if (role === 'organizer') {
-    query = query.eq('organizer_id', req.auth.user.id);
-  } else {
-    query = query.eq('volunteer_id', req.auth.user.id);
-  }
 
-  if (participationId) {
-    query = query.eq('participation_id', participationId);
-  }
+    if (participationId) {
+      query = query.eq('participation_id', participationId);
+    }
 
-  if (ratingFilter !== null) {
-    query = query.eq('rating', ratingFilter);
-  }
+    if (ratingFilter !== null) {
+      query = query.eq('rating', ratingFilter);
+    }
 
-  query = query.limit(limit);
-
-  const { data, error } = await query;
+    return query.limit(limit);
+  });
   if (error) {
     res.status(500).json({ message: error.message });
     return;
   }
 
-  res.json({ feedbacks: data ?? [] });
+  res.json({ feedbacks: (data ?? []).map((feedback) => enrichFeedbackWithAiLabel(feedback)) });
 });
 
 router.get('/feedback/review', requireAuth, async (req, res) => {
@@ -364,10 +490,11 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
   }
 
   const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim().toLowerCase() : '';
-  const requestedLimit = Number(req.query.limit ?? 100);
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 250)
-    : 100;
+  const limit = parsePositiveInteger(req.query.limit ?? 20, 20, { min: 1, max: 100 });
+  const page = parsePositiveInteger(req.query.page ?? 1, 1, { min: 1, max: 100000 });
+  const offset = (page - 1) * limit;
+  const rangeTo = offset + limit - 1;
+  const fallbackScanLimit = Math.min(Math.max(limit * page, 500), 5000);
 
   const ratingFilterRaw = req.query.rating;
   let ratingFilter = null;
@@ -380,12 +507,14 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
     ratingFilter = parsed;
   }
 
-  const { data, layout, error } = await queryFeedbackWithBestLayout((selectColumns) => {
+  const { data, layout, count, error } = await queryFeedbackWithBestLayout((selectColumns, columnLayout) => {
+    const needsInMemoryFallback =
+      (statusFilterRaw !== 'all' && !columnLayout.statusColumn) || (flaggedFilter !== null && !columnLayout.flagColumn);
+
     let query = supabaseAdmin
       .from('participation_feedback')
-      .select(selectColumns)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      .select(selectColumns, { count: 'exact' })
+      .order('created_at', { ascending: false });
 
     if (role === 'organizer') {
       query = query.eq('organizer_id', req.auth.user.id);
@@ -393,6 +522,24 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
 
     if (ratingFilter !== null) {
       query = query.eq('rating', ratingFilter);
+    }
+
+    if (statusFilterRaw !== 'all' && columnLayout.statusColumn) {
+      query = query.eq(columnLayout.statusColumn, statusFilterRaw);
+    }
+
+    if (flaggedFilter !== null && columnLayout.flagColumn) {
+      query = query.eq(columnLayout.flagColumn, flaggedFilter);
+    }
+
+    if (keyword.length > 0) {
+      query = query.ilike('comment', `%${escapeIlikePattern(keyword)}%`);
+    }
+
+    if (needsInMemoryFallback) {
+      query = query.limit(fallbackScanLimit);
+    } else {
+      query = query.range(offset, rangeTo);
     }
 
     return query;
@@ -404,37 +551,39 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
   }
 
   const reviewedFeedbacks = (data ?? []).map((feedback) => mapFeedbackRecord(feedback, layout));
-  const filteredFeedbacks = reviewedFeedbacks.filter((feedback) => {
-    if (statusFilterRaw !== 'all' && feedback.review_status !== statusFilterRaw) {
-      return false;
-    }
+  const needsInMemoryFallback = (statusFilterRaw !== 'all' && !layout.statusColumn) || (flaggedFilter !== null && !layout.flagColumn);
+  const filteredFeedbacks = needsInMemoryFallback
+    ? reviewedFeedbacks.filter((feedback) => {
+        if (statusFilterRaw !== 'all' && feedback.review_status !== statusFilterRaw) {
+          return false;
+        }
+        if (flaggedFilter !== null && feedback.is_flagged !== flaggedFilter) {
+          return false;
+        }
+        return true;
+      })
+    : reviewedFeedbacks;
 
-    if (flaggedFilter !== null && feedback.is_flagged !== flaggedFilter) {
-      return false;
-    }
-
-    if (keyword.length > 0) {
-      const text = [
-        String(feedback.comment ?? ''),
-        String(feedback.participation_id ?? ''),
-        String(feedback.volunteer_id ?? ''),
-        String(feedback.organizer_id ?? ''),
-      ]
-        .join(' ')
-        .toLowerCase();
-      if (!text.includes(keyword)) {
-        return false;
-      }
-    }
-
-    return true;
-  });
+  const pagedFeedbacks = needsInMemoryFallback ? filteredFeedbacks.slice(offset, rangeTo + 1) : filteredFeedbacks;
+  const total = needsInMemoryFallback ? filteredFeedbacks.length : Math.max(0, Number(count ?? 0));
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const hasPrev = page > 1;
+  const hasNext = page < totalPages;
 
   res.json({
-    feedbacks: filteredFeedbacks,
+    feedbacks: pagedFeedbacks,
     moderation: {
       statusWritable: Boolean(layout.statusColumn),
       flagWritable: Boolean(layout.flagColumn),
+      labelWritable: Boolean(layout.aiLabelColumn),
+    },
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasPrev,
+      hasNext,
     },
   });
 });
@@ -468,6 +617,7 @@ router.get('/feedback/:id', requireAuth, async (req, res) => {
     moderation: {
       statusWritable: Boolean(layout.statusColumn),
       flagWritable: Boolean(layout.flagColumn),
+      labelWritable: Boolean(layout.aiLabelColumn),
     },
   });
 });
@@ -557,6 +707,97 @@ router.put('/feedback/:id/status', requireAuth, async (req, res) => {
   res.json({ feedback: mapFeedbackRecord(data, layout) });
 });
 
+router.put('/feedback/:id/ai-label', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '').trim().toLowerCase();
+  if (role !== 'admin') {
+    res.status(403).json({ message: 'Admin role required.' });
+    return;
+  }
+
+  const feedbackId = req.params.id;
+  if (!isUuid(feedbackId)) {
+    res.status(400).json({ message: 'feedback id must be a valid UUID.' });
+    return;
+  }
+
+  if (!isPlainObject(req.body)) {
+    res.status(400).json({ message: 'Body must be a JSON object.' });
+    return;
+  }
+
+  const labelRaw =
+    typeof req.body.label === 'string'
+      ? req.body.label
+      : typeof req.body.aiLabel === 'string'
+        ? req.body.aiLabel
+        : null;
+  if (labelRaw == null) {
+    res.status(400).json({ message: 'label (or aiLabel) is required.' });
+    return;
+  }
+
+  let nextAiLabel = null;
+  try {
+    nextAiLabel = parseManualAiLabelValue(labelRaw);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid label value.' });
+    return;
+  }
+
+  const { data: existingFeedback, error: existingError } = await supabaseAdmin
+    .from('participation_feedback')
+    .select(feedbackColumns)
+    .eq('id', feedbackId)
+    .maybeSingle();
+  if (existingError) {
+    res.status(500).json({ message: existingError.message });
+    return;
+  }
+  if (!existingFeedback) {
+    res.status(404).json({ message: 'Feedback not found.' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { data, layout, error } = await updateFeedbackWithBestLayout(feedbackId, (columnLayout) => {
+    if (!columnLayout.aiLabelColumn) {
+      return null;
+    }
+
+    const payload = {
+      [columnLayout.aiLabelColumn]: nextAiLabel,
+    };
+
+    if (columnLayout.reviewedAtColumn) {
+      payload[columnLayout.reviewedAtColumn] = now;
+    }
+    if (columnLayout.reviewedByColumn) {
+      payload[columnLayout.reviewedByColumn] = req.auth.user.id;
+    }
+    if (columnLayout.updatedAtColumn) {
+      payload[columnLayout.updatedAtColumn] = now;
+    }
+
+    return payload;
+  });
+
+  if (error) {
+    if (isModerationSchemaUnsupported(error) || isMissingColumnError(error)) {
+      res.status(409).json({ message: 'ai_label column is not available in the current database schema.' });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Feedback not found.' });
+    return;
+  }
+
+  res.json({ feedback: mapFeedbackRecord(data, layout) });
+});
+
 router.put('/feedback/:id/flag', requireAuth, async (req, res) => {
   const role = String(req.auth?.profile?.role ?? '').trim().toLowerCase();
   if (role !== 'admin' && role !== 'organizer') {
@@ -631,9 +872,6 @@ router.put('/feedback/:id/flag', requireAuth, async (req, res) => {
       [columnLayout.flagColumn]: nextFlag,
     };
 
-    if (columnLayout.statusColumn && nextFlag) {
-      payload[columnLayout.statusColumn] = 'in_review';
-    }
     if (columnLayout.reasonColumn) {
       payload[columnLayout.reasonColumn] = nextFlag ? reason || null : null;
     }
@@ -732,20 +970,35 @@ router.post('/feedback', requireAuth, async (req, res) => {
     return;
   }
 
-  const { data, error } = await supabaseAdmin
+  const spamClassification = classifyFeedbackSpam(payload.comment);
+  const baseInsertPayload = {
+    participation_id: payload.participation_id,
+    volunteer_id: participation.volunteer_id,
+    organizer_id: activity.organizer_id ?? null,
+    rating: payload.rating,
+    comment: payload.comment,
+  };
+  let { data, error } = await supabaseAdmin
     .from('participation_feedback')
     .upsert(
       {
-        participation_id: payload.participation_id,
-        volunteer_id: participation.volunteer_id,
-        organizer_id: activity.organizer_id ?? null,
-        rating: payload.rating,
-        comment: payload.comment,
+        ...baseInsertPayload,
+        ai_label: spamClassification.label,
       },
       { onConflict: 'participation_id' }
     )
     .select(feedbackColumns)
     .maybeSingle();
+
+  if (error && isMissingColumnError(error)) {
+    const retryResult = await supabaseAdmin
+      .from('participation_feedback')
+      .upsert(baseInsertPayload, { onConflict: 'participation_id' })
+      .select(feedbackColumns)
+      .maybeSingle();
+    data = retryResult.data;
+    error = retryResult.error;
+  }
 
   if (error) {
     if (error.code === '23514' || error.code === '22P02' || error.code === '23502' || error.code === '23503') {
@@ -756,7 +1009,14 @@ router.post('/feedback', requireAuth, async (req, res) => {
     return;
   }
 
-  res.status(201).json({ feedback: data });
+  res.status(201).json({
+    feedback: data
+      ? enrichFeedbackWithAiLabel({
+          ...data,
+          ai_label: spamClassification.label,
+        })
+      : data,
+  });
 });
 
 export default router;

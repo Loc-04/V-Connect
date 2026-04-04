@@ -62,6 +62,7 @@ shared-backend listening on http://localhost:3000
 - `GET /feedback/review`
 - `GET /feedback/:id`
 - `PUT /feedback/:id/status`
+- `PUT /feedback/:id/ai-label`
 - `PUT /feedback/:id/flag`
 - `POST /feedback`
 - `GET /admin/users`
@@ -270,6 +271,12 @@ npm run db:apply -- --file=scripts/allowAssignedParticipationStatus.sql
 }
 ```
 
+`POST /feedback` auto-labels `ai_label` as `spam` or `not_spam` based on:
+
+- repeated word/phrase patterns
+- promotional/link-like content
+- forbidden language signals
+
 `GET /feedback` query params:
 
 - `mine=true|false` (non-admin users can only query their own feedback)
@@ -282,8 +289,21 @@ npm run db:apply -- --file=scripts/allowAssignedParticipationStatus.sql
 - `status=all|pending|in_review|resolved|dismissed` (optional, default `all`)
 - `flagged=true|false` (optional)
 - `rating=1..5` (optional)
-- `keyword=<text>` (optional, searches comment + ids)
-- `limit=1..250` (optional, default `100`)
+- `keyword=<text>` (optional, searches comment text)
+- `limit=1..100` (optional, default `20`)
+- `page=1..100000` (optional, default `1`)
+
+Role scope:
+
+- `organizer`: only feedback belonging to activities created by that organizer
+- `admin`: all feedback
+
+Feedback review/list/detail responses include:
+
+- `ai_label`: `spam` or `not_spam`
+- `is_spam`: boolean convenience field derived from `ai_label`
+- `ai_spam_reasons`: detected spam signals for moderation transparency
+- `pagination`: `{ page, limit, total, totalPages, hasPrev, hasNext }`
 
 `GET /feedback/:id`
 
@@ -296,6 +316,20 @@ npm run db:apply -- --file=scripts/allowAssignedParticipationStatus.sql
   "status": "in_review"
 }
 ```
+
+`PUT /feedback/:id/ai-label` (admin only) request body:
+
+```json
+{
+  "label": "spam"
+}
+```
+
+Allowed label values:
+
+- `spam`
+- `not_spam`
+- `auto` (clear manual label, fallback to automatic detection)
 
 `PUT /feedback/:id/flag` request body:
 
@@ -310,6 +344,7 @@ Note:
 
 - moderation endpoints use existing `participation_feedback` columns when available (no DB migration required).
 - if moderation columns are unavailable in your current schema, write operations return `409`.
+- `PUT /feedback/:id/ai-label` returns `409` when column `ai_label` is unavailable.
 
 Required Supabase table:
 
@@ -321,6 +356,10 @@ create table if not exists public.participation_feedback (
   organizer_id uuid references public.users(id),
   rating smallint not null check (rating between 1 and 5),
   comment text,
+  ai_label text,
+  reviewed_at timestamptz,
+  reviewed_by uuid,
+  updated_at timestamptz default now(),
   created_at timestamptz not null default now()
 );
 ```
@@ -328,6 +367,8 @@ create table if not exists public.participation_feedback (
 You can run the ready-made SQL file in this repo:
 
 - `shared-backend/scripts/createFeedbackTable.sql`
+- `shared-backend/scripts/addFeedbackAiLabelColumn.sql` (for existing tables missing `ai_label`)
+- `shared-backend/scripts/addFeedbackModerationColumns.sql` (for existing tables missing `ai_label/reviewed_at/updated_at`)
 
 ### Organizer Report / Analytics API
 
