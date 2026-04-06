@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { useAuth } from './useAuth';
 import { getRoleHomePath } from './rolePaths';
+import { normalizeRole, normalizeRoleList } from './roleUtils';
 
 function PageLoading() {
   return (
@@ -71,7 +72,9 @@ export function RequireRoleRoute({
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  if (!profile || !allowedRoles.includes(String(profile.role))) {
+  const normalizedRole = normalizeRole(profile?.role);
+  const normalizedAllowedRoles = normalizeRoleList(allowedRoles);
+  if (!normalizedRole || !normalizedAllowedRoles.includes(normalizedRole)) {
     return <Navigate to="/unauthorized" replace />;
   }
 

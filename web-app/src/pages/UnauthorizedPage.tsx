@@ -1,14 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom';
 
+import { normalizeRole } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
 
 export function UnauthorizedPage() {
   const navigate = useNavigate();
   const { profile, signOut, session, error } = useAuth();
-  const normalizedRole =
-    typeof profile?.role === 'string' && profile.role.trim().length > 0
-      ? profile.role.trim().toLowerCase()
-      : 'unverified';
+  const normalizedRole = normalizeRole(profile?.role) || 'unverified';
 
   const handleSignOut = async () => {
     await signOut();

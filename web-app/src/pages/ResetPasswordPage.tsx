@@ -50,6 +50,7 @@ function toResetTokenMessage(rawMessage: string): string {
 }
 
 export function ResetPasswordPage() {
+  const currentYear = new Date().getFullYear();
   const navigate = useNavigate();
   const redirectTimeoutRef = useRef<number | null>(null);
 
@@ -174,7 +175,7 @@ export function ResetPasswordPage() {
             />
           </figure>
 
-          <p className="password-hero-footer">(c) 2024 V-Connect Platform. All rights reserved.</p>
+          <p className="password-hero-footer">(c) {currentYear} V-Connect Platform. All rights reserved.</p>
         </div>
       </section>
 

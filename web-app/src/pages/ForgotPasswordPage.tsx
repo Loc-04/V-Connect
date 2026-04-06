@@ -11,6 +11,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUCCESS_MESSAGE = 'Check your email to reset your password';
 
 export function ForgotPasswordPage() {
+  const currentYear = new Date().getFullYear();
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function ForgotPasswordPage() {
             />
           </figure>
 
-          <p className="password-hero-footer">(c) 2024 V-Connect Inc. All rights reserved.</p>
+          <p className="password-hero-footer">(c) {currentYear} V-Connect Inc. All rights reserved.</p>
         </div>
       </section>
 

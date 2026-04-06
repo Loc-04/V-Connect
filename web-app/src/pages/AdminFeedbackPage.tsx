@@ -20,7 +20,9 @@ interface FeedbackViewModel {
   id: string;
   participationId: string;
   activityTitle: string;
+  organizerName: string;
   volunteerName: string;
+  volunteerEmail: string | null;
   volunteerRole: string;
   rating: number;
   comment: string;
@@ -28,6 +30,7 @@ interface FeedbackViewModel {
   categoryLabel: string;
   sentiment: FeedbackSentiment;
   flaggedIssue: boolean;
+  reviewStatus: string;
   aiLabel: SpamLabel;
   aiSpamReasons: string[];
   isSpam: boolean;
@@ -82,6 +85,45 @@ function toCategoryLabel(activityTitle: string) {
     return 'Senior Outreach';
   }
   return 'Community Program';
+}
+
+interface FilterChip {
+  key: string;
+  label: string;
+  onRemove: () => void;
+}
+
+function normalizeReviewStatus(value: string | null | undefined): string {
+  return String(value ?? 'pending')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function formatReviewStatusLabel(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function formatRatingFilterLabel(value: RatingFilter) {
+  if (value === 'all') {
+    return 'All Ratings';
+  }
+  return `${value} Stars`;
+}
+
+function formatPeriodFilterLabel(value: PeriodFilter) {
+  if (value === '30') {
+    return 'Last 30 Days';
+  }
+  if (value === '90') {
+    return 'Last 90 Days';
+  }
+  return 'All Time';
 }
 
 function toSentiment(rating: number): FeedbackSentiment {
@@ -168,7 +210,9 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       id: feedback.id,
       participationId: feedback.participation_id,
       activityTitle,
+      organizerName: participation?.organization?.trim() || 'Unknown Organizer',
       volunteerName: participation?.volunteer?.full_name?.trim() || 'Volunteer',
+      volunteerEmail: participation?.volunteer?.email?.trim() || null,
       volunteerRole: formatRoleLabel(participation?.volunteer?.role),
       rating,
       comment,
@@ -179,6 +223,7 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       aiLabel,
       aiSpamReasons,
       isSpam: typeof feedback.is_spam === 'boolean' ? feedback.is_spam : aiLabel === 'spam',
+      reviewStatus: normalizeReviewStatus(feedback.review_status),
     };
   });
 }
@@ -285,7 +330,7 @@ function createFeedbackExportWorkbook(
   detailsSheet.autoFilter = 'A1:K1';
 
   const headerColor = 'FF1E3A5F';
-  detailsSheet.getRow(1).eachCell((cell) => {
+  detailsSheet.getRow(1).eachCell((cell: any) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.fill = {
@@ -313,7 +358,7 @@ function createFeedbackExportWorkbook(
     row.height = 22;
     row.alignment = { vertical: 'middle' };
 
-    row.eachCell((cell) => {
+    row.eachCell((cell: any) => {
       cell.border = thinBorder;
     });
 
@@ -394,9 +439,14 @@ export function AdminFeedbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
-  const [activityFilter, setActivityFilter] = useState('all');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('30');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [volunteerFilterQuery, setVolunteerFilterQuery] = useState('');
+  const [organizerFilterQuery, setOrganizerFilterQuery] = useState('');
+  const [activityFilterQuery, setActivityFilterQuery] = useState('');
+  const [sentimentFilter, setSentimentFilter] = useState<'all' | FeedbackSentiment>('all');
   const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
   const [manualLabel, setManualLabel] = useState<ManualSpamLabel>('auto');
   const [updatingLabel, setUpdatingLabel] = useState(false);
@@ -466,8 +516,47 @@ export function AdminFeedbackPage() {
     setCurrentPage(1);
   }, [ratingFilter]);
 
+  const organizerOptions = useMemo(
+    () => Array.from(new Set(items.map((item) => item.organizerName))).sort((left, right) => left.localeCompare(right)),
+    [items]
+  );
+
+  const volunteerOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          items.flatMap((item) => {
+            const options = [item.volunteerName];
+            if (item.volunteerEmail) {
+              options.push(item.volunteerEmail);
+            }
+            return options;
+          })
+        )
+      ).sort((left, right) => left.localeCompare(right)),
+    [items]
+  );
+
+  const normalizedVolunteerFilter = volunteerFilterQuery.trim().toLowerCase();
+  const normalizedOrganizerFilter = organizerFilterQuery.trim().toLowerCase();
+  const normalizedActivityFilter = activityFilterQuery.trim().toLowerCase();
+
   const activityOptions = useMemo(
-    () => Array.from(new Set(items.map((item) => item.activityTitle))).sort((left, right) => left.localeCompare(right)),
+    () =>
+      Array.from(
+        new Set(
+          items
+            .filter(
+              (item) => !normalizedOrganizerFilter || item.organizerName.toLowerCase().includes(normalizedOrganizerFilter)
+            )
+            .map((item) => item.activityTitle)
+        )
+      ).sort((left, right) => left.localeCompare(right)),
+    [items, normalizedOrganizerFilter]
+  );
+
+  const reviewStatusOptions = useMemo(
+    () => Array.from(new Set(items.map((item) => item.reviewStatus))).sort((left, right) => left.localeCompare(right)),
     [items]
   );
 
@@ -475,7 +564,33 @@ export function AdminFeedbackPage() {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
     return items.filter((item) => {
-      if (activityFilter !== 'all' && item.activityTitle !== activityFilter) {
+      if (reviewStatusFilter !== 'all' && item.reviewStatus !== reviewStatusFilter) {
+        return false;
+      }
+
+      if (ratingFilter !== 'all' && Math.round(item.rating) !== Number(ratingFilter)) {
+        return false;
+      }
+
+      if (normalizedOrganizerFilter && !item.organizerName.toLowerCase().includes(normalizedOrganizerFilter)) {
+        return false;
+      }
+
+      if (normalizedVolunteerFilter) {
+        const email = item.volunteerEmail?.toLowerCase() ?? '';
+        if (
+          !item.volunteerName.toLowerCase().includes(normalizedVolunteerFilter) &&
+          !email.includes(normalizedVolunteerFilter)
+        ) {
+          return false;
+        }
+      }
+
+      if (normalizedActivityFilter && !item.activityTitle.toLowerCase().includes(normalizedActivityFilter)) {
+        return false;
+      }
+
+      if (sentimentFilter !== 'all' && item.sentiment !== sentimentFilter) {
         return false;
       }
 
@@ -489,11 +604,24 @@ export function AdminFeedbackPage() {
 
       return (
         item.activityTitle.toLowerCase().includes(normalizedSearch) ||
+        item.organizerName.toLowerCase().includes(normalizedSearch) ||
         item.volunteerName.toLowerCase().includes(normalizedSearch) ||
+        (item.volunteerEmail?.toLowerCase().includes(normalizedSearch) ?? false) ||
+        formatReviewStatusLabel(item.reviewStatus).toLowerCase().includes(normalizedSearch) ||
         item.comment.toLowerCase().includes(normalizedSearch)
       );
     });
-  }, [activityFilter, items, periodFilter, searchTerm]);
+  }, [
+    items,
+    normalizedActivityFilter,
+    normalizedOrganizerFilter,
+    normalizedVolunteerFilter,
+    periodFilter,
+    ratingFilter,
+    reviewStatusFilter,
+    searchTerm,
+    sentimentFilter,
+  ]);
 
   const metrics = useMemo(() => {
     const total = filteredItems.length;
@@ -595,30 +723,112 @@ export function AdminFeedbackPage() {
     }
   }, [isAdmin, labelWritable, manualLabel, selectedFeedback, session?.access_token]);
 
+  const advancedFilterCount =
+    Number(Boolean(volunteerFilterQuery.trim())) +
+    Number(Boolean(organizerFilterQuery.trim())) +
+    Number(Boolean(activityFilterQuery.trim())) +
+    Number(sentimentFilter !== 'all');
+
+  const handleClearAllFilters = () => {
+    setSearchTerm('');
+    setReviewStatusFilter('all');
+    setRatingFilter('all');
+    setPeriodFilter('30');
+    setVolunteerFilterQuery('');
+    setOrganizerFilterQuery('');
+    setActivityFilterQuery('');
+    setSentimentFilter('all');
+    setShowMoreFilters(false);
+  };
+
+  const appliedFilterChips: FilterChip[] = [];
+
+  if (searchTerm.trim()) {
+    appliedFilterChips.push({
+      key: 'search',
+      label: `Search: ${searchTerm.trim()}`,
+      onRemove: () => setSearchTerm(''),
+    });
+  }
+  if (reviewStatusFilter !== 'all') {
+    appliedFilterChips.push({
+      key: 'state',
+      label: `State: ${formatReviewStatusLabel(reviewStatusFilter)}`,
+      onRemove: () => setReviewStatusFilter('all'),
+    });
+  }
+  if (ratingFilter !== 'all') {
+    appliedFilterChips.push({
+      key: 'rating',
+      label: `Rating: ${formatRatingFilterLabel(ratingFilter)}`,
+      onRemove: () => setRatingFilter('all'),
+    });
+  }
+  if (periodFilter !== '30') {
+    appliedFilterChips.push({
+      key: 'period',
+      label: `Date: ${formatPeriodFilterLabel(periodFilter)}`,
+      onRemove: () => setPeriodFilter('30'),
+    });
+  }
+  if (volunteerFilterQuery.trim()) {
+    appliedFilterChips.push({
+      key: 'volunteer',
+      label: `Volunteer: ${volunteerFilterQuery.trim()}`,
+      onRemove: () => setVolunteerFilterQuery(''),
+    });
+  }
+  if (organizerFilterQuery.trim()) {
+    appliedFilterChips.push({
+      key: 'organizer',
+      label: `Organizer: ${organizerFilterQuery.trim()}`,
+      onRemove: () => setOrganizerFilterQuery(''),
+    });
+  }
+  if (activityFilterQuery.trim()) {
+    appliedFilterChips.push({
+      key: 'activity',
+      label: `Activity: ${activityFilterQuery.trim()}`,
+      onRemove: () => setActivityFilterQuery(''),
+    });
+  }
+  if (sentimentFilter !== 'all') {
+    appliedFilterChips.push({
+      key: 'sentiment',
+      label: `Sentiment: ${sentimentFilter.charAt(0).toUpperCase()}${sentimentFilter.slice(1)}`,
+      onRemove: () => setSentimentFilter('all'),
+    });
+  }
+
   const reviewBody = (
     <section className="feedback-review-page">
       <Card as="section" className="feedback-review-filter-shell">
-        <div className="feedback-review-filter-row">
+        <div className="feedback-review-filter-row feedback-review-filter-row-primary">
           <label className="feedback-review-search" htmlFor="feedback-review-search">
             <Search size={14} />
             <Input
               id="feedback-review-search"
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search feedback records..."
+              placeholder="Search by volunteer, email, activity, organizer, or feedback..."
               value={searchTerm}
             />
           </label>
 
-          <Select onChange={(event) => setActivityFilter(event.target.value)} sizeMode="small" value={activityFilter}>
-            <option value="all">All Activities</option>
-            {activityOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
+          <Select
+            className="feedback-review-filter-select"
+            onChange={(event) => setReviewStatusFilter(event.target.value)}
+            sizeMode="small"
+            value={reviewStatusFilter}
+          >
+            <option value="all">All Review States</option>
+            {reviewStatusOptions.map((status) => (
+              <option key={status} value={status}>
+                {formatReviewStatusLabel(status)}
               </option>
             ))}
           </Select>
 
-          <Select onChange={(event) => setRatingFilter(event.target.value as RatingFilter)} sizeMode="small" value={ratingFilter}>
+          <Select className="feedback-review-filter-select" onChange={(event) => setRatingFilter(event.target.value as RatingFilter)} sizeMode="small" value={ratingFilter}>
             <option value="all">All Ratings</option>
             <option value="5">5 Stars</option>
             <option value="4">4 Stars</option>
@@ -627,11 +837,33 @@ export function AdminFeedbackPage() {
             <option value="1">1 Star</option>
           </Select>
 
-          <Select onChange={(event) => setPeriodFilter(event.target.value as PeriodFilter)} sizeMode="small" value={periodFilter}>
+          <Select className="feedback-review-filter-select" onChange={(event) => setPeriodFilter(event.target.value as PeriodFilter)} sizeMode="small" value={periodFilter}>
             <option value="30">Last 30 Days</option>
             <option value="90">Last 90 Days</option>
             <option value="all">All Time</option>
           </Select>
+        </div>
+
+        <div className="feedback-review-filter-row feedback-review-filter-row-tools">
+          <Button
+            aria-controls="feedback-review-more-filters"
+            aria-expanded={showMoreFilters}
+            onClick={() => setShowMoreFilters((current) => !current)}
+            type="button"
+            variant="secondary"
+          >
+            <span>{showMoreFilters ? 'Hide More Filters' : 'More Filters'}</span>
+            {advancedFilterCount > 0 && <span className="feedback-review-filter-count">{advancedFilterCount}</span>}
+          </Button>
+
+          <Button
+            disabled={appliedFilterChips.length === 0}
+            onClick={handleClearAllFilters}
+            type="button"
+            variant="secondary"
+          >
+            <span>Clear all</span>
+          </Button>
 
           <Button onClick={() => void loadFeedback()} type="button" variant="secondary">
             <RefreshCw size={14} />
@@ -643,6 +875,78 @@ export function AdminFeedbackPage() {
             <span>{exporting ? 'Exporting...' : 'Export Excel'}</span>
           </Button>
         </div>
+
+        {showMoreFilters && (
+          <div className="feedback-review-more-filters" id="feedback-review-more-filters">
+            <Input
+              className="feedback-review-filter-select"
+              list="feedback-review-volunteer-options"
+              onChange={(event) => setVolunteerFilterQuery(event.target.value)}
+              placeholder="Volunteer name or email"
+              sizeMode="small"
+              type="search"
+              value={volunteerFilterQuery}
+            />
+            <datalist id="feedback-review-volunteer-options">
+              {volunteerOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+
+            <Input
+              className="feedback-review-filter-select"
+              list="feedback-review-organizer-options"
+              onChange={(event) => setOrganizerFilterQuery(event.target.value)}
+              placeholder="Organizer"
+              sizeMode="small"
+              type="search"
+              value={organizerFilterQuery}
+            />
+            <datalist id="feedback-review-organizer-options">
+              {organizerOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+
+            <Input
+              className="feedback-review-filter-select"
+              list="feedback-review-activity-options"
+              onChange={(event) => setActivityFilterQuery(event.target.value)}
+              placeholder="Activity"
+              sizeMode="small"
+              type="search"
+              value={activityFilterQuery}
+            />
+            <datalist id="feedback-review-activity-options">
+              {activityOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+
+            <Select
+              className="feedback-review-filter-select"
+              onChange={(event) => setSentimentFilter(event.target.value as 'all' | FeedbackSentiment)}
+              sizeMode="small"
+              value={sentimentFilter}
+            >
+              <option value="all">All Sentiments</option>
+              <option value="positive">Positive</option>
+              <option value="neutral">Neutral</option>
+              <option value="negative">Negative</option>
+            </Select>
+          </div>
+        )}
+
+        {appliedFilterChips.length > 0 && (
+          <div className="feedback-review-applied-filters">
+            {appliedFilterChips.map((chip) => (
+              <button className="feedback-review-chip" key={chip.key} onClick={chip.onRemove} type="button">
+                <span>{chip.label}</span>
+                <span aria-hidden="true">x</span>
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
       <div className="feedback-review-metrics">
@@ -787,6 +1091,10 @@ export function AdminFeedbackPage() {
                 <p>{selectedFeedback.activityTitle}</p>
               </div>
               <div>
+                <small>Organizer</small>
+                <p>{selectedFeedback.organizerName}</p>
+              </div>
+              <div>
                 <small>Submitted</small>
                 <p>{formatDateLabel(selectedFeedback.submittedAt)}</p>
               </div>
@@ -864,9 +1172,6 @@ export function AdminFeedbackPage() {
         pageContext={<span className="feedback-review-context">Performance Insights</span>}
         pageSubtitle="Review volunteer feedback and activity ratings to optimize impact."
         pageTitle="Feedback Review"
-        searchPlaceholder="Search feedback..."
-        searchValue={searchTerm}
-        onSearchChange={setSearchTerm}
       >
         {reviewBody}
       </OrganizerShell>

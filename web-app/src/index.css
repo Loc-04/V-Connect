@@ -229,20 +229,20 @@ p {
   overflow-x: auto;
 }
 
-table {
+.table-wrap table {
   width: 100%;
   border-collapse: collapse;
 }
 
-th,
-td {
+.table-wrap th,
+.table-wrap td {
   text-align: left;
   border-bottom: 1px solid #e2e8f0;
   padding: 0.7rem 0.45rem;
   vertical-align: middle;
 }
 
-th {
+.table-wrap th {
   font-size: 0.85rem;
   color: var(--muted);
 }
@@ -450,6 +450,20 @@ th {
 .sidebar-link.active {
   background: rgba(139, 92, 246, 0.14);
   color: var(--grad-end);
+}
+
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--grad-end);
+  outline-offset: 1px;
+}
+
+.sidebar-link.placeholder:disabled {
+  opacity: 0.64;
+  cursor: not-allowed;
+}
+
+.sidebar-link.placeholder:disabled:hover {
+  background: transparent;
 }
 
 .sidebar-link.placeholder:hover {
@@ -690,6 +704,12 @@ th {
   border-radius: 10px;
   font-size: 0.75rem;
   padding: 0.45rem 0.75rem;
+}
+
+.add-user-btn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .users-stat-grid {
@@ -983,13 +1003,25 @@ th {
   border-color: #fecaca;
 }
 
-.row-edit-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
+.users-cell-edit {
+  display: grid;
+  gap: 0.18rem;
+  justify-items: start;
+}
+
+.compact-select {
+  min-width: 116px;
+  height: 30px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.7rem;
+}
+
+.users-draft-hint {
+  color: #c2410c;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .row-action-wrap {
@@ -1019,6 +1051,11 @@ th {
 .row-menu-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.row-menu-btn:focus-visible {
+  outline: 2px solid var(--grad-end);
+  outline-offset: 1px;
 }
 
 .row-action-menu {
@@ -1057,6 +1094,11 @@ th {
 .row-action-item:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.row-action-item:focus-visible {
+  outline: 2px solid var(--grad-end);
+  outline-offset: 1px;
 }
 
 .row-action-item.danger {
@@ -1656,6 +1698,13 @@ th {
 
 .social-btn:active {
   transform: translateY(0);
+}
+
+.social-btn:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .google-icon {

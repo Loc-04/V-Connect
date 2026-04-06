@@ -9,6 +9,7 @@ export interface AuthContextValue {
   session: Session | null;
   profile: UserRecord | null;
   signInWithPassword: (email: string, password: string) => Promise<UserRecord>;
+  signInWithGoogle: () => Promise<void>;
   register: (input: RegisterInput) => Promise<RegisterResult>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
