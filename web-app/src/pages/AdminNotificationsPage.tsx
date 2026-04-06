@@ -35,6 +35,7 @@ const DEFAULT_FORM: NotificationFormState = {
   dataJson: JSON.stringify({ source: 'admin-panel' }, null, 2),
   markAsRead: false,
 };
+const NOTIFICATIONS_PER_PAGE = 8;
 
 function formatRelativeTime(value: string | null): string {
   if (!value) {
@@ -116,6 +117,7 @@ export function AdminNotificationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -191,6 +193,21 @@ export function AdminNotificationsPage() {
       return matchesType && matchesState && matchesNotificationSearch(notification, keyword);
     });
   }, [notifications, searchTerm, typeFilter, stateFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, typeFilter, stateFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / NOTIFICATIONS_PER_PAGE));
+
+  useEffect(() => {
+    setCurrentPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const pagedNotifications = useMemo(() => {
+    const start = (currentPage - 1) * NOTIFICATIONS_PER_PAGE;
+    return filteredNotifications.slice(start, start + NOTIFICATIONS_PER_PAGE);
+  }, [currentPage, filteredNotifications]);
 
   const stats = useMemo(() => {
     const total = notifications.length;
@@ -444,7 +461,7 @@ export function AdminNotificationsPage() {
             ) : filteredNotifications.length === 0 ? (
               <p className="admin-notifications-empty">No notifications match the current filters.</p>
             ) : (
-              filteredNotifications.map((notification) => {
+              pagedNotifications.map((notification) => {
                 const notificationUser = findUserById(users, notification.userId);
                 const isSelected = notification.id === selectedNotificationId;
 
@@ -506,6 +523,30 @@ export function AdminNotificationsPage() {
               })
             )}
           </div>
+
+          {!loading && filteredNotifications.length > 0 && (
+            <div className="admin-notifications-pagination">
+              <button
+                className="admin-notifications-page-btn"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                type="button"
+              >
+                Previous
+              </button>
+              <span className="admin-notifications-page-info">
+                Page {currentPage} / {totalPages}
+              </span>
+              <button
+                className="admin-notifications-page-btn"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                type="button"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="admin-notifications-form-card">

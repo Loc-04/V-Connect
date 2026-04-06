@@ -4,6 +4,8 @@ import { Activity } from 'lucide-react';
 import './GuestShared.css';
 
 export function GuestFooter() {
+  const currentYear = new Date().getFullYear();
+
   return (
     <footer className="guest-footer">
       <div className="guest-footer-main">
@@ -30,18 +32,26 @@ export function GuestFooter() {
           </div>
           <div>
             <span>Legal</span>
-            <a href="#footer">Privacy Policy</a>
-            <a href="#footer">Terms of Use</a>
+            <span className="guest-footer-link-disabled" aria-disabled="true">
+              Privacy Policy (Coming soon)
+            </span>
+            <span className="guest-footer-link-disabled" aria-disabled="true">
+              Terms of Use (Coming soon)
+            </span>
           </div>
           <div>
             <span>Connect</span>
-            <a href="#footer">Contact Us</a>
-            <a href="#footer">Social Media</a>
+            <span className="guest-footer-link-disabled" aria-disabled="true">
+              Contact Us (Coming soon)
+            </span>
+            <span className="guest-footer-link-disabled" aria-disabled="true">
+              Social Media (Coming soon)
+            </span>
           </div>
         </div>
       </div>
       <div className="guest-footer-meta" id="footer">
-        <span>© 2024 V-Connect Smart Volunteer Management System. The Digital Curator Editorial.</span>
+        <span>© {currentYear} V-Connect Smart Volunteer Management System. The Digital Curator Editorial.</span>
       </div>
     </footer>
   );

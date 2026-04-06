@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute } from './auth/RouteGuards';
 import { getRoleHomePath } from './auth/rolePaths';
+import { normalizeRole } from './auth/roleUtils';
 import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -62,7 +63,7 @@ function RootRouteEntry() {
 
 function FeedbackRouteEntry() {
   const { profile } = useAuth();
-  const role = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
+  const role = normalizeRole(profile?.role);
 
   if (role === 'admin') {
     return <Navigate replace to="/admin/feedback" />;
