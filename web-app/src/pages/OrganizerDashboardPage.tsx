@@ -7,8 +7,6 @@ export function OrganizerDashboardPage() {
       activeNav="dashboard"
       pageSubtitle="Organizer dashboard design is not finalized yet."
       pageTitle="Organizer Dashboard"
-      searchPlaceholder="Search dashboard..."
-      searchValue=""
     >
       <Card as="section" className="org-dashboard-placeholder">
         <p className="muted">Dashboard placeholder. Activity and registration modules are available from the sidebar.</p>

@@ -2,6 +2,7 @@ import { Search } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { getRoleLabel } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
 import { VolunteerSidebar, type VolunteerNavKey } from '../components/navigation/VolunteerSidebar';
 import { NotificationDropdown } from '../components/notifications/NotificationDropdown';
@@ -16,13 +17,6 @@ interface VolunteerShellProps {
   children: ReactNode;
 }
 
-function getRoleLabel(role: string | null | undefined): string {
-  if (!role) {
-    return 'Volunteer';
-  }
-  return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
 export function VolunteerShell({
   activeNav,
   pageEyebrow,
@@ -35,7 +29,7 @@ export function VolunteerShell({
   const { profile, signOut } = useAuth();
 
   const fullName = profile?.full_name?.trim() || 'Volunteer';
-  const roleLabel = getRoleLabel(profile?.role);
+  const roleLabel = getRoleLabel(profile?.role, 'Volunteer');
   const initials = fullName
     .split(/\s+/)
     .filter(Boolean)

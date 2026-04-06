@@ -53,12 +53,12 @@ function resolveSafeNextPath(value: string | null | undefined): string | null {
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signInWithPassword, error: authError } = useAuth();
+  const { signInWithPassword, signInWithGoogle, error: authError } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [slideIndex, setSlideIndex] = useState(0);
   const [previousSlideIndex, setPreviousSlideIndex] = useState<number | null>(null);
@@ -117,6 +117,17 @@ export function LoginPage() {
       setFormError(getAuthErrorMessage(error));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setFormError(null);
+    setGoogleSubmitting(true);
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      setFormError(getAuthErrorMessage(error));
+      setGoogleSubmitting(false);
     }
   };
 
@@ -203,15 +214,6 @@ export function LoginPage() {
           />
 
           <div className="login-row">
-            <label className="remember-row" htmlFor="remember">
-              <input
-                checked={rememberMe}
-                id="remember"
-                onChange={(event) => setRememberMe(event.target.checked)}
-                type="checkbox"
-              />
-              <span>Remember me</span>
-            </label>
             <Link className="link-btn" to="/forgot-password">
               Forgot Password?
             </Link>
@@ -234,13 +236,18 @@ export function LoginPage() {
             <span>OR CONTINUE WITH</span>
           </div>
 
-          <button className="social-btn" type="button">
+          <button
+            className="social-btn"
+            disabled={googleSubmitting || submitting}
+            onClick={() => void handleGoogleSignIn()}
+            type="button"
+          >
             <img
               alt=""
               className="google-icon"
               src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
             />
-            <span>Google</span>
+            <span>{googleSubmitting ? 'Redirecting...' : 'Google'}</span>
           </button>
 
           <p className="signup-text">

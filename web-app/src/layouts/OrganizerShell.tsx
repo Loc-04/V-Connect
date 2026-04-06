@@ -2,6 +2,7 @@ import { Search } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { getRoleLabel } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
 import { OrganizerSidebar, type OrganizerNavKey } from '../components/navigation/OrganizerSidebar';
 import { NotificationDropdown } from '../components/notifications/NotificationDropdown';
@@ -15,15 +16,9 @@ interface OrganizerShellProps {
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  showSearch?: boolean;
   headerActions?: ReactNode;
   children: ReactNode;
-}
-
-function getRoleLabel(role: string | null | undefined): string {
-  if (!role) {
-    return 'Organizer';
-  }
-  return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
 export function OrganizerShell({
@@ -34,6 +29,7 @@ export function OrganizerShell({
   searchPlaceholder = 'Search organizer workspace...',
   searchValue,
   onSearchChange,
+  showSearch,
   headerActions,
   children,
 }: OrganizerShellProps) {
@@ -41,7 +37,8 @@ export function OrganizerShell({
   const { profile, signOut } = useAuth();
 
   const fullName = profile?.full_name?.trim() || 'Organizer';
-  const roleLabel = getRoleLabel(profile?.role);
+  const roleLabel = getRoleLabel(profile?.role, 'Organizer');
+  const canSearch = showSearch ?? typeof onSearchChange === 'function';
   const initials = fullName
     .split(/\s+/)
     .filter(Boolean)
@@ -67,16 +64,20 @@ export function OrganizerShell({
       <section className="org-shell-main">
         <header className="org-shell-topbar">
           <div className="org-shell-topbar-inner">
-            <label className="org-shell-search" htmlFor="org-shell-search-input">
-              <Search className="org-shell-top-icon" />
-              <input
-                id="org-shell-search-input"
-                onChange={(event) => onSearchChange?.(event.target.value)}
-                placeholder={searchPlaceholder}
-                type="search"
-                value={searchValue ?? ''}
-              />
-            </label>
+            {canSearch ? (
+              <label className="org-shell-search" htmlFor="org-shell-search-input">
+                <Search className="org-shell-top-icon" />
+                <input
+                  id="org-shell-search-input"
+                  onChange={(event) => onSearchChange?.(event.target.value)}
+                  placeholder={searchPlaceholder}
+                  type="search"
+                  value={searchValue ?? ''}
+                />
+              </label>
+            ) : (
+              <div aria-hidden="true" />
+            )}
 
             <div className="org-shell-topbar-right">
               <NotificationDropdown triggerClassName="org-shell-notify-btn" viewAllPath="/organizer/notifications" />

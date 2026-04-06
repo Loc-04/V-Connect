@@ -55,9 +55,9 @@ function SidebarRow({ activeKey, item }: { activeKey: OrganizerNavKey; item: Sid
 
   if (!item.to) {
     return (
-      <button className={`${className} is-placeholder`} type="button">
+      <button className={`${className} is-placeholder`} disabled title="Coming soon" type="button">
         <Icon className="org-shell-nav-icon" />
-        <span>{item.label}</span>
+        <span>{item.label} (Soon)</span>
       </button>
     );
   }
