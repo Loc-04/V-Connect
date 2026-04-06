@@ -30,6 +30,7 @@ interface FeedbackViewModel {
   categoryLabel: string;
   sentiment: FeedbackSentiment;
   flaggedIssue: boolean;
+  reviewStatus: string;
   aiLabel: SpamLabel;
   aiSpamReasons: string[];
   isSpam: boolean;
@@ -219,13 +220,10 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       categoryLabel: toCategoryLabel(activityTitle),
       sentiment: toSentiment(rating),
       flaggedIssue: toFlaggedIssue(rating, comment, feedback.is_flagged),
-<<<<<<< Updated upstream
       aiLabel,
       aiSpamReasons,
       isSpam: typeof feedback.is_spam === 'boolean' ? feedback.is_spam : aiLabel === 'spam',
-=======
       reviewStatus: normalizeReviewStatus(feedback.review_status),
->>>>>>> Stashed changes
     };
   });
 }
@@ -332,7 +330,7 @@ function createFeedbackExportWorkbook(
   detailsSheet.autoFilter = 'A1:K1';
 
   const headerColor = 'FF1E3A5F';
-  detailsSheet.getRow(1).eachCell((cell) => {
+  detailsSheet.getRow(1).eachCell((cell: any) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.fill = {
@@ -360,7 +358,7 @@ function createFeedbackExportWorkbook(
     row.height = 22;
     row.alignment = { vertical: 'middle' };
 
-    row.eachCell((cell) => {
+    row.eachCell((cell: any) => {
       cell.border = thinBorder;
     });
 
@@ -476,7 +474,6 @@ export function AdminFeedbackPage() {
     setError(null);
 
     try {
-<<<<<<< Updated upstream
       const numericRating = ratingFilter === 'all' ? undefined : Number(ratingFilter);
       const [{ feedbacks, pagination: paginationMeta, moderation }, participations] = await Promise.all([
         listFeedbackReview({
@@ -490,11 +487,6 @@ export function AdminFeedbackPage() {
           limit: 500,
           mine: role === 'admin' ? undefined : true,
         }),
-=======
-      const [feedbacks, participations] = await Promise.all([
-        listFeedbackReview({ accessToken: session.access_token, limit: 240 }),
-        listParticipations({ accessToken: session.access_token, limit: 500 }),
->>>>>>> Stashed changes
       ]);
 
       setItems(buildFeedbackItems(feedbacks, participations));
@@ -514,21 +506,16 @@ export function AdminFeedbackPage() {
     } finally {
       setLoading(false);
     }
-<<<<<<< Updated upstream
   }, [currentPage, ratingFilter, reviewPageSize, role, session?.access_token]);
-=======
-  }, [session?.access_token]);
->>>>>>> Stashed changes
 
   useEffect(() => {
     void loadFeedback();
   }, [loadFeedback]);
 
-<<<<<<< Updated upstream
   useEffect(() => {
     setCurrentPage(1);
   }, [ratingFilter]);
-=======
+
   const organizerOptions = useMemo(
     () => Array.from(new Set(items.map((item) => item.organizerName))).sort((left, right) => left.localeCompare(right)),
     [items]
@@ -553,7 +540,6 @@ export function AdminFeedbackPage() {
   const normalizedVolunteerFilter = volunteerFilterQuery.trim().toLowerCase();
   const normalizedOrganizerFilter = organizerFilterQuery.trim().toLowerCase();
   const normalizedActivityFilter = activityFilterQuery.trim().toLowerCase();
->>>>>>> Stashed changes
 
   const activityOptions = useMemo(
     () =>
@@ -1042,31 +1028,8 @@ export function AdminFeedbackPage() {
                   <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
                     View Detail
                   </Button>
-<<<<<<< Updated upstream
                 </div>
               </article>
-=======
-                }
-                activityLabel={item.activityTitle}
-                avatarUrl={item.avatarUrl}
-                className="feedback-review-card"
-                date={formatDateLabel(item.submittedAt)}
-                insight={item.flaggedIssue ? 'Automatically flagged from rating and comment keyword analysis.' : undefined}
-                key={item.id}
-                name={item.volunteerName}
-                rating={item.rating}
-                status={item.sentiment}
-                tags={
-                  <>
-                    <Badge tone="info">{item.organizerName}</Badge>
-                    <Badge tone="info">{item.categoryLabel}</Badge>
-                    <Badge tone="info">{formatReviewStatusLabel(item.reviewStatus)}</Badge>
-                    {item.flaggedIssue ? <IssueBadge label="Needs Attention" state="warning" /> : null}
-                  </>
-                }
-                text={item.comment}
-              />
->>>>>>> Stashed changes
             ))}
           </div>
         )}
