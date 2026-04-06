@@ -107,6 +107,14 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
+function getMapQuery(activity: ActivityDetailViewModel): string {
+  const address = activity.locationAddress.trim();
+  if (address.length > 0) {
+    return address;
+  }
+  return activity.locationName.trim();
+}
+
 function hashString(input: string) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -339,6 +347,61 @@ export function ActivityDetailPage() {
     setError(null);
   };
 
+  const handleShareActivity = async () => {
+    if (!activity) {
+      return;
+    }
+
+    const pageUrl = window.location.href;
+    const shareData = {
+      title: activity.title,
+      text: `${activity.title} - ${activity.organization}`,
+      url: pageUrl,
+    };
+
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share(shareData);
+        setMessage('Activity link shared.');
+        setError(null);
+        return;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(pageUrl);
+        setMessage('Activity link copied to clipboard.');
+        setError(null);
+        return;
+      }
+
+      window.open(`mailto:?subject=${encodeURIComponent(activity.title)}&body=${encodeURIComponent(pageUrl)}`, '_blank');
+      setMessage('Opened email share draft.');
+      setError(null);
+    } catch (shareError) {
+      if (shareError instanceof Error && shareError.name === 'AbortError') {
+        return;
+      }
+      setMessage(null);
+      setError(shareError instanceof Error ? shareError.message : 'Unable to share this activity right now.');
+    }
+  };
+
+  const handleOpenMap = () => {
+    if (!activity) {
+      return;
+    }
+
+    const query = getMapQuery(activity);
+    if (!query) {
+      setMessage(null);
+      setError('No location data is available to open map.');
+      return;
+    }
+
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+  };
+
   const openSlotsLabel = useMemo(() => {
     if (!activity) {
       return '--';
@@ -357,17 +420,23 @@ export function ActivityDetailPage() {
           <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
             Back to History
           </Button>
-          <Button aria-label="Share activity" type="button" variant="secondary">
+          <Button aria-label="Share activity" onClick={() => void handleShareActivity()} type="button" variant="secondary">
             <Share2 size={16} />
           </Button>
-          <Button aria-label="Save activity" type="button" variant="secondary">
+          <Button
+            aria-label="Save activity is not available yet"
+            disabled
+            title="Saving activity is not available yet."
+            type="button"
+            variant="secondary"
+          >
             <Heart size={16} />
           </Button>
         </div>
       }
       pageSubtitle={
         activity
-          ? `${activity.organization} · ${activity.dateLabel}`
+          ? `${activity.organization} - ${activity.dateLabel}`
           : 'Review the schedule, requirements, and participation details before joining.'
       }
       pageTitle={activity?.title ?? 'Activity Details'}
@@ -445,8 +514,14 @@ export function ActivityDetailPage() {
                     <p>{activity.organization}</p>
                     <small>Verified Organizer</small>
                   </div>
-                  <Button type="button" variant="secondary">
-                    Follow
+                  <Button
+                    aria-label="Follow organizer is not available yet"
+                    disabled
+                    title="Follow organizer is not available yet."
+                    type="button"
+                    variant="secondary"
+                  >
+                    Follow (Soon)
                   </Button>
                 </article>
 
@@ -539,7 +614,7 @@ export function ActivityDetailPage() {
 
                 <Card as="article" className="activity-detail-map-card">
                   <img alt="Activity location map" src={activity.mapImageUrl} />
-                  <Button className="activity-detail-map-btn" type="button" variant="secondary">
+                  <Button className="activity-detail-map-btn" onClick={handleOpenMap} type="button" variant="secondary">
                     Open in Map
                   </Button>
                 </Card>
@@ -551,3 +626,4 @@ export function ActivityDetailPage() {
     </VolunteerShell>
   );
 }
+

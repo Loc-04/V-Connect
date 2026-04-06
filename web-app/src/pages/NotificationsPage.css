@@ -124,9 +124,20 @@
   transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+button.notification-card {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+}
+
 .notification-card:hover {
   border-color: #d4dcef;
   box-shadow: 0 8px 16px rgba(15, 23, 42, 0.05);
+}
+
+.notification-card:focus-visible {
+  outline: 2px solid #3b36ff;
+  outline-offset: 2px;
 }
 
 .notification-card.is-unread {
@@ -180,6 +191,8 @@
 
 .notification-content {
   min-width: 0;
+  display: grid;
+  gap: 0.22rem;
 }
 
 .notification-head-row {
@@ -189,14 +202,16 @@
   align-items: center;
 }
 
-.notification-head-row h2 {
+.notification-head-row h2,
+.notification-head-row strong {
   margin: 0;
   font-size: 0.84rem;
   line-height: 1.2;
   color: #1f2937;
 }
 
-.notification-content p {
+.notification-content p,
+.notification-content > span:last-child {
   margin: 0.22rem 0 0;
   color: #64748b;
   font-size: 0.73rem;

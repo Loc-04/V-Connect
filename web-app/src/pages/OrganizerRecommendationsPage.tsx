@@ -391,7 +391,6 @@ export function OrganizerRecommendationsPage() {
           </Button>
         </>
       }
-      onSearchChange={() => {}}
       pageContext={<span className="org-reco-context">Sprint 3 Matching</span>}
       pageSubtitle="Review volunteer recommendations for each activity based on skills, interests, availability, and recorded hours."
       pageTitle="Volunteer Recommendations"

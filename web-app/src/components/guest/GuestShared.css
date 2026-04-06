@@ -194,6 +194,12 @@
   font-size: 0.82rem;
 }
 
+.guest-footer-link-disabled {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  cursor: not-allowed;
+}
+
 .guest-footer-meta {
   border-top: 1px solid #d7e5ec;
   padding-top: 1rem;

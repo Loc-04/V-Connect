@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Activity, ClipboardList, LayoutDashboard, MapPin, Sparkles } from 'lucide-react';
+import { ClipboardList, MapPin, Sparkles } from 'lucide-react';
 
+import { normalizeRole } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
+import { Button, Card } from '../components/ui';
+import { OrganizerShell } from '../layouts/OrganizerShell';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
 import { listProvinces, listWards } from '../lib/locations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
@@ -15,10 +18,6 @@ function combineDateAndTime(date: string, time: string) {
     throw new Error('Invalid date/time.');
   }
   return localDate.toISOString();
-}
-
-function normalizeRole(role: string | null | undefined) {
-  return String(role ?? '').toLowerCase();
 }
 
 function splitDateAndTime(value: string) {
@@ -49,7 +48,7 @@ function getAddressValue(location: ActivityRecord['location']) {
 export function CreateActivityPage() {
   const navigate = useNavigate();
   const { id: activityId } = useParams<{ id?: string }>();
-  const { profile, session, signOut } = useAuth();
+  const { profile, session } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
@@ -212,11 +211,6 @@ export function CreateActivityPage() {
     setRequiredSkills((current) => current.filter((skill) => skill !== skillToRemove));
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login', { replace: true });
-  };
-
   const handleSave = async (status: ActivityStatus) => {
     if (!session?.access_token) {
       setError('No active session token.');
@@ -300,37 +294,21 @@ export function CreateActivityPage() {
   };
 
   return (
-    <div className="create-activity-page">
-      <header className="create-activity-header">
-        <div className="create-activity-header__container">
-          <div className="create-activity-brand">
-            <span className="create-activity-brand__icon" aria-hidden="true">
-              <Activity size={20} />
-            </span>
-            <strong>V-Connect</strong>
-          </div>
-
-          <nav className="create-activity-nav" aria-label="Main">
-            <button className="create-activity-nav__item" onClick={() => navigate(organizerHomePath)} type="button">
-              <LayoutDashboard className="create-activity-nav-icon" />
-              Dashboard
-            </button>
-            <button className="create-activity-nav__item is-active" type="button">
-              <Activity className="create-activity-nav-icon" />
-              Activities
-            </button>
-          </nav>
-
-          <div className="create-activity-header__actions">
-            <button className="create-activity-profile-btn" onClick={handleSignOut} type="button">
-              Logout
-            </button>
-            <span className="create-activity-avatar" aria-hidden="true" />
-          </div>
-        </div>
-      </header>
-
-      <main className="create-activity-main">
+    <OrganizerShell
+      activeNav="activities"
+      headerActions={
+        <Button onClick={() => navigate(organizerHomePath)} type="button" variant="secondary">
+          Back to Activities
+        </Button>
+      }
+      pageSubtitle={
+        isEditing
+          ? 'Update the activity details, schedule, and selected location.'
+          : 'Fill in the details below to launch a volunteering opportunity.'
+      }
+      pageTitle={isEditing ? 'Edit Activity' : 'Create New Activity'}
+    >
+      <section className="create-activity-page">
         <div className="create-activity-content">
           <div className="create-activity-breadcrumbs">
             <span>Home</span>
@@ -340,21 +318,12 @@ export function CreateActivityPage() {
             <strong>{isEditing ? 'Edit' : 'Create'}</strong>
           </div>
 
-          <section className="create-activity-title">
-            <h1>{isEditing ? 'Edit Activity' : 'Create New Activity'}</h1>
-            <p>
-              {isEditing
-                ? 'Update the activity details, schedule, and selected location.'
-                : 'Fill in the details below to launch a new volunteering opportunity and connect with the community.'}
-            </p>
-          </section>
-
           {!canManageActivities && <p className="form-error">Only organizer/admin accounts can manage activities.</p>}
           {error && <p className="form-error">{error}</p>}
           {success && <p className="form-success">{success}</p>}
 
           <form className="create-activity-form" onSubmit={(event) => event.preventDefault()}>
-            <section className="activity-card">
+            <Card as="section" className="activity-card">
               <div className="activity-card__head">
                 <span className="activity-card__badge is-blue" aria-hidden="true">
                   <Sparkles size={16} />
@@ -381,9 +350,9 @@ export function CreateActivityPage() {
                   value={description}
                 />
               </label>
-            </section>
+            </Card>
 
-            <section className="activity-card">
+            <Card as="section" className="activity-card">
               <div className="activity-card__head">
                 <span className="activity-card__badge is-purple" aria-hidden="true">
                   <ClipboardList size={16} />
@@ -420,9 +389,9 @@ export function CreateActivityPage() {
                   </div>
                 </div>
               </div>
-            </section>
+            </Card>
 
-            <section className="activity-card">
+            <Card as="section" className="activity-card">
               <div className="activity-card__head">
                 <span className="activity-card__badge is-orange" aria-hidden="true">
                   <MapPin size={16} />
@@ -530,7 +499,7 @@ export function CreateActivityPage() {
                   <p>Map integration will be added later. This area is reserved for the live map picker/preview.</p>
                 </div>
               </div>
-            </section>
+            </Card>
 
             <div className="activity-action-bar">
               <button className="action-btn is-ghost" onClick={() => navigate(organizerHomePath)} type="button">
@@ -557,7 +526,7 @@ export function CreateActivityPage() {
             </div>
           </form>
         </div>
-      </main>
-    </div>
+      </section>
+    </OrganizerShell>
   );
 }

@@ -1,8 +1,9 @@
 .create-activity-page {
-  min-height: 100vh;
-  background: var(--bg);
+  min-height: 0;
+  background: transparent;
   color: var(--text);
-  font-family: 'Lexend', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: inherit;
+  padding-bottom: 1.2rem;
 }
 
 .create-activity-header {
@@ -113,10 +114,10 @@
 }
 
 .create-activity-content {
-  width: min(900px, 100%);
+  width: min(980px, 100%);
   margin: 0 auto;
   display: grid;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .create-activity-breadcrumbs {

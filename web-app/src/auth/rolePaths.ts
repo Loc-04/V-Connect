@@ -1,13 +1,17 @@
+import { normalizeRole } from './roleUtils';
+
 export function getRoleHomePath(role: string | null | undefined): string {
-  if (role === 'admin') {
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === 'admin') {
     return '/admin/dashboard';
   }
 
-  if (role === 'organizer') {
+  if (normalizedRole === 'organizer') {
     return '/organizer/dashboard';
   }
 
-  if (role === 'volunteer') {
+  if (normalizedRole === 'volunteer') {
     return '/volunteer/home';
   }
 
