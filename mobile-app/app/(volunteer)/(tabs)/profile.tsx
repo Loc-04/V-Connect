@@ -253,6 +253,14 @@ export default function ProfileScreen() {
           <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
         </Pressable>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View my activity registrations"
+          onPress={() => router.push(ROUTES.VOLUNTEER.MY_REGISTRATIONS)}
+          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+          <ThemedText style={styles.availabilityNavButtonText}>My registrations</ThemedText>
+        </Pressable>
+
         <ThemedText style={styles.sectionTitle}>CORE SKILLS</ThemedText>
         <View style={styles.pickerWrapper}>
           <Picker
