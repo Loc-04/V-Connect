@@ -22,7 +22,7 @@ export function GuestFooter() {
         <div className="guest-footer-links">
           <div>
             <span>Company</span>
-            <Link to="/#journey">About</Link>
+            <Link to="/about">About</Link>
             <Link to="/guest/browse">Browse Activities</Link>
           </div>
           <div>

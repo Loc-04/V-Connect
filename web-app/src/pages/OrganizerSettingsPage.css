@@ -1,0 +1,252 @@
+.org-settings-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.org-settings-summary-card.card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.4rem 1.45rem;
+  border-radius: 24px;
+}
+
+.org-settings-summary-copy {
+  display: grid;
+  gap: 0.45rem;
+  max-width: 70ch;
+}
+
+.org-settings-summary-eyebrow {
+  margin: 0;
+  color: var(--grad-end);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.org-settings-summary-copy h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  line-height: 1.08;
+}
+
+.org-settings-summary-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.org-settings-summary-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.org-settings-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.org-settings-card.card {
+  border-radius: 22px;
+  padding: 1.35rem 1.45rem;
+}
+
+.org-settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.org-settings-card-title {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.org-settings-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--grad-end);
+  flex: none;
+}
+
+.org-settings-card-title h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.org-settings-card-title p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.org-settings-card-body {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.95rem;
+}
+
+.org-settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.95rem 1rem;
+}
+
+.org-settings-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.org-settings-field > span {
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.org-settings-field > small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.org-settings-field-span {
+  grid-column: 1 / -1;
+}
+
+.org-settings-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.org-settings-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem 1rem;
+}
+
+.org-settings-detail-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 0.95rem 1rem;
+}
+
+.org-settings-detail-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-grid;
+  place-items: center;
+  background: #ffffff;
+  color: #475569;
+  box-shadow: inset 0 0 0 1px #e6eaf2;
+}
+
+.org-settings-detail-item small {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #7a869d;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.org-settings-detail-item strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.org-settings-detail-item p {
+  margin: 0.28rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.org-settings-preference-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.org-settings-preference-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 1rem;
+}
+
+.org-settings-preference-item strong {
+  color: var(--text);
+  font-size: 0.94rem;
+}
+
+.org-settings-preference-item p {
+  margin: 0.26rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  max-width: 60ch;
+}
+
+.org-settings-placeholder-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.36rem 0.72rem;
+  background: #ffffff;
+  color: #64748b;
+  border: 1px solid #d9e1ec;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.org-settings-security-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+@media (max-width: 900px) {
+  .org-settings-form,
+  .org-settings-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .org-settings-summary-card.card,
+  .org-settings-card.card {
+    padding: 1.1rem;
+  }
+}

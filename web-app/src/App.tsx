@@ -31,8 +31,10 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { GuestActivityDetailPage } from './pages/GuestActivityDetailPage';
+import { GuestAboutPage } from './pages/GuestAboutPage';
 import { GuestBrowsePage } from './pages/GuestBrowsePage';
 import { GuestHomePage } from './pages/GuestHomePage';
+import { OrganizerSettingsPage } from './pages/OrganizerSettingsPage';
 import { VolunteerAiRecommendedActivitiesPage } from './pages/VolunteerAiRecommendedActivitiesPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
 
@@ -82,6 +84,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<RootRouteEntry />} />
+          <Route path="/about" element={<GuestAboutPage />} />
           <Route path="/guest/browse" element={<GuestBrowsePage />} />
           <Route path="/guest/activity/:id" element={<GuestActivityDetailPage />} />
           <Route
@@ -256,6 +259,14 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['organizer']}>
                 <OrganizerReportSummaryPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/organizer/settings"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerSettingsPage />
               </RequireRoleRoute>
             }
           />
