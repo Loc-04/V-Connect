@@ -168,6 +168,27 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
     };
   }
 
+  if (requesterRole !== 'admin') {
+    const { data: otherCommitted, error: otherCommittedError } = await supabaseAdmin
+      .from('activity_participations')
+      .select('id')
+      .eq('volunteer_id', volunteerId)
+      .in('status', ['approved', 'checked_in'])
+      .neq('activity_id', activityId);
+
+    if (otherCommittedError) {
+      throw new Error(otherCommittedError.message);
+    }
+
+    if (otherCommitted && otherCommitted.length > 0) {
+      const error = new Error(
+        'You already have an approved registration for another activity. Cancel that registration before signing up elsewhere.',
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   const activeCount = await getActiveRegistrationCount(activityId, existingRegistration?.id ?? null);
   if ((activeCount ?? 0) >= Number(activity.capacity ?? 0)) {
     const error = new Error('Activity is full.');

@@ -1,4 +1,4 @@
-import { CameraView } from 'expo-camera';
+import { CameraView, type BarcodeScanningResult } from 'expo-camera';
 import { StyleSheet, View } from 'react-native';
 
 import { CHECK_IN_COPY } from '../constants/check-in.constants';
@@ -14,7 +14,7 @@ type ScannerViewportProps = {
   onRequestPermission: () => void;
   onToggleFlash: () => void;
   onGalleryPress: () => void;
-  onBarcodeScanned: (event: { data: string }) => void;
+  onBarcodeScanned: (event: BarcodeScanningResult) => void;
 };
 
 export function ScannerViewport({
