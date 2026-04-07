@@ -4,7 +4,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 
 import './GuestShell.css';
 
-type GuestNavKey = 'home' | 'browse';
+type GuestNavKey = 'home' | 'browse' | 'about';
 
 interface GuestShellProps {
   activeNav: GuestNavKey;
@@ -45,9 +45,12 @@ export function GuestShell({ activeNav, children, headerActions, pageTitle, page
           >
             Browse Activities
           </NavLink>
-          <Link className="guest-shell-link" to="/#journey">
+          <NavLink
+            className={({ isActive }) => (isActive && activeNav === 'about' ? 'guest-shell-link is-active' : 'guest-shell-link')}
+            to="/about"
+          >
             About
-          </Link>
+          </NavLink>
         </nav>
 
         <div className="guest-shell-auth-actions">

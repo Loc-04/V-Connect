@@ -1,0 +1,209 @@
+.guest-about-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+
+.guest-about-hero-copy {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1.1rem 0.1rem 0.4rem;
+}
+
+.guest-about-hero-badge.ui-badge {
+  width: fit-content;
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--grad-end);
+}
+
+.guest-about-hero-copy h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2.4rem, 4.2vw, 3.8rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  max-width: 11ch;
+}
+
+.guest-about-hero-copy p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.guest-about-hero-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.guest-about-problem-card.card,
+.guest-about-workflow-card.card,
+.guest-about-cta-card.card {
+  border-radius: 26px;
+  padding: 1.4rem;
+}
+
+.guest-about-problem-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.guest-about-problem-card h2,
+.guest-about-section-head h2,
+.guest-about-workflow-copy h2,
+.guest-about-cta-card h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.55rem, 2.3vw, 2.2rem);
+  line-height: 1.14;
+}
+
+.guest-about-problem-card p,
+.guest-about-capability-card p,
+.guest-about-audience-card p,
+.guest-about-workflow-item p,
+.guest-about-cta-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.72;
+}
+
+.guest-about-problem-points {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.guest-about-problem-points span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: #274160;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.guest-about-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.guest-about-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.guest-about-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.guest-about-capability-card.card,
+.guest-about-audience-card.card {
+  border-radius: 22px;
+  padding: 1.2rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.guest-about-capability-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--grad-end);
+}
+
+.guest-about-capability-card strong,
+.guest-about-audience-card h3 {
+  color: var(--text);
+}
+
+.guest-about-audience-card h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.guest-about-audience-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.guest-about-workflow-card {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.guest-about-workflow-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.guest-about-workflow-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.guest-about-workflow-item > span {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(255, 77, 141, 0.14), rgba(139, 92, 246, 0.14));
+  color: var(--grad-end);
+  font-weight: 800;
+}
+
+.guest-about-cta-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+
+.guest-about-cta-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.guest-about-cta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--grad-end);
+  font-weight: 700;
+}
+
+@media (max-width: 1024px) {
+  .guest-about-hero,
+  .guest-about-capability-grid,
+  .guest-about-audience-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .guest-about-problem-card.card,
+  .guest-about-workflow-card.card,
+  .guest-about-cta-card.card,
+  .guest-about-capability-card.card,
+  .guest-about-audience-card.card {
+    padding: 1.1rem;
+  }
+}

@@ -13,6 +13,10 @@ interface VolunteerShellProps {
   pageEyebrow?: string;
   pageTitle: string;
   pageSubtitle: string;
+  searchPlaceholder?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  showSearch?: boolean;
   headerActions?: ReactNode;
   children: ReactNode;
 }
@@ -22,6 +26,10 @@ export function VolunteerShell({
   pageEyebrow,
   pageTitle,
   pageSubtitle,
+  searchPlaceholder = 'Search opportunities...',
+  searchValue,
+  onSearchChange,
+  showSearch,
   headerActions,
   children,
 }: VolunteerShellProps) {
@@ -36,6 +44,7 @@ export function VolunteerShell({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+  const canSearch = showSearch ?? true;
 
   const handleSignOut = async () => {
     await signOut();
@@ -49,10 +58,20 @@ export function VolunteerShell({
       <section className="vol-shell-main">
         <header className="vol-shell-topbar">
           <div className="vol-shell-topbar-inner">
-            <label className="vol-shell-search" htmlFor="vol-shell-search-input">
-              <Search className="vol-shell-top-icon" />
-              <input id="vol-shell-search-input" placeholder="Search opportunities..." type="search" />
-            </label>
+            {canSearch ? (
+              <label className="vol-shell-search" htmlFor="vol-shell-search-input">
+                <Search className="vol-shell-top-icon" />
+                <input
+                  id="vol-shell-search-input"
+                  onChange={(event) => onSearchChange?.(event.target.value)}
+                  placeholder={searchPlaceholder}
+                  type="search"
+                  value={searchValue ?? ''}
+                />
+              </label>
+            ) : (
+              <div aria-hidden="true" />
+            )}
 
             <div className="vol-shell-topbar-right">
               <NotificationDropdown />
