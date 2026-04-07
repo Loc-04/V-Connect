@@ -188,6 +188,13 @@ export default function DashboardScreen() {
           <ThemedText style={styles.editButtonText}>Activity Management</ThemedText>
         </Pressable>
 
+        <Pressable
+          style={styles.editButton}
+          onPress={() => router.push(ROUTES.ORGANIZER.REGISTER_MANAGEMENT)}
+        >
+          <ThemedText style={styles.editButtonText}>Register Management</ThemedText>
+        </Pressable>
+
         <View style={styles.aiHeaderRow}>
           <MaterialIcons name="auto-awesome" size={18} color="#0f766e" />
           <ThemedText style={styles.sectionTitle}>AI Recommended Volunteers</ThemedText>
