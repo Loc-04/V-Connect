@@ -9,6 +9,10 @@ export interface FeedbackRecord {
   ai_label?: string | null;
   is_spam?: boolean | null;
   ai_spam_reasons?: string[] | null;
+  ai_sentiment_label?: 'positive' | 'negative' | 'neutral' | null;
+  ai_incident_label?: 'incident' | 'none' | null;
+  ai_semantic_label?: 'incident' | 'positive' | 'negative' | 'neutral' | null;
+  ai_semantic_reasons?: string[] | string | null;
   review_status?: string | null;
   is_flagged?: boolean | null;
   flag_reason?: string | null;

@@ -1,5 +1,5 @@
 import { AlertTriangle, Download, MessageSquare, RefreshCw, Search, Star } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select } from '../components/ui';
@@ -15,6 +15,8 @@ type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
 type FeedbackSentiment = 'positive' | 'neutral' | 'negative';
 type SpamLabel = 'spam' | 'not_spam';
 type ManualSpamLabel = 'spam' | 'not_spam' | 'auto';
+type SemanticLabel = 'incident' | 'positive' | 'negative' | 'neutral';
+type IncidentLabel = 'incident' | 'none';
 
 interface FeedbackViewModel {
   id: string;
@@ -34,6 +36,10 @@ interface FeedbackViewModel {
   aiLabel: SpamLabel;
   aiSpamReasons: string[];
   isSpam: boolean;
+  aiSemanticLabel: SemanticLabel | null;
+  aiSentimentLabel: FeedbackSentiment | null;
+  aiIncidentLabel: IncidentLabel | null;
+  aiSemanticReasons: string[];
 }
 
 interface FeedbackPaginationState {
@@ -181,12 +187,162 @@ function normalizeAiReasons(rawValue: string[] | null | undefined) {
   return rawValue.filter((value) => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim());
 }
 
+function normalizeSentimentLabel(rawValue: string | null | undefined): FeedbackSentiment | null {
+  const normalized = typeof rawValue === 'string' ? rawValue.trim().toLowerCase() : '';
+  if (normalized === 'positive' || normalized === 'neutral' || normalized === 'negative') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeIncidentLabel(rawValue: string | null | undefined): IncidentLabel | null {
+  const normalized = typeof rawValue === 'string' ? rawValue.trim().toLowerCase() : '';
+  if (normalized === 'incident' || normalized === 'none') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeSemanticLabel(rawValue: string | null | undefined): SemanticLabel | null {
+  const normalized = typeof rawValue === 'string' ? rawValue.trim().toLowerCase() : '';
+  if (normalized === 'incident' || normalized === 'positive' || normalized === 'negative' || normalized === 'neutral') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeSemanticReasons(rawValue: string[] | string | null | undefined): string[] {
+  if (Array.isArray(rawValue)) {
+    return rawValue.filter((value) => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim());
+  }
+
+  if (typeof rawValue !== 'string' || rawValue.trim().length === 0) {
+    return [];
+  }
+
+  return rawValue
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 function toAiBadgeTone(label: SpamLabel): 'danger' | 'success' {
   return label === 'spam' ? 'danger' : 'success';
 }
 
 function toAiBadgeLabel(label: SpamLabel): string {
   return label === 'spam' ? 'AI: Spam' : 'AI: Not Spam';
+}
+
+function toSemanticBadgeTone(label: SemanticLabel | null): 'danger' | 'success' | 'info' | 'neutral' {
+  if (label === 'incident' || label === 'negative') {
+    return 'danger';
+  }
+  if (label === 'positive') {
+    return 'success';
+  }
+  if (label === 'neutral') {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function toSentimentBadgeTone(label: FeedbackSentiment | null): 'danger' | 'success' | 'info' | 'neutral' {
+  if (label === 'negative') {
+    return 'danger';
+  }
+  if (label === 'positive') {
+    return 'success';
+  }
+  if (label === 'neutral') {
+    return 'info';
+  }
+  return 'neutral';
+}
+
+function toIncidentBadgeTone(label: IncidentLabel | null): 'danger' | 'success' | 'neutral' {
+  if (label === 'incident') {
+    return 'danger';
+  }
+  if (label === 'none') {
+    return 'success';
+  }
+  return 'neutral';
+}
+
+function formatSemanticLabel(label: SemanticLabel): string {
+  if (label === 'incident') {
+    return 'Incident';
+  }
+  if (label === 'positive') {
+    return 'Positive';
+  }
+  if (label === 'negative') {
+    return 'Negative';
+  }
+  return 'Neutral';
+}
+
+function formatSentimentLabel(label: FeedbackSentiment): string {
+  if (label === 'positive') {
+    return 'Positive';
+  }
+  if (label === 'negative') {
+    return 'Negative';
+  }
+  return 'Neutral';
+}
+
+function formatIncidentLabel(label: IncidentLabel): string {
+  return label === 'incident' ? 'Incident' : 'None';
+}
+
+const aiReasonLabelByKey: Record<string, string> = {
+  high_rating_signal: 'High rating',
+  low_rating_signal: 'Low rating',
+  mid_rating_signal: 'Mid rating',
+  positive_language_detected: 'Positive language detected',
+  negative_language_detected: 'Negative language detected',
+  incident_keyword_detected: 'Incident keywords detected',
+  spam_keyword_match: 'Spam keyword match',
+  injury_detected: 'Injury detected',
+};
+
+function humanizeAiReason(reason: string): string {
+  const normalized = reason.trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  const mapped = aiReasonLabelByKey[normalized];
+  if (mapped) {
+    return mapped;
+  }
+
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatAiReasonsForUi(reasons: string[]): string[] {
+  return Array.from(
+    new Set(
+      reasons
+        .map((reason) => humanizeAiReason(reason))
+        .filter((reason) => reason.length > 0)
+    )
+  );
+}
+
+function hasAiModerationSemanticConflict(isSpam: boolean, semanticLabel: SemanticLabel | null): boolean {
+  if (!isSpam || !semanticLabel) {
+    return false;
+  }
+
+  return semanticLabel === 'positive' || semanticLabel === 'neutral';
 }
 
 function toManualLabelValue(rawValue: string): ManualSpamLabel {
@@ -212,6 +368,10 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
     const activityTitle = participation?.activityName ?? `Participation ${feedback.participation_id.slice(0, 8)}`;
     const aiLabel = normalizeAiLabel(feedback.ai_label);
     const aiSpamReasons = normalizeAiReasons(feedback.ai_spam_reasons);
+    const aiSemanticLabel = normalizeSemanticLabel(feedback.ai_semantic_label);
+    const aiSentimentLabel = normalizeSentimentLabel(feedback.ai_sentiment_label);
+    const aiIncidentLabel = normalizeIncidentLabel(feedback.ai_incident_label);
+    const aiSemanticReasons = normalizeSemanticReasons(feedback.ai_semantic_reasons);
 
     return {
       id: feedback.id,
@@ -230,6 +390,10 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       aiLabel,
       aiSpamReasons,
       isSpam: typeof feedback.is_spam === 'boolean' ? feedback.is_spam : aiLabel === 'spam',
+      aiSemanticLabel,
+      aiSentimentLabel,
+      aiIncidentLabel,
+      aiSemanticReasons,
       reviewStatus: normalizeReviewStatus(feedback.review_status),
     };
   });
@@ -453,6 +617,8 @@ export function AdminFeedbackPage() {
   const [volunteerFilterQuery, setVolunteerFilterQuery] = useState('');
   const [organizerFilterQuery, setOrganizerFilterQuery] = useState('');
   const [activityFilterQuery, setActivityFilterQuery] = useState('');
+  const [activityDropdownOpen, setActivityDropdownOpen] = useState(false);
+  const [activityHighlightedIndex, setActivityHighlightedIndex] = useState(-1);
   const [sentimentFilter, setSentimentFilter] = useState<'all' | FeedbackSentiment>('all');
   const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
   const [manualLabel, setManualLabel] = useState<ManualSpamLabel>('auto');
@@ -469,6 +635,7 @@ export function AdminFeedbackPage() {
     hasPrev: false,
     hasNext: false,
   });
+  const activityComboboxRef = useRef<HTMLDivElement | null>(null);
 
   const loadFeedback = useCallback(async () => {
     if (!session?.access_token) {
@@ -523,6 +690,13 @@ export function AdminFeedbackPage() {
     setCurrentPage(1);
   }, [ratingFilter]);
 
+  useEffect(() => {
+    if (!showMoreFilters) {
+      setActivityDropdownOpen(false);
+      setActivityHighlightedIndex(-1);
+    }
+  }, [showMoreFilters]);
+
   const organizerOptions = useMemo(
     () => Array.from(new Set(items.map((item) => item.organizerName))).sort((left, right) => left.localeCompare(right)),
     [items]
@@ -561,10 +735,113 @@ export function AdminFeedbackPage() {
       ).sort((left, right) => left.localeCompare(right)),
     [items, normalizedOrganizerFilter]
   );
+  const filteredActivityOptions = useMemo(() => {
+    if (!normalizedActivityFilter) {
+      return activityOptions;
+    }
+    return activityOptions.filter((option) => option.toLowerCase().includes(normalizedActivityFilter));
+  }, [activityOptions, normalizedActivityFilter]);
 
   const reviewStatusOptions = useMemo(
     () => Array.from(new Set(items.map((item) => item.reviewStatus))).sort((left, right) => left.localeCompare(right)),
     [items]
+  );
+
+  useEffect(() => {
+    if (!activityDropdownOpen) {
+      return undefined;
+    }
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && activityComboboxRef.current && !activityComboboxRef.current.contains(target)) {
+        setActivityDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [activityDropdownOpen]);
+
+  useEffect(() => {
+    if (!activityDropdownOpen) {
+      setActivityHighlightedIndex(-1);
+      return;
+    }
+
+    if (filteredActivityOptions.length === 0) {
+      setActivityHighlightedIndex(-1);
+      return;
+    }
+
+    setActivityHighlightedIndex((previous) => {
+      if (previous < 0 || previous >= filteredActivityOptions.length) {
+        return 0;
+      }
+      return previous;
+    });
+  }, [activityDropdownOpen, filteredActivityOptions]);
+
+  const selectActivityOption = useCallback((option: string) => {
+    setActivityFilterQuery(option);
+    setActivityDropdownOpen(false);
+    setActivityHighlightedIndex(-1);
+  }, []);
+
+  const handleActivityInputKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (!activityDropdownOpen) {
+          setActivityDropdownOpen(true);
+          setActivityHighlightedIndex(filteredActivityOptions.length > 0 ? 0 : -1);
+          return;
+        }
+        if (filteredActivityOptions.length > 0) {
+          setActivityHighlightedIndex((previous) => {
+            if (previous < 0) {
+              return 0;
+            }
+            return (previous + 1) % filteredActivityOptions.length;
+          });
+        }
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (!activityDropdownOpen) {
+          setActivityDropdownOpen(true);
+          setActivityHighlightedIndex(filteredActivityOptions.length > 0 ? filteredActivityOptions.length - 1 : -1);
+          return;
+        }
+        if (filteredActivityOptions.length > 0) {
+          setActivityHighlightedIndex((previous) => {
+            if (previous < 0) {
+              return filteredActivityOptions.length - 1;
+            }
+            return (previous - 1 + filteredActivityOptions.length) % filteredActivityOptions.length;
+          });
+        }
+        return;
+      }
+
+      if (event.key === 'Enter' && activityDropdownOpen && activityHighlightedIndex >= 0) {
+        event.preventDefault();
+        const option = filteredActivityOptions[activityHighlightedIndex];
+        if (option) {
+          selectActivityOption(option);
+        }
+        return;
+      }
+
+      if (event.key === 'Escape' && activityDropdownOpen) {
+        event.preventDefault();
+        setActivityDropdownOpen(false);
+        setActivityHighlightedIndex(-1);
+      }
+    },
+    [activityDropdownOpen, activityHighlightedIndex, filteredActivityOptions, selectActivityOption]
   );
 
   const filteredItems = useMemo(() => {
@@ -705,6 +982,10 @@ export function AdminFeedbackPage() {
       const nextLabel = normalizeAiLabel(updated.ai_label);
       const nextReasons = normalizeAiReasons(updated.ai_spam_reasons);
       const nextIsSpam = typeof updated.is_spam === 'boolean' ? updated.is_spam : nextLabel === 'spam';
+      const nextSemanticLabel = normalizeSemanticLabel(updated.ai_semantic_label);
+      const nextSentimentLabel = normalizeSentimentLabel(updated.ai_sentiment_label);
+      const nextIncidentLabel = normalizeIncidentLabel(updated.ai_incident_label);
+      const nextSemanticReasons = normalizeSemanticReasons(updated.ai_semantic_reasons);
 
       setItems((previous) =>
         previous.map((item) =>
@@ -714,6 +995,10 @@ export function AdminFeedbackPage() {
                 aiLabel: nextLabel,
                 aiSpamReasons: nextReasons,
                 isSpam: nextIsSpam,
+                aiSemanticLabel: nextSemanticLabel,
+                aiSentimentLabel: nextSentimentLabel,
+                aiIncidentLabel: nextIncidentLabel,
+                aiSemanticReasons: nextSemanticReasons,
               }
             : item
         )
@@ -915,20 +1200,58 @@ export function AdminFeedbackPage() {
               ))}
             </datalist>
 
-            <Input
-              className="feedback-review-filter-select"
-              list="feedback-review-activity-options"
-              onChange={(event) => setActivityFilterQuery(event.target.value)}
-              placeholder="Activity"
-              sizeMode="small"
-              type="search"
-              value={activityFilterQuery}
-            />
-            <datalist id="feedback-review-activity-options">
-              {activityOptions.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
+            <div className="feedback-review-activity-combobox" ref={activityComboboxRef}>
+              <Input
+                aria-activedescendant={
+                  activityDropdownOpen && activityHighlightedIndex >= 0
+                    ? `feedback-review-activity-option-${activityHighlightedIndex}`
+                    : undefined
+                }
+                aria-autocomplete="list"
+                aria-controls="feedback-review-activity-listbox"
+                aria-expanded={activityDropdownOpen}
+                autoComplete="off"
+                className="feedback-review-filter-select"
+                onChange={(event) => {
+                  setActivityFilterQuery(event.target.value);
+                  setActivityDropdownOpen(true);
+                }}
+                onFocus={() => setActivityDropdownOpen(true)}
+                onKeyDown={handleActivityInputKeyDown}
+                placeholder="Activity"
+                role="combobox"
+                sizeMode="small"
+                type="search"
+                value={activityFilterQuery}
+              />
+              {activityDropdownOpen && (
+                <div className="feedback-review-activity-panel" id="feedback-review-activity-listbox" role="listbox">
+                  {filteredActivityOptions.length === 0 ? (
+                    <p className="feedback-review-activity-empty">No matching activities</p>
+                  ) : (
+                    filteredActivityOptions.map((option, index) => {
+                      const isSelected = normalizedActivityFilter.length > 0 && option.toLowerCase() === normalizedActivityFilter;
+                      const isActive = index === activityHighlightedIndex;
+                      return (
+                        <button
+                          aria-selected={isSelected}
+                          className={`feedback-review-activity-option${isSelected ? ' is-selected' : ''}${isActive ? ' is-active' : ''}`}
+                          id={`feedback-review-activity-option-${index}`}
+                          key={option}
+                          onClick={() => selectActivityOption(option)}
+                          onMouseDown={(event) => event.preventDefault()}
+                          role="option"
+                          title={option}
+                          type="button"
+                        >
+                          <span>{option}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
 
             <Select
               className="feedback-review-filter-select"
@@ -1001,43 +1324,72 @@ export function AdminFeedbackPage() {
           </div>
         ) : (
           <div className="feedback-review-list">
-            {filteredItems.map((item) => (
-              <article className="feedback-review-item" key={item.id}>
-                <div className="feedback-review-item-head">
-                  <div className="feedback-review-volunteer">
-                    <span className="feedback-review-avatar">{item.volunteerName.charAt(0).toUpperCase()}</span>
-                    <div>
-                      <strong>{item.volunteerName}</strong>
-                      <p>{item.activityTitle}</p>
+            {filteredItems.map((item) => {
+              const hasConflict = hasAiModerationSemanticConflict(item.isSpam, item.aiSemanticLabel);
+              const hasSemanticLabel = Boolean(item.aiSemanticLabel);
+              const showSentimentDetail =
+                Boolean(item.aiSentimentLabel) &&
+                (!hasSemanticLabel || item.aiSentimentLabel !== item.aiSemanticLabel);
+              const incidentLabelForDetail = item.aiIncidentLabel === 'incident' ? item.aiIncidentLabel : null;
+              const showIncidentDetail = Boolean(incidentLabelForDetail);
+              const showSecondaryRow = showSentimentDetail || showIncidentDetail || hasConflict;
+
+              return (
+                <article className="feedback-review-item" key={item.id}>
+                  <div className="feedback-review-item-head">
+                    <div className="feedback-review-volunteer">
+                      <span className="feedback-review-avatar">{item.volunteerName.charAt(0).toUpperCase()}</span>
+                      <div className="feedback-review-volunteer-text">
+                        <strong>{item.volunteerName}</strong>
+                        <p>{item.activityTitle}</p>
+                      </div>
+                    </div>
+                    <div className="feedback-review-item-head-tools">
+                      <small>{formatDateLabel(item.submittedAt)}</small>
+                      <Button className="feedback-review-view-btn" onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
+                        View Detail
+                      </Button>
                     </div>
                   </div>
-                  <small>{formatDateLabel(item.submittedAt)}</small>
-                </div>
 
-                <div className="feedback-review-item-meta">
-                  <Badge tone="info">{item.categoryLabel}</Badge>
-                  <RatingStars rating={item.rating} />
-                  <Badge tone={toAiBadgeTone(item.aiLabel)}>{toAiBadgeLabel(item.aiLabel)}</Badge>
-                  {item.flaggedIssue && (
-                    <Badge tone="danger">
-                      <AlertTriangle size={12} />
-                      <span>Needs Attention</span>
-                    </Badge>
+                  <div className="feedback-review-item-meta">
+                    <Badge tone="info">{item.categoryLabel}</Badge>
+                    <RatingStars rating={item.rating} />
+                    <Badge tone={toAiBadgeTone(item.aiLabel)}>{toAiBadgeLabel(item.aiLabel)}</Badge>
+                    {item.aiSemanticLabel && (
+                      <Badge tone={toSemanticBadgeTone(item.aiSemanticLabel)}>Semantic: {formatSemanticLabel(item.aiSemanticLabel)}</Badge>
+                    )}
+                    {hasConflict && <Badge tone="danger">Moderation Priority</Badge>}
+                    {item.flaggedIssue && (
+                      <Badge tone="danger">
+                        <AlertTriangle size={12} />
+                        <span>Needs Attention</span>
+                      </Badge>
+                    )}
+                  </div>
+
+                  <p className="feedback-review-comment">{item.comment}</p>
+
+                  {showSecondaryRow && (
+                    <div className="feedback-review-ai-secondary">
+                      <div className="feedback-review-ai-summary">
+                        {showSentimentDetail && item.aiSentimentLabel && (
+                          <Badge tone={toSentimentBadgeTone(item.aiSentimentLabel)}>
+                            Sentiment AI: {formatSentimentLabel(item.aiSentimentLabel)}
+                          </Badge>
+                        )}
+                        {incidentLabelForDetail && (
+                          <Badge tone={toIncidentBadgeTone(incidentLabelForDetail)}>
+                            Incident AI: {formatIncidentLabel(incidentLabelForDetail)}
+                          </Badge>
+                        )}
+                      </div>
+                      {hasConflict && <p className="feedback-review-ai-warning">Moderation prioritized due to spam.</p>}
+                    </div>
                   )}
-                </div>
-
-                <p className="feedback-review-comment">{item.comment}</p>
-
-                <div className="feedback-review-item-actions">
-                  <Badge tone={item.sentiment === 'positive' ? 'success' : item.sentiment === 'neutral' ? 'info' : 'danger'}>
-                    {item.sentiment}
-                  </Badge>
-                  <Button onClick={() => setSelectedFeedbackId(item.id)} type="button" variant="secondary">
-                    View Detail
-                  </Button>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
 
@@ -1121,10 +1473,49 @@ export function AdminFeedbackPage() {
               </div>
               {selectedFeedback.aiSpamReasons.length > 0 ? (
                 <p className="feedback-review-ai-reasons">
-                  Signals: {selectedFeedback.aiSpamReasons.join(', ')}
+                  Signals: {formatAiReasonsForUi(selectedFeedback.aiSpamReasons).join(', ')}
                 </p>
               ) : (
                 <p className="feedback-review-ai-reasons">No spam signals detected by backend classifier.</p>
+              )}
+
+              <div className="feedback-review-ai-head">
+                <small>AI Semantic Analysis</small>
+              </div>
+              <div className="feedback-review-ai-tags">
+                {selectedFeedback.aiSemanticLabel ? (
+                  <Badge tone={toSemanticBadgeTone(selectedFeedback.aiSemanticLabel)}>
+                    Semantic: {formatSemanticLabel(selectedFeedback.aiSemanticLabel)}
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">Semantic AI: Not available</Badge>
+                )}
+                {selectedFeedback.aiSentimentLabel ? (
+                  <Badge tone={toSentimentBadgeTone(selectedFeedback.aiSentimentLabel)}>
+                    Sentiment: {formatSentimentLabel(selectedFeedback.aiSentimentLabel)}
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">Sentiment: Not available</Badge>
+                )}
+                {selectedFeedback.aiIncidentLabel ? (
+                  <Badge tone={toIncidentBadgeTone(selectedFeedback.aiIncidentLabel)}>
+                    Incident: {formatIncidentLabel(selectedFeedback.aiIncidentLabel)}
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">Incident: Not available</Badge>
+                )}
+              </div>
+              {selectedFeedback.aiSemanticReasons.length > 0 && (
+                <div className="feedback-review-ai-reason-chips">
+                  {selectedFeedback.aiSemanticReasons.map((reason, reasonIndex) => (
+                    <span className="feedback-review-ai-reason-chip" key={`${selectedFeedback.id}-${reason}-${reasonIndex}`}>
+                      {humanizeAiReason(reason)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {hasAiModerationSemanticConflict(selectedFeedback.isSpam, selectedFeedback.aiSemanticLabel) && (
+                <p className="feedback-review-ai-warning">Marked as spam. Moderation signal is prioritized for review.</p>
               )}
 
               {isAdmin && labelWritable && (
@@ -1153,17 +1544,6 @@ export function AdminFeedbackPage() {
 
             <div className="feedback-review-modal-foot">
               <Badge tone="info">{selectedFeedback.categoryLabel}</Badge>
-              <Badge
-                tone={
-                  selectedFeedback.sentiment === 'positive'
-                    ? 'success'
-                    : selectedFeedback.sentiment === 'neutral'
-                      ? 'info'
-                      : 'danger'
-                }
-              >
-                {selectedFeedback.sentiment}
-              </Badge>
               {selectedFeedback.flaggedIssue && <Badge tone="danger">Flagged from current data</Badge>}
             </div>
           </Card>

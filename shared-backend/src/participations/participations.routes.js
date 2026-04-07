@@ -11,7 +11,7 @@ import {
   attachVolunteerSummaries,
   getParticipationHistoryForUser,
 } from './participations.service.js';
-import { calculateActivityMatchForVolunteer } from '../recommendations/recommendations.service.js';
+import { recommend as aiRecommend } from '../ai/ai.router.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
 
 const router = Router();
@@ -126,7 +126,11 @@ async function getRegistrationWithActivityForAccess(participationId, auth, { all
 
 async function computeRegistrationMatchRatio(activity, volunteerId) {
   try {
-    const result = await calculateActivityMatchForVolunteer({ activity, volunteerId });
+    const result = await aiRecommend({
+      scope: 'match',
+      activity,
+      volunteerId,
+    });
     return typeof result.matchRatio === 'number' ? result.matchRatio : null;
   } catch {
     return null;

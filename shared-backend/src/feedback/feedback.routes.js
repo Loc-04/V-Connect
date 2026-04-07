@@ -4,7 +4,9 @@ import { isPlainObject, isUuid } from '../common/utils/validators.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { normalizeFeedbackPayload } from './feedback.validation.js';
+import { classifyFeedback } from '../ai/ai.router.js';
 import { classifyFeedbackSpam } from './feedback.spam.js';
+import { classifyFeedbackSemantics } from './feedback.classification.js';
 
 const router = Router();
 
@@ -177,15 +179,80 @@ function normalizeSpamLabel(aiLabelRaw) {
   return null;
 }
 
-function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_label) {
-  const spamClassification = classifyFeedbackSpam(feedback.comment);
+function normalizeAiClassification(classification) {
+  if (!classification || typeof classification !== 'object') {
+    return {
+      label: null,
+      reasons: [],
+      sentimentLabel: null,
+      incidentLabel: null,
+      semanticLabel: null,
+      semanticReasons: [],
+    };
+  }
+
+  const label = normalizeSpamLabel(classification.label);
+  const reasons = Array.isArray(classification.reasons)
+    ? classification.reasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter((reason) => reason.length > 0)
+    : [];
+  const semanticReasons = Array.isArray(classification.semanticReasons)
+    ? classification.semanticReasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter((reason) => reason.length > 0)
+    : [];
+
+  const sentimentRaw = String(classification.sentimentLabel ?? '').trim().toLowerCase();
+  const incidentRaw = String(classification.incidentLabel ?? '').trim().toLowerCase();
+  const semanticRaw = String(classification.semanticLabel ?? '').trim().toLowerCase();
+
+  const sentimentLabel = ['positive', 'negative', 'neutral'].includes(sentimentRaw) ? sentimentRaw : null;
+  const incidentLabel = incidentRaw === 'incident' ? 'incident' : incidentRaw === 'none' ? 'none' : null;
+  const semanticLabel =
+    semanticRaw === 'incident' || semanticRaw === 'positive' || semanticRaw === 'negative' || semanticRaw === 'neutral'
+      ? semanticRaw
+      : null;
+
+  return {
+    label,
+    reasons: Array.from(new Set(reasons)).slice(0, 4),
+    sentimentLabel,
+    incidentLabel,
+    semanticLabel,
+    semanticReasons: Array.from(new Set(semanticReasons)).slice(0, 4),
+  };
+}
+
+function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_label, classification = null) {
+  const normalizedClassification = normalizeAiClassification(classification);
+  const spamFromComment = classifyFeedbackSpam(feedback?.comment ?? '');
+  const semanticFromComment = classifyFeedbackSemantics({
+    comment: feedback?.comment ?? '',
+    rating: feedback?.rating ?? null,
+  });
+
   const persistedLabel = normalizeSpamLabel(persistedAiLabelRaw);
-  const aiLabel = persistedLabel ?? spamClassification.label;
+  const aiLabel = persistedLabel ?? normalizedClassification.label ?? spamFromComment.label ?? 'not_spam';
+  const aiReasons = normalizedClassification.reasons.length > 0 ? normalizedClassification.reasons : spamFromComment.reasons;
+
+  const sentimentLabel = normalizedClassification.sentimentLabel ?? semanticFromComment.sentimentLabel;
+  const incidentLabel = normalizedClassification.incidentLabel ?? semanticFromComment.incidentLabel;
+  const semanticLabel = normalizedClassification.semanticLabel ?? semanticFromComment.semanticLabel;
+  const semanticReasons =
+    normalizedClassification.semanticReasons.length > 0
+      ? normalizedClassification.semanticReasons
+      : semanticFromComment.semanticReasons;
+
   return {
     ...feedback,
     ai_label: aiLabel,
     is_spam: aiLabel === 'spam',
-    ai_spam_reasons: spamClassification.reasons,
+    ai_spam_reasons: aiReasons,
+    ai_sentiment_label: sentimentLabel,
+    ai_incident_label: incidentLabel,
+    ai_semantic_label: semanticLabel,
+    ai_semantic_reasons: semanticReasons,
   };
 }
 
@@ -970,7 +1037,10 @@ router.post('/feedback', requireAuth, async (req, res) => {
     return;
   }
 
-  const spamClassification = classifyFeedbackSpam(payload.comment);
+  const spamClassification = await classifyFeedback({
+    comment: payload.comment,
+    rating: payload.rating,
+  });
   const baseInsertPayload = {
     participation_id: payload.participation_id,
     volunteer_id: participation.volunteer_id,
@@ -1014,7 +1084,7 @@ router.post('/feedback', requireAuth, async (req, res) => {
       ? enrichFeedbackWithAiLabel({
           ...data,
           ai_label: spamClassification.label,
-        })
+        }, spamClassification.label, spamClassification)
       : data,
   });
 });
