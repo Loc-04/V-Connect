@@ -850,6 +850,11 @@ router.post('/participations/:id/check-in', requireAuth, async (req, res) => {
     return;
   }
 
+  if (participation.status !== 'approved') {
+    res.status(400).json({ message: 'Only approved participations can be checked in.' });
+    return;
+  }
+
   const now = new Date().toISOString();
   let updatePayload = {
     status: 'checked_in',
