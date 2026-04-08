@@ -88,6 +88,16 @@
   cursor: default;
 }
 
+.org-shell-nav-item:focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: 1px;
+}
+
+.org-shell-nav-item.is-placeholder:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
 .org-shell-nav-icon {
   width: 16px;
   height: 16px;

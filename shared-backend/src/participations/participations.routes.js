@@ -11,7 +11,7 @@ import {
   attachVolunteerSummaries,
   getParticipationHistoryForUser,
 } from './participations.service.js';
-import { calculateActivityMatchForVolunteer } from '../recommendations/recommendations.service.js';
+import { recommend as aiRecommend } from '../ai/ai.router.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
 
 const router = Router();
@@ -126,7 +126,11 @@ async function getRegistrationWithActivityForAccess(participationId, auth, { all
 
 async function computeRegistrationMatchRatio(activity, volunteerId) {
   try {
-    const result = await calculateActivityMatchForVolunteer({ activity, volunteerId });
+    const result = await aiRecommend({
+      scope: 'match',
+      activity,
+      volunteerId,
+    });
     return typeof result.matchRatio === 'number' ? result.matchRatio : null;
   } catch {
     return null;
@@ -166,6 +170,27 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
       created: false,
       message: 'You already registered for this activity.',
     };
+  }
+
+  if (requesterRole !== 'admin') {
+    const { data: otherCommitted, error: otherCommittedError } = await supabaseAdmin
+      .from('activity_participations')
+      .select('id')
+      .eq('volunteer_id', volunteerId)
+      .in('status', ['approved', 'checked_in'])
+      .neq('activity_id', activityId);
+
+    if (otherCommittedError) {
+      throw new Error(otherCommittedError.message);
+    }
+
+    if (otherCommitted && otherCommitted.length > 0) {
+      const error = new Error(
+        'You already have an approved registration for another activity. Cancel that registration before signing up elsewhere.',
+      );
+      error.statusCode = 400;
+      throw error;
+    }
   }
 
   const activeCount = await getActiveRegistrationCount(activityId, existingRegistration?.id ?? null);

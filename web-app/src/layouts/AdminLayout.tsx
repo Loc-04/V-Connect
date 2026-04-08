@@ -40,17 +40,17 @@ export function AdminLayout() {
             <Bell className="sidebar-link-icon" />
             Notifications
           </NavLink>
-          <button className="sidebar-link placeholder" type="button">
+          <button className="sidebar-link placeholder" disabled title="Coming soon" type="button">
             <Activity className="sidebar-link-icon" />
-            Volunteer Opportunities
+            Volunteer Opportunities (Soon)
           </button>
-          <button className="sidebar-link placeholder" type="button">
+          <button className="sidebar-link placeholder" disabled title="Coming soon" type="button">
             <BarChart3 className="sidebar-link-icon" />
-            Reports
+            Reports (Soon)
           </button>
-          <button className="sidebar-link placeholder" type="button">
+          <button className="sidebar-link placeholder" disabled title="Coming soon" type="button">
             <Settings className="sidebar-link-icon" />
-            Settings
+            Settings (Soon)
           </button>
         </nav>
 

@@ -39,7 +39,7 @@ const menuItems: SidebarItem[] = [
   { key: 'reports', label: 'Reports', icon: BarChart3, to: '/organizer/reports' },
 ];
 
-const preferenceItems: SidebarItem[] = [{ key: 'settings', label: 'Settings', icon: Settings }];
+const preferenceItems: SidebarItem[] = [{ key: 'settings', label: 'Settings', icon: Settings, to: '/organizer/settings' }];
 
 interface OrganizerSidebarProps {
   activeKey: OrganizerNavKey;
@@ -55,9 +55,9 @@ function SidebarRow({ activeKey, item }: { activeKey: OrganizerNavKey; item: Sid
 
   if (!item.to) {
     return (
-      <button className={`${className} is-placeholder`} type="button">
+      <button className={`${className} is-placeholder`} disabled title="Coming soon" type="button">
         <Icon className="org-shell-nav-icon" />
-        <span>{item.label}</span>
+        <span>{item.label} (Soon)</span>
       </button>
     );
   }

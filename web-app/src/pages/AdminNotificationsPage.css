@@ -1,7 +1,8 @@
 .admin-notifications-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
+  font-size: 14px;
 }
 
 .admin-notifications-header {
@@ -13,23 +14,24 @@
 
 .admin-notifications-header h1 {
   margin: 0;
-  font-size: 3rem;
-  line-height: 1;
+  font-size: 2.05rem;
+  line-height: 1.05;
 }
 
 .admin-notifications-kicker {
   margin: 0 0 8px;
   color: #3b82f6;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .admin-notifications-copy {
-  margin: 10px 0 0;
-  max-width: 760px;
+  margin: 8px 0 0;
+  max-width: 680px;
   color: #52607a;
-  font-size: 1.05rem;
+  font-size: 0.88rem;
 }
 
 .admin-notifications-actions {
@@ -47,18 +49,18 @@
 .admin-notifications-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  gap: 14px;
 }
 
 .admin-notification-stat {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 24px;
+  gap: 12px;
+  padding: 16px;
   border: 1px solid #e6eaf3;
-  border-radius: 24px;
+  border-radius: 16px;
   background: #fff;
-  box-shadow: 0 12px 30px rgba(14, 20, 36, 0.06);
+  box-shadow: 0 8px 18px rgba(14, 20, 36, 0.05);
 }
 
 .admin-notification-stat p,
@@ -68,21 +70,22 @@
 
 .admin-notification-stat p {
   color: #52607a;
+  font-size: 0.86rem;
 }
 
 .admin-notification-stat strong {
   display: block;
-  margin-top: 6px;
-  font-size: 2.1rem;
+  margin-top: 4px;
+  font-size: 1.45rem;
 }
 
 .admin-notification-stat-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
 }
 
 .admin-notification-stat-icon.total {
@@ -102,24 +105,24 @@
 
 .admin-notifications-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 420px);
-  gap: 20px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 380px);
+  gap: 14px;
   align-items: start;
 }
 
 .admin-notifications-list-card,
 .admin-notifications-form-card {
-  padding: 18px;
+  padding: 14px;
   border: 1px solid #e6eaf3;
-  border-radius: 24px;
+  border-radius: 16px;
   background: #fff;
-  box-shadow: 0 12px 30px rgba(14, 20, 36, 0.06);
+  box-shadow: 0 8px 18px rgba(14, 20, 36, 0.05);
 }
 
 .admin-notifications-toolbar {
   display: flex;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .admin-notifications-search {
@@ -127,10 +130,10 @@
   align-items: center;
   gap: 10px;
   flex: 1;
-  min-height: 56px;
-  padding: 0 16px;
+  min-height: 46px;
+  padding: 0 14px;
   border: 1px solid #d6dcea;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #fff;
 }
 
@@ -152,24 +155,24 @@
 .admin-notifications-form select,
 .admin-notifications-form textarea {
   width: 100%;
-  min-height: 56px;
-  padding: 0 16px;
+  min-height: 46px;
+  padding: 0 14px;
   border: 1px solid #d6dcea;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #fff;
   font: inherit;
 }
 
 .admin-notifications-form textarea {
-  min-height: 120px;
-  padding: 14px 16px;
+  min-height: 104px;
+  padding: 12px 14px;
   resize: vertical;
 }
 
 .admin-notifications-alert {
-  margin: 0 0 18px;
-  padding: 14px 16px;
-  border-radius: 16px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
   font-weight: 500;
 }
 
@@ -188,16 +191,16 @@
 .admin-notifications-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .admin-notification-item {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid #e5e7eb;
-  border-radius: 20px;
+  border-radius: 14px;
   background: #fff;
   cursor: pointer;
   transition:
@@ -223,24 +226,24 @@
 
 .admin-notification-item-head h3 {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 0.98rem;
 }
 
 .admin-notification-user {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: #64748b;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
 }
 
 .admin-notification-status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 82px;
-  min-height: 34px;
-  padding: 0 12px;
+  min-width: 74px;
+  min-height: 30px;
+  padding: 0 10px;
   border-radius: 999px;
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
@@ -257,7 +260,8 @@
 .admin-notification-message {
   margin: 0;
   color: #0f172a;
-  line-height: 1.6;
+  line-height: 1.45;
+  font-size: 0.88rem;
 }
 
 .admin-notification-meta {
@@ -265,14 +269,14 @@
   gap: 12px;
   align-items: center;
   color: #64748b;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
 }
 
 .admin-notification-type {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 26px;
+  padding: 0 8px;
   border-radius: 999px;
   background: #f3e8ff;
   color: #7c3aed;
@@ -286,9 +290,38 @@
 
 .admin-notifications-empty {
   margin: 0;
-  padding: 32px 12px;
+  padding: 24px 8px;
   color: #64748b;
   text-align: center;
+}
+
+.admin-notifications-pagination {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.admin-notifications-page-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d6dcea;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-notifications-page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-notifications-page-info {
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .admin-notifications-form-head {
@@ -296,17 +329,18 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .admin-notifications-form-head h2 {
   margin: 0;
-  font-size: 2rem;
+  font-size: 1.45rem;
 }
 
 .admin-notifications-form-head p {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: #52607a;
+  font-size: 0.86rem;
 }
 
 .admin-notifications-switch-link {
@@ -321,7 +355,7 @@
 .admin-notifications-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .admin-notifications-field {
@@ -334,12 +368,13 @@
 .admin-notifications-field label {
   font-weight: 700;
   color: #0f172a;
+  font-size: 0.86rem;
 }
 
 .admin-notifications-field-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
+  gap: 12px;
   align-items: end;
 }
 
@@ -347,10 +382,10 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-height: 56px;
-  padding: 0 16px;
+  min-height: 46px;
+  padding: 0 12px;
   border: 1px solid #d6dcea;
-  border-radius: 18px;
+  border-radius: 14px;
   color: #334155;
   background: #fff;
   cursor: pointer;
@@ -376,7 +411,7 @@
   padding: 8px;
   overflow: auto;
   border: 1px solid #d6dcea;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #fff;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
 }
@@ -387,9 +422,9 @@
   gap: 4px;
   align-items: flex-start;
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: none;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8fafc;
   text-align: left;
   cursor: pointer;
@@ -415,16 +450,16 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #f8fafc;
 }
 
 .admin-notifications-recipient-label {
   margin: 0;
   color: #64748b;
-  font-size: 0.85rem;
+  font-size: 0.76rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -442,6 +477,15 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.admin-notifications-page .primary-btn,
+.admin-notifications-page .secondary-btn,
+.admin-notifications-page .danger-btn {
+  min-height: 38px;
+  padding: 0.44rem 0.82rem;
+  font-size: 0.83rem;
+  border-radius: 10px;
 }
 
 @media (max-width: 1200px) {

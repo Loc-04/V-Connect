@@ -77,15 +77,13 @@ function getInitials(fullName: string | null, fallbackId: string): string {
   return fallbackId.slice(0, 2).toUpperCase();
 }
 
-function tokenOf(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, '-');
+function getContactDisplay(user: UserRecord): string {
+  const phone = String(user.phone ?? '').trim();
+  return phone.length > 0 ? phone : 'Unavailable from API';
 }
 
-function makeEmail(fullName: string | null, id: string): string {
-  if (!fullName || fullName.trim().length === 0) {
-    return `user.${id.slice(0, 6)}@example.com`;
-  }
-  return `${fullName.trim().toLowerCase().replace(/\s+/g, '.')}@example.com`;
+function tokenOf(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, '-');
 }
 
 function buildPaginationItems(currentPage: number, totalPages: number): PageItem[] {
@@ -115,6 +113,7 @@ export function AdminUsersPage() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [draftByUserId, setDraftByUserId] = useState<Record<string, UserEditDraft>>({});
   const [menuUserId, setMenuUserId] = useState<string | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -195,13 +194,11 @@ export function AdminUsersPage() {
     const keyword = searchTerm.trim().toLowerCase();
 
     return users.filter((user) => {
-      const email = makeEmail(user.full_name, user.id);
       const matchesKeyword =
         !keyword ||
         user.id.toLowerCase().includes(keyword) ||
         (user.full_name ?? '').toLowerCase().includes(keyword) ||
-        (user.phone ?? '').toLowerCase().includes(keyword) ||
-        email.includes(keyword);
+        (user.phone ?? '').toLowerCase().includes(keyword);
 
       const matchesRole = roleFilter === 'all' || String(user.role) === roleFilter;
       const matchesStatus = statusFilter === 'all' || String(user.status ?? 'active') === statusFilter;
@@ -296,18 +293,52 @@ export function AdminUsersPage() {
   };
 
   const handleSave = async (userId: string) => {
-    await saveUserDraft(userId);
-    setMenuUserId(null);
-  };
-
-  const handleToggleStatus = async (userId: string) => {
+    const user = users.find((item) => item.id === userId);
     const draft = draftByUserId[userId];
-    if (!draft) {
+    if (!user || !draft) {
+      setMenuUserId(null);
       return;
     }
 
-    const nextStatus = draft.status === 'active' ? 'inactive' : 'active';
-    await saveUserDraft(userId, { status: nextStatus });
+    const previousRole = String(user.role ?? 'volunteer');
+    const previousStatus = String(user.status ?? 'active');
+    const hasDraftChanges = draft.role !== previousRole || draft.status !== previousStatus;
+    if (!hasDraftChanges) {
+      setEditingUserId(null);
+      setMenuUserId(null);
+      return;
+    }
+
+    const confirmation = window.confirm(
+      `Apply changes for ${user.full_name ?? user.id}?\nRole: ${previousRole} -> ${draft.role}\nStatus: ${previousStatus} -> ${draft.status}`
+    );
+    if (!confirmation) {
+      setMenuUserId(null);
+      return;
+    }
+
+    await saveUserDraft(userId);
+    setEditingUserId(null);
+    setMenuUserId(null);
+  };
+
+  const handleStartEdit = (userId: string) => {
+    setEditingUserId(userId);
+    setMenuUserId(null);
+  };
+
+  const handleCancelEdit = (userId: string) => {
+    const user = users.find((item) => item.id === userId);
+    if (user) {
+      setDraftByUserId((current) => ({
+        ...current,
+        [userId]: {
+          role: String(user.role ?? 'volunteer'),
+          status: String(user.status ?? 'active'),
+        },
+      }));
+    }
+    setEditingUserId(null);
     setMenuUserId(null);
   };
 
@@ -365,12 +396,18 @@ export function AdminUsersPage() {
             <input
               className="text-input users-search-input"
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search by name, email..."
+              placeholder="Search by name, phone, or UUID"
               value={searchTerm}
             />
           </label>
-          <button className="primary-btn add-user-btn" type="button">
-            + Add User
+          <button
+            aria-label="Add user is not available yet"
+            className="primary-btn add-user-btn"
+            disabled
+            title="Creating users from admin panel requires backend support."
+            type="button"
+          >
+            + Add User (Soon)
           </button>
         </div>
       </div>
@@ -492,10 +529,10 @@ export function AdminUsersPage() {
                 <tr>
                   <th />
                   <th>User</th>
-                  <th>Email</th>
+                  <th>Contact</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Action's</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -504,6 +541,10 @@ export function AdminUsersPage() {
                     role: String(user.role ?? 'volunteer'),
                     status: String(user.status ?? 'active'),
                   };
+                  const persistedRole = String(user.role ?? 'volunteer');
+                  const persistedStatus = String(user.status ?? 'active');
+                  const hasDraftChanges = draft.role !== persistedRole || draft.status !== persistedStatus;
+                  const isEditing = editingUserId === user.id;
 
                   return (
                     <tr key={user.id}>
@@ -519,38 +560,46 @@ export function AdminUsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td>{makeEmail(user.full_name, user.id)}</td>
+                      <td>{getContactDisplay(user)}</td>
                       <td>
-                        <span className={`users-pill role-${tokenOf(draft.role)}`}>{draft.role}</span>
-                        <div className="row-edit-hidden">
-                          <select
-                            className="text-input small compact-select"
-                            onChange={(event) => handleDraftChange(user.id, 'role', event.target.value)}
-                            value={draft.role}
-                          >
-                            {roleOptions.map((role) => (
-                              <option key={role} value={role}>
-                                {role}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        {isEditing ? (
+                          <div className="users-cell-edit">
+                            <select
+                              className="text-input small compact-select"
+                              onChange={(event) => handleDraftChange(user.id, 'role', event.target.value)}
+                              value={draft.role}
+                            >
+                              {roleOptions.map((role) => (
+                                <option key={role} value={role}>
+                                  {role}
+                                </option>
+                              ))}
+                            </select>
+                            {draft.role !== persistedRole && <small className="users-draft-hint">Unsaved</small>}
+                          </div>
+                        ) : (
+                          <span className={`users-pill role-${tokenOf(persistedRole)}`}>{persistedRole}</span>
+                        )}
                       </td>
                       <td>
-                        <span className={`users-pill status-${tokenOf(draft.status)}`}>{draft.status}</span>
-                        <div className="row-edit-hidden">
-                          <select
-                            className="text-input small compact-select"
-                            onChange={(event) => handleDraftChange(user.id, 'status', event.target.value)}
-                            value={draft.status}
-                          >
-                            {statusOptions.map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        {isEditing ? (
+                          <div className="users-cell-edit">
+                            <select
+                              className="text-input small compact-select"
+                              onChange={(event) => handleDraftChange(user.id, 'status', event.target.value)}
+                              value={draft.status}
+                            >
+                              {statusOptions.map((status) => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
+                            </select>
+                            {draft.status !== persistedStatus && <small className="users-draft-hint">Unsaved</small>}
+                          </div>
+                        ) : (
+                          <span className={`users-pill status-${tokenOf(persistedStatus)}`}>{persistedStatus}</span>
+                        )}
                       </td>
                       <td>
                         <div className="row-action-wrap">
@@ -569,23 +618,37 @@ export function AdminUsersPage() {
                             <MoreVertical className="users-icon-sm" />
                           </button>
                           {menuUserId === user.id && (
-                            <div className="row-action-menu" role="menu">
-                              <button
-                                className="row-action-item"
-                                disabled={savingUserId === user.id}
-                                onClick={() => void handleSave(user.id)}
-                                type="button"
-                              >
-                                Update
-                              </button>
-                              <button
-                                className="row-action-item"
-                                disabled={savingUserId === user.id}
-                                onClick={() => void handleToggleStatus(user.id)}
-                                type="button"
-                              >
-                                {draft.status === 'active' ? 'Deactivate' : 'Reactivate'}
-                              </button>
+                            <div aria-label="User row actions" className="row-action-menu" role="menu">
+                              {!isEditing && (
+                                <button
+                                  className="row-action-item"
+                                  disabled={savingUserId === user.id}
+                                  onClick={() => handleStartEdit(user.id)}
+                                  type="button"
+                                >
+                                  Edit role/status
+                                </button>
+                              )}
+                              {isEditing && (
+                                <button
+                                  className="row-action-item"
+                                  disabled={savingUserId === user.id || !hasDraftChanges}
+                                  onClick={() => void handleSave(user.id)}
+                                  type="button"
+                                >
+                                  {hasDraftChanges ? 'Save changes' : 'No changes'}
+                                </button>
+                              )}
+                              {isEditing && (
+                                <button
+                                  className="row-action-item"
+                                  disabled={savingUserId === user.id}
+                                  onClick={() => handleCancelEdit(user.id)}
+                                  type="button"
+                                >
+                                  Cancel edit
+                                </button>
+                              )}
                               <button
                                 className="row-action-item danger"
                                 disabled={deletingUserId === user.id}

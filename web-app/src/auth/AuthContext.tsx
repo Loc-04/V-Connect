@@ -376,6 +376,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextProfile;
   };
 
+  const signInWithGoogle = async (): Promise<void> => {
+    setError(null);
+
+    const redirectTo = `${window.location.origin}/login${window.location.search}`;
+    const { error: signInError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+      },
+    });
+
+    if (signInError) {
+      throw signInError;
+    }
+  };
+
   const register = async (input: RegisterInput): Promise<RegisterResult> => {
     setError(null);
 
@@ -467,6 +483,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     profile,
     signInWithPassword,
+    signInWithGoogle,
     register,
     signOut,
     refreshProfile,

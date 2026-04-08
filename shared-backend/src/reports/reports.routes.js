@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { isUuid } from '../common/utils/validators.js';
-import { buildOrganizerReportSummary } from './reports.service.js';
+import { summarizeReport } from '../ai/ai.router.js';
 
 const router = Router();
 
@@ -32,7 +32,7 @@ router.get('/organizer/reports/summary', requireAuth, async (req, res) => {
   const organizerId = organizerIdFromQuery || req.auth.user.id;
 
   try {
-    const payload = await buildOrganizerReportSummary({
+    const payload = await summarizeReport({
       organizerId,
       activityId: activityId || null,
     });

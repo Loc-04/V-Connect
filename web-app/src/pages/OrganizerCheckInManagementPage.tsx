@@ -531,7 +531,9 @@ export function OrganizerCheckInManagementPage() {
             <h3>Attendance Trend Analysis</h3>
             <p>{attendanceInsight}</p>
           </div>
-          <Button type="button">Optimize Flow</Button>
+          <Button disabled title="Optimization flow is not available yet." type="button" variant="secondary">
+            Optimize Flow (Soon)
+          </Button>
         </Card>
       </section>
     </OrganizerShell>

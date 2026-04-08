@@ -7,11 +7,7 @@ import { getActivityById } from '../activities/activities.service.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
 import { attachActivitySummaries, attachVolunteerSummaries } from '../participations/participations.service.js';
 import { getProfileByUserId } from '../users/users.service.js';
-import {
-  calculateActivityMatchForVolunteer,
-  getRecommendationsForActivity,
-  getRecommendationsForUser,
-} from './recommendations.service.js';
+import { recommend as aiRecommend } from '../ai/ai.router.js';
 
 const router = Router();
 const assignmentStatuses = new Set(['assigned', 'approved', 'rejected', 'cancelled']);
@@ -225,7 +221,11 @@ router.get('/recommendations/:userId', requireAuth, async (req, res) => {
   }
 
   try {
-    const result = await getRecommendationsForUser(userId, getRequestedLimit(req.query.limit));
+    const result = await aiRecommend({
+      scope: 'user',
+      userId,
+      limit: getRequestedLimit(req.query.limit),
+    });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load recommendations.';
@@ -259,7 +259,11 @@ router.get('/recommendations/activity/:id', requireAuth, async (req, res) => {
       return;
     }
 
-    const result = await getRecommendationsForActivity(activityId, getRequestedLimit(req.query.limit));
+    const result = await aiRecommend({
+      scope: 'activity',
+      activityId,
+      limit: getRequestedLimit(req.query.limit),
+    });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load activity recommendations.';
@@ -328,7 +332,11 @@ router.post('/recommendations/activity/:id/assignments', requireAuth, async (req
       return;
     }
 
-    const match = await calculateActivityMatchForVolunteer({ activity, volunteerId });
+    const match = await aiRecommend({
+      scope: 'match',
+      activity,
+      volunteerId,
+    });
     const now = new Date().toISOString();
 
     let assignment;

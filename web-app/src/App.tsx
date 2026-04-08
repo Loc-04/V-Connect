@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute } from './auth/RouteGuards';
 import { getRoleHomePath } from './auth/rolePaths';
+import { normalizeRole } from './auth/roleUtils';
 import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -30,8 +31,10 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { GuestActivityDetailPage } from './pages/GuestActivityDetailPage';
+import { GuestAboutPage } from './pages/GuestAboutPage';
 import { GuestBrowsePage } from './pages/GuestBrowsePage';
 import { GuestHomePage } from './pages/GuestHomePage';
+import { OrganizerSettingsPage } from './pages/OrganizerSettingsPage';
 import { VolunteerAiRecommendedActivitiesPage } from './pages/VolunteerAiRecommendedActivitiesPage';
 import { VolunteerHomePage } from './pages/VolunteerHomePage';
 
@@ -62,7 +65,7 @@ function RootRouteEntry() {
 
 function FeedbackRouteEntry() {
   const { profile } = useAuth();
-  const role = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
+  const role = normalizeRole(profile?.role);
 
   if (role === 'admin') {
     return <Navigate replace to="/admin/feedback" />;
@@ -81,6 +84,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<RootRouteEntry />} />
+          <Route path="/about" element={<GuestAboutPage />} />
           <Route path="/guest/browse" element={<GuestBrowsePage />} />
           <Route path="/guest/activity/:id" element={<GuestActivityDetailPage />} />
           <Route
@@ -255,6 +259,14 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['organizer']}>
                 <OrganizerReportSummaryPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/organizer/settings"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerSettingsPage />
               </RequireRoleRoute>
             }
           />
