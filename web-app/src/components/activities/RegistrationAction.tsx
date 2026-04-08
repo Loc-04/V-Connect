@@ -21,6 +21,7 @@ interface RegistrationActionProps {
   onCancel?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onNotice?: (type: NoticeType, message: string) => void;
   confirmCancelMessage?: string;
+  registerDisabledLabel?: string;
 }
 
 function toTitleCase(value: string) {
@@ -44,7 +45,7 @@ function getBadgeTone(status: string) {
   if (status === 'approved' || status === 'checked_in' || status === 'completed') {
     return 'success' as const;
   }
-  if (status === 'rejected' || status === 'cancelled') {
+  if (status === 'rejected' || status === 'cancelled' || status === 'expired') {
     return 'danger' as const;
   }
   if (status === 'pending' || status === 'upcoming') {
@@ -59,6 +60,9 @@ function getStatusLabel(status: string) {
   }
   if (status === 'checked_in') {
     return 'Checked-in';
+  }
+  if (status === 'expired') {
+    return 'Expired';
   }
   return toTitleCase(status);
 }
@@ -76,14 +80,16 @@ export function RegistrationAction({
   onCancel,
   onNotice,
   confirmCancelMessage = 'Cancel this registration request?',
+  registerDisabledLabel = 'Volunteer only',
 }: RegistrationActionProps) {
   const status = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const [registering, setRegistering] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const cancelableStatuses = useMemo(() => new Set(['assigned', 'pending', 'approved']), []);
 
   const isRegisterable = status === 'none';
-  const canCancel = status === 'pending' && typeof onCancel === 'function';
-  const showCancelAction = status === 'pending' && mode === 'full';
+  const showCancelAction = mode === 'full' && cancelableStatuses.has(status);
+  const canCancel = showCancelAction && typeof onCancel === 'function';
 
   const notify = (type: NoticeType, message: string) => {
     if (onNotice) {
@@ -166,7 +172,7 @@ export function RegistrationAction({
           onClick={(event) => void handleRegister(event)}
           type="button"
         >
-          {registering ? 'Registering...' : canRegister ? 'Register' : 'Volunteer only'}
+          {registering ? 'Registering...' : canRegister ? 'Register' : registerDisabledLabel}
         </Button>
       </span>
     );

@@ -151,6 +151,13 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
     throw error;
   }
 
+  const activityEndTime = new Date(activity.end_time ?? '');
+  if (requesterRole !== 'admin' && !Number.isNaN(activityEndTime.getTime()) && activityEndTime.getTime() <= Date.now()) {
+    const error = new Error('Registration is closed because this activity has already ended.');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const { data: existingRegistration, error: existingError } = await supabaseAdmin
     .from('activity_participations')
     .select(participationColumns)

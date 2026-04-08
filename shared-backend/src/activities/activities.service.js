@@ -35,7 +35,7 @@ function computeDurationHours(startTime, endTime) {
   return Number(diff.toFixed(1));
 }
 
-function mapParticipationStatus(participationStatus, activityStatus) {
+function mapParticipationStatus(participationStatus, activityStatus, activityEndTime = null) {
   const activity = String(activityStatus ?? '').toLowerCase();
   if (activity === 'cancelled') {
     return 'cancelled';
@@ -50,6 +50,13 @@ function mapParticipationStatus(participationStatus, activityStatus) {
   }
   if (participation === 'checked_in') {
     return 'completed';
+  }
+
+  if (activityEndTime) {
+    const endTime = new Date(activityEndTime);
+    if (!Number.isNaN(endTime.getTime()) && endTime.getTime() <= Date.now()) {
+      return 'expired';
+    }
   }
 
   return 'upcoming';

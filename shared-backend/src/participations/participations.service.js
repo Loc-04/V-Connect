@@ -160,8 +160,9 @@ async function getParticipationHistoryForUser({ userId, role, limit = 50 }) {
     const activity = activitiesById.get(participation.activity_id);
     const organizer = activity ? organizersById.get(activity.organizer_id) : null;
     const activityDeleted = Boolean(activity?.deleted_at);
-    const baseStatus = mapParticipationStatus(participation.status, activity?.status);
-    const status = activityDeleted && baseStatus === 'upcoming' ? 'cancelled' : baseStatus;
+    const baseStatus = mapParticipationStatus(participation.status, activity?.status, activity?.end_time);
+    const status =
+      activityDeleted && (baseStatus === 'upcoming' || baseStatus === 'expired') ? 'cancelled' : baseStatus;
 
     return {
       id: activity?.id ?? participation.activity_id ?? participation.id,

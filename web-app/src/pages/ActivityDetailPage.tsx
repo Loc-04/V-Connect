@@ -16,14 +16,14 @@ import {
 } from '../lib/activityLocation';
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
-import { listParticipations } from '../lib/participations';
+import { cancelParticipation, listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
 import type { ActivityDetailMock } from '../lib/participationMocks';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './ActivityDetailPage.css';
 
-type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published';
+type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published' | 'expired';
 
 interface ActivityDetailViewModel {
   id: string;
@@ -60,8 +60,17 @@ const PARTICIPANT_AVATARS = [
   'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150',
 ];
 
-function toStatus(value: string): ViewStatus {
+function toStatus(value: string, endTime?: string | null): ViewStatus {
   const normalized = value.trim().toLowerCase();
+  if (normalized === 'cancelled' || normalized === 'completed') {
+    return normalized;
+  }
+  if (endTime) {
+    const end = new Date(endTime);
+    if (!Number.isNaN(end.getTime()) && end.getTime() <= Date.now()) {
+      return 'expired';
+    }
+  }
   if (normalized === 'completed' || normalized === 'cancelled' || normalized === 'published') {
     return normalized;
   }
@@ -135,7 +144,7 @@ function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
     volunteerHours: mock.volunteerHours,
     maxParticipants: mock.maxParticipants,
     currentParticipants: mock.currentParticipants,
-    status: mock.status === 'published' ? 'published' : mock.status,
+    status: toStatus(mock.status, mock.endTime),
     level: mock.level,
     categories: mock.categories,
     requirements: mock.requirements,
@@ -169,7 +178,7 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
     volunteerHours: toHours(activity.start_time, activity.end_time),
     maxParticipants,
     currentParticipants: fallback?.currentParticipants ?? null,
-    status: toStatus(String(activity.status ?? 'upcoming')),
+    status: toStatus(String(activity.status ?? 'upcoming'), activity.end_time),
     level: fallback?.level || 'Open to all levels',
     categories,
     requirements,
@@ -184,6 +193,9 @@ function getStatusTone(status: ViewStatus) {
     return 'success' as const;
   }
   if (status === 'cancelled') {
+    return 'danger' as const;
+  }
+  if (status === 'expired') {
     return 'danger' as const;
   }
   if (status === 'published') {
@@ -411,6 +423,8 @@ export function ActivityDetailPage() {
     return `${activity.currentParticipants} / ${activity.maxParticipants}`;
   }, [activity]);
 
+  const canSubmitRegistration = canRegister && activity?.status !== 'expired';
+
   return (
     <VolunteerShell
       activeNav="activities"
@@ -599,9 +613,19 @@ export function ActivityDetailPage() {
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
                       activityId={activity.id}
-                      canRegister={canRegister}
+                      canRegister={canSubmitRegistration}
                       className="activity-detail-registration-action"
                       currentStatus={participation?.status ?? 'none'}
+                      confirmCancelMessage="Cancel this registration for the activity?"
+                      registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
+                      onCancel={async ({ activityId }) => {
+                        if (!session?.access_token) {
+                          throw new Error('No active session token.');
+                        }
+
+                        const cancelledParticipation = await cancelParticipation(activityId, session.access_token);
+                        setParticipation(cancelledParticipation);
+                      }}
                       onNotice={handleRegistrationNotice}
                       onRegistered={(nextParticipation) => {
                         setParticipation(nextParticipation);
