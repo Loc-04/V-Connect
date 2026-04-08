@@ -85,7 +85,7 @@ export function RegistrationAction({
   const status = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const [registering, setRegistering] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const cancelableStatuses = useMemo(() => new Set(['assigned', 'pending', 'approved']), []);
+  const cancelableStatuses = useMemo(() => new Set(['assigned', 'pending']), []);
 
   const isRegisterable = status === 'none';
   const showCancelAction = mode === 'full' && cancelableStatuses.has(status);
