@@ -103,6 +103,10 @@ function normalizeCoordinateValue(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function normalizeOptionalText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function matchesSkillFilter(activity, skillFilters) {
   if (skillFilters.length === 0) {
     return true;
@@ -253,24 +257,28 @@ async function resolveStoredLocation(payload, existingActivity = null) {
     resolvedArea.provinceCode !== existingActivity?.province_code ||
     resolvedArea.wardCode !== existingActivity?.ward_code;
 
-  const hasFreshCoordinates = rawLocation.lat != null && rawLocation.lng != null;
-  const lat = hasFreshCoordinates
-    ? normalizeCoordinateValue(rawLocation.lat)
-    : addressChanged
-      ? null
-      : normalizeCoordinateValue(previousLocation?.lat);
-  const lng = hasFreshCoordinates
-    ? normalizeCoordinateValue(rawLocation.lng)
-    : addressChanged
-      ? null
-      : normalizeCoordinateValue(previousLocation?.lng);
+  const incomingGeocodedAt = normalizeOptionalText(rawLocation.geocodedAt);
+  const previousGeocodedAt = normalizeOptionalText(previousLocation?.geocodedAt);
+  const incomingFormattedAddress = normalizeOptionalText(rawLocation.formattedAddress);
+  const previousFormattedAddress = normalizeOptionalText(previousLocation?.formattedAddress);
+  const incomingLat = normalizeCoordinateValue(rawLocation.lat);
+  const incomingLng = normalizeCoordinateValue(rawLocation.lng);
+  const hasFreshCoordinates =
+    Number.isFinite(incomingLat) &&
+    Number.isFinite(incomingLng) &&
+    (!addressChanged ||
+      !existingActivity ||
+      (incomingGeocodedAt && incomingGeocodedAt !== previousGeocodedAt) ||
+      (incomingFormattedAddress && incomingFormattedAddress !== previousFormattedAddress));
+  const lat = hasFreshCoordinates ? incomingLat : addressChanged ? null : normalizeCoordinateValue(previousLocation?.lat);
+  const lng = hasFreshCoordinates ? incomingLng : addressChanged ? null : normalizeCoordinateValue(previousLocation?.lng);
   const hasValidCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
 
   const mapProvider = hasValidCoordinates
     ? String(rawLocation.mapProvider ?? previousLocation?.mapProvider ?? '').trim() || null
     : null;
   const geocodedAt = hasValidCoordinates
-    ? String(rawLocation.geocodedAt ?? previousLocation?.geocodedAt ?? '').trim() || null
+    ? incomingGeocodedAt || normalizeOptionalText(previousLocation?.geocodedAt) || null
     : null;
   const geocodeConfidenceValue = hasValidCoordinates
     ? Number(rawLocation.geocodeConfidence ?? previousLocation?.geocodeConfidence ?? null)

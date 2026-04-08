@@ -4,9 +4,16 @@ import { CalendarClock, Heart, MapPin, Share2, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
+import { ActivityLocationMap } from '../components/maps/ActivityLocationMap';
 import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
-import { formatActivityLocation } from '../lib/activityLocation';
+import {
+  buildActivityMapUrl,
+  formatActivityLocation,
+  getActivityAddressLine,
+  getActivityCoordinates,
+  type ActivityCoordinates,
+} from '../lib/activityLocation';
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { listParticipations } from '../lib/participations';
@@ -35,7 +42,8 @@ interface ActivityDetailViewModel {
   categories: string[];
   requirements: string[];
   heroImageUrl: string;
-  mapImageUrl: string;
+  locationCoordinates: ActivityCoordinates | null;
+  mapUrl: string | null;
 }
 
 const FALLBACK_HERO_IMAGES = [
@@ -44,9 +52,6 @@ const FALLBACK_HERO_IMAGES = [
   'https://images.pexels.com/photos/6647043/pexels-photo-6647043.jpeg?auto=compress&cs=tinysrgb&w=1400',
   'https://images.pexels.com/photos/5731866/pexels-photo-5731866.jpeg?auto=compress&cs=tinysrgb&w=1400',
 ];
-
-const FALLBACK_MAP_IMAGE =
-  'https://staticmap.openstreetmap.de/staticmap.php?center=30.2672,-97.7431&zoom=12&size=640x360&markers=30.2672,-97.7431,red-pushpin';
 
 const PARTICIPANT_AVATARS = [
   'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&cs=tinysrgb&w=150',
@@ -107,14 +112,6 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
-function getMapQuery(activity: ActivityDetailViewModel): string {
-  const address = activity.locationAddress.trim();
-  if (address.length > 0) {
-    return address;
-  }
-  return activity.locationName.trim();
-}
-
 function hashString(input: string) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -143,7 +140,10 @@ function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
     categories: mock.categories,
     requirements: mock.requirements,
     heroImageUrl: mock.heroImageUrl,
-    mapImageUrl: mock.mapImageUrl,
+    locationCoordinates: null,
+    mapUrl: mock.locationAddress
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mock.locationAddress)}`
+      : null,
   };
 }
 
@@ -163,7 +163,7 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
       fallback?.description ||
       'Details for this activity are being updated by the organizer.',
     locationName: locationLabel(activity.location),
-    locationAddress: fallback?.locationAddress || locationLabel(activity.location),
+    locationAddress: getActivityAddressLine(activity.location) || fallback?.locationAddress || locationLabel(activity.location),
     dateLabel,
     timeLabel,
     volunteerHours: toHours(activity.start_time, activity.end_time),
@@ -174,7 +174,8 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
     categories,
     requirements,
     heroImageUrl: fallback?.heroImageUrl || FALLBACK_HERO_IMAGES[hashString(activity.id) % FALLBACK_HERO_IMAGES.length],
-    mapImageUrl: fallback?.mapImageUrl || FALLBACK_MAP_IMAGE,
+    locationCoordinates: getActivityCoordinates(activity.location),
+    mapUrl: buildActivityMapUrl(activity.location),
   };
 }
 
@@ -391,15 +392,13 @@ export function ActivityDetailPage() {
       return;
     }
 
-    const query = getMapQuery(activity);
-    if (!query) {
+    if (!activity.mapUrl) {
       setMessage(null);
       setError('No location data is available to open map.');
       return;
     }
 
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+    window.open(activity.mapUrl, '_blank', 'noopener,noreferrer');
   };
 
   const openSlotsLabel = useMemo(() => {
@@ -613,8 +612,22 @@ export function ActivityDetailPage() {
                 </Card>
 
                 <Card as="article" className="activity-detail-map-card">
-                  <img alt="Activity location map" src={activity.mapImageUrl} />
-                  <Button className="activity-detail-map-btn" onClick={handleOpenMap} type="button" variant="secondary">
+                  <ActivityLocationMap
+                    address={activity.locationAddress || activity.locationName}
+                    compact
+                    coordinates={activity.locationCoordinates}
+                    emptyMessage="The organizer has not saved map coordinates for this activity yet. You can still open the address in your maps app."
+                    emptyTitle="Live map preview is not available"
+                    interactive
+                    title={activity.title}
+                  />
+                  <Button
+                    className="activity-detail-map-btn"
+                    disabled={!activity.mapUrl}
+                    onClick={handleOpenMap}
+                    type="button"
+                    variant="secondary"
+                  >
                     Open in Map
                   </Button>
                 </Card>
