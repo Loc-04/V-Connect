@@ -175,6 +175,7 @@ Environment variables for the geocoding provider:
 - `MAP_GEOCODING_USER_AGENT`
 - `MAP_GEOCODING_EMAIL` (optional, recommended for Nominatim usage policy)
 - `MAP_GEOCODING_COUNTRY_CODES` (default `vn`)
+- `CHECKIN_CODE_SALT` (optional, default `v-connect-checkin-salt`)
 
 ### Attendance / Check-in API
 
@@ -189,7 +190,13 @@ Environment variables for the geocoding provider:
   - Creates a participation record for the authenticated volunteer/admin account (`status = pending`).
 - `POST /participations/:id/check-in`
   - Organizer/admin only.
+  - Body: `{ "checkInCode": "<code>" }`
+  - Check-in is allowed only on the same calendar date as `activity.start_time`.
   - Marks a participation as checked in (`status = checked_in` and `checked_in_at` when the column exists).
+- `POST /activities/:id/check-in-by-code`
+  - Organizer/admin only.
+  - Body: `{ "checkInCode": "<code>" }`
+  - Resolves the matching registration by code inside the selected activity, then checks in.
 
 ### Sprint 3 Registration API
 
@@ -208,6 +215,7 @@ Environment variables for the geocoding provider:
 - `PUT /registrations/:id/approve`
   - Organizer/admin only.
   - Approves a registration, respecting activity capacity.
+  - Sends check-in code to the volunteer via in-app notification.
 - `PUT /registrations/:id/reject`
   - Organizer/admin only.
   - Rejects a registration.
