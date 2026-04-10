@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ClipboardList, MapPin, Sparkles } from 'lucide-react';
+import { ClipboardList, ExternalLink, MapPin, Sparkles } from 'lucide-react';
 
 import { normalizeRole } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
+import { ActivityLocationMap } from '../components/maps/ActivityLocationMap';
 import { Button, Card } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
+import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
-import { listProvinces, listWards } from '../lib/locations';
+import { geocodeLocation, listProvinces, listWards } from '../lib/locations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
-import type { ProvinceRecord, WardRecord } from '../types/location';
+import type { GeocodedLocationRecord, ProvinceRecord, WardRecord } from '../types/location';
 import './CreateActivityPage.css';
 
 function combineDateAndTime(date: string, time: string) {
@@ -45,6 +47,41 @@ function getAddressValue(location: ActivityRecord['location']) {
   return location.address ?? '';
 }
 
+function buildLocationRequestKey(address: string, provinceCode: string, wardCode: string) {
+  return [address.trim().toLowerCase(), provinceCode.trim(), wardCode.trim()].join('|');
+}
+
+function mapActivityLocationToGeocodedRecord(activity: ActivityRecord): GeocodedLocationRecord | null {
+  if (!activity.location || typeof activity.location === 'string') {
+    return null;
+  }
+
+  if (typeof activity.location.lat !== 'number' || !Number.isFinite(activity.location.lat)) {
+    return null;
+  }
+
+  if (typeof activity.location.lng !== 'number' || !Number.isFinite(activity.location.lng)) {
+    return null;
+  }
+
+  return {
+    address: activity.location.address ?? '',
+    city: activity.location.city ?? null,
+    province: activity.location.province ?? null,
+    ward: activity.location.ward ?? null,
+    formattedAddress:
+      activity.location.formattedAddress ||
+      [activity.location.address, activity.location.ward, activity.location.province].filter(Boolean).join(', '),
+    provinceCode: activity.province_code ?? null,
+    wardCode: activity.ward_code ?? null,
+    mapProvider: activity.location.mapProvider ?? null,
+    geocodedAt: activity.location.geocodedAt ?? null,
+    geocodeConfidence: activity.location.geocodeConfidence ?? null,
+    lat: activity.location.lat,
+    lng: activity.location.lng,
+  };
+}
+
 export function CreateActivityPage() {
   const navigate = useNavigate();
   const { id: activityId } = useParams<{ id?: string }>();
@@ -62,9 +99,13 @@ export function CreateActivityPage() {
   const [skillDraft, setSkillDraft] = useState('');
   const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
   const [wards, setWards] = useState<WardRecord[]>([]);
+  const [mapLocation, setMapLocation] = useState<GeocodedLocationRecord | null>(null);
+  const [resolvedLocationKey, setResolvedLocationKey] = useState('');
   const [loadingActivity, setLoadingActivity] = useState(Boolean(activityId));
   const [loadingProvinces, setLoadingProvinces] = useState(true);
   const [loadingWards, setLoadingWards] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -79,6 +120,49 @@ export function CreateActivityPage() {
     [provinceCode, provinces]
   );
   const selectedWard = useMemo(() => wards.find((ward) => ward.code === wardCode) ?? null, [wardCode, wards]);
+  const currentLocationKey = useMemo(
+    () => buildLocationRequestKey(streetAddress, provinceCode, wardCode),
+    [provinceCode, streetAddress, wardCode]
+  );
+  const resolvedMapLocation = currentLocationKey === resolvedLocationKey ? mapLocation : null;
+  const locationSummary = useMemo(
+    () =>
+      [
+        streetAddress.trim(),
+        selectedWard?.name ?? resolvedMapLocation?.ward ?? '',
+        selectedProvince?.name ?? resolvedMapLocation?.province ?? '',
+      ]
+        .filter(Boolean)
+        .join(', '),
+    [resolvedMapLocation?.province, resolvedMapLocation?.ward, selectedProvince?.name, selectedWard?.name, streetAddress]
+  );
+  const openMapUrl = useMemo(
+    () =>
+      buildActivityMapUrl(
+        resolvedMapLocation
+          ? {
+              address: resolvedMapLocation.address,
+              city: resolvedMapLocation.city ?? undefined,
+              province: resolvedMapLocation.province ?? undefined,
+              ward: resolvedMapLocation.ward ?? undefined,
+              formattedAddress: resolvedMapLocation.formattedAddress,
+              mapProvider: resolvedMapLocation.mapProvider,
+              geocodedAt: resolvedMapLocation.geocodedAt,
+              geocodeConfidence: resolvedMapLocation.geocodeConfidence,
+              lat: resolvedMapLocation.lat,
+              lng: resolvedMapLocation.lng,
+            }
+          : locationSummary
+            ? {
+                address: streetAddress.trim(),
+                province: selectedProvince?.name ?? undefined,
+                ward: selectedWard?.name ?? undefined,
+                formattedAddress: locationSummary,
+              }
+            : null
+      ),
+    [locationSummary, resolvedMapLocation, selectedProvince?.name, selectedWard?.name, streetAddress]
+  );
 
   useEffect(() => {
     if (!session?.access_token) {
@@ -172,6 +256,12 @@ export function CreateActivityPage() {
         setStreetAddress(getAddressValue(activity.location));
         setProvinceCode(activity.province_code ?? '');
         setWardCode(activity.ward_code ?? '');
+        const existingMapLocation = mapActivityLocationToGeocodedRecord(activity);
+        setMapLocation(existingMapLocation);
+        setResolvedLocationKey(
+          existingMapLocation ? buildLocationRequestKey(getAddressValue(activity.location), activity.province_code ?? '', activity.ward_code ?? '') : ''
+        );
+        setGeocodeError(null);
         setDate(start.date);
         setStartTime(start.time);
         setEndTime(end.time);
@@ -194,6 +284,70 @@ export function CreateActivityPage() {
       isMounted = false;
     };
   }, [activityId, session?.access_token]);
+
+  useEffect(() => {
+    if (!session?.access_token || loadingActivity) {
+      return;
+    }
+
+    let cancelled = false;
+    const address = streetAddress.trim();
+    if (!address || !provinceCode || !wardCode) {
+      if (currentLocationKey !== resolvedLocationKey) {
+        setMapLocation(null);
+      }
+      setGeocoding(false);
+      setGeocodeError(null);
+      return;
+    }
+
+    if (currentLocationKey === resolvedLocationKey) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setGeocoding(true);
+      setGeocodeError(null);
+
+      void geocodeLocation(
+        {
+          address,
+          provinceCode,
+          wardCode,
+        },
+        session.access_token
+      )
+        .then((nextLocation) => {
+          if (cancelled) {
+            return;
+          }
+          setMapLocation(nextLocation);
+          setResolvedLocationKey(currentLocationKey);
+        })
+        .catch((geocodeLoadError) => {
+          if (cancelled) {
+            return;
+          }
+          setMapLocation(null);
+          setResolvedLocationKey('');
+          setGeocodeError(
+            geocodeLoadError instanceof Error
+              ? geocodeLoadError.message
+              : 'Map preview is unavailable for the selected address.'
+          );
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setGeocoding(false);
+          }
+        });
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentLocationKey, loadingActivity, provinceCode, resolvedLocationKey, session?.access_token, streetAddress, wardCode]);
 
   const addSkill = () => {
     const nextSkill = skillDraft.trim();
@@ -263,6 +417,15 @@ export function CreateActivityPage() {
         description: description.trim(),
         location: {
           address: streetAddress.trim(),
+          city: resolvedMapLocation?.city ?? selectedProvince?.name ?? '',
+          province: resolvedMapLocation?.province ?? selectedProvince?.name ?? '',
+          ward: resolvedMapLocation?.ward ?? selectedWard?.name ?? '',
+          formattedAddress: resolvedMapLocation?.formattedAddress ?? locationSummary ?? streetAddress.trim(),
+          mapProvider: resolvedMapLocation?.mapProvider ?? null,
+          geocodedAt: resolvedMapLocation?.geocodedAt ?? null,
+          geocodeConfidence: resolvedMapLocation?.geocodeConfidence ?? null,
+          lat: resolvedMapLocation?.lat ?? null,
+          lng: resolvedMapLocation?.lng ?? null,
         },
         provinceCode,
         wardCode,
@@ -471,9 +634,7 @@ export function CreateActivityPage() {
                 <label className="activity-field">
                   <span>Selected location summary</span>
                   <div className="activity-location-summary" role="status">
-                    {streetAddress || selectedWard || selectedProvince
-                      ? [streetAddress.trim(), selectedWard?.name, selectedProvince?.name].filter(Boolean).join(', ')
-                      : 'Select province, ward, and street address.'}
+                    {locationSummary || 'Select province, ward, and street address.'}
                   </div>
                 </label>
 
@@ -488,15 +649,61 @@ export function CreateActivityPage() {
                 </label>
               </div>
 
-              <div className="map-preview" aria-hidden="true">
-                <span>Map Preview</span>
-                <div className="map-preview__content">
-                  <strong>
-                    {streetAddress || selectedWard || selectedProvince
-                      ? [streetAddress.trim(), selectedWard?.name, selectedProvince?.name].filter(Boolean).join(', ')
-                      : 'Select address, province, and ward'}
-                  </strong>
-                  <p>Map integration will be added later. This area is reserved for the live map picker/preview.</p>
+              <div className="activity-map-preview-card">
+                <div className="activity-map-preview-card__head">
+                  <div>
+                    <strong>Map Preview</strong>
+                    <p>
+                      {resolvedMapLocation
+                        ? 'The preview is synced from the geocoded activity address.'
+                        : 'Complete the address fields to load a live map preview.'}
+                    </p>
+                  </div>
+                  <div className="activity-map-preview-card__actions">
+                    {geocoding ? <span className="activity-map-preview-card__status">Locating...</span> : null}
+                    <Button
+                      disabled={!openMapUrl}
+                      onClick={() => {
+                        if (openMapUrl) {
+                          window.open(openMapUrl, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      type="button"
+                      variant="secondary"
+                    >
+                      <ExternalLink size={16} />
+                      Open in Maps
+                    </Button>
+                  </div>
+                </div>
+                <ActivityLocationMap
+                  address={locationSummary || streetAddress.trim() || 'Select address, province, and ward'}
+                  className="activity-map-preview-card__map"
+                  compact
+                  coordinates={
+                    resolvedMapLocation
+                      ? {
+                          lat: resolvedMapLocation.lat,
+                          lng: resolvedMapLocation.lng,
+                        }
+                      : null
+                  }
+                  emptyMessage="Enter a valid street address, province, and ward to load the live map preview."
+                  emptyTitle="Live map preview is waiting for a complete address"
+                  error={geocodeError}
+                  interactive
+                  loading={geocoding}
+                  title={title.trim() || 'Activity location preview'}
+                />
+                <div className="activity-map-preview-card__summary">
+                  <strong>{resolvedMapLocation?.formattedAddress ?? locationSummary ?? 'No formatted address yet'}</strong>
+                  <p>
+                    {resolvedMapLocation
+                      ? `Lat ${resolvedMapLocation.lat.toFixed(6)}, Lng ${resolvedMapLocation.lng.toFixed(6)} via ${resolvedMapLocation.mapProvider ?? 'geocoding provider'}.`
+                      : geocodeError
+                        ? 'Publishing still works, but the map preview is unavailable until the address resolves successfully.'
+                        : 'The form will automatically geocode the selected address and keep those coordinates when you save or reopen this activity.'}
+                  </p>
                 </div>
               </div>
             </Card>

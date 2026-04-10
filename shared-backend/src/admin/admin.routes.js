@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { userColumns, validRoles } from '../config/constants.js';
+import { userColumns, validRoles, validUserStatuses } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
 import { requireAdmin, requireAuth } from '../auth/auth.middleware.js';
 import { countRows, getDistribution } from './admin.service.js';
@@ -13,6 +13,43 @@ import {
 } from '../notifications/notifications.service.js';
 
 const router = Router();
+const AUTH_USERS_PAGE_SIZE = 1000;
+
+async function buildAuthEmailIndex() {
+  const emailByUserId = new Map();
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage: AUTH_USERS_PAGE_SIZE,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const chunk = data?.users ?? [];
+    chunk.forEach((authUser) => {
+      emailByUserId.set(authUser.id, authUser.email ?? null);
+    });
+
+    if (chunk.length < AUTH_USERS_PAGE_SIZE) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return emailByUserId;
+}
+
+function attachAuthEmailsToUsers(users, emailByUserId) {
+  return users.map((user) => ({
+    ...user,
+    email: emailByUserId.get(user.id) ?? null,
+  }));
+}
 
 router.get('/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
   const requestedLimit = Number(req.query.limit ?? 100);
@@ -130,37 +167,48 @@ router.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
     res.status(400).json({ message: 'Invalid role filter.' });
     return;
   }
-
-  let query = supabaseAdmin.from('users').select(userColumns).is('deleted_at', null).order('created_at', {
-    ascending: false,
-  });
-
-  if (roleFilter !== 'all') {
-    query = query.eq('role', roleFilter);
-  }
-  if (statusFilter !== 'all') {
-    query = query.eq('status', statusFilter);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    res.status(500).json({ message: error.message });
+  if (statusFilter !== 'all' && !validUserStatuses.has(statusFilter)) {
+    res.status(400).json({ message: 'Invalid status filter.' });
     return;
   }
 
-  const users = (data ?? []).filter((user) => {
-    if (!search) {
-      return true;
+  try {
+    let query = supabaseAdmin.from('users').select(userColumns).is('deleted_at', null).order('created_at', {
+      ascending: false,
+    });
+
+    if (roleFilter !== 'all') {
+      query = query.eq('role', roleFilter);
+    }
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
     }
 
-    return (
-      String(user.id).toLowerCase().includes(search) ||
-      String(user.full_name ?? '').toLowerCase().includes(search) ||
-      String(user.phone ?? '').toLowerCase().includes(search)
-    );
-  });
+    const { data, error } = await query;
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
 
-  res.json({ users });
+    const emailByUserId = await buildAuthEmailIndex();
+    const usersWithEmails = attachAuthEmailsToUsers(data ?? [], emailByUserId);
+    const users = usersWithEmails.filter((user) => {
+      if (!search) {
+        return true;
+      }
+
+      return (
+        String(user.id).toLowerCase().includes(search) ||
+        String(user.full_name ?? '').toLowerCase().includes(search) ||
+        String(user.phone ?? '').toLowerCase().includes(search) ||
+        String(user.email ?? '').toLowerCase().includes(search)
+      );
+    });
+
+    res.json({ users });
+  } catch (error) {
+    res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to load users.' });
+  }
 });
 
 router.patch('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
@@ -168,8 +216,16 @@ router.patch('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => 
   const nextRole = req.body?.role;
   const nextStatus = typeof req.body?.status === 'string' ? req.body.status.trim().toLowerCase() : undefined;
 
+  if (!isUuid(targetUserId)) {
+    res.status(400).json({ message: 'User id must be a valid UUID.' });
+    return;
+  }
   if (nextRole && !validRoles.has(nextRole)) {
     res.status(400).json({ message: 'Invalid role value.' });
+    return;
+  }
+  if (nextStatus && !validUserStatuses.has(nextStatus)) {
+    res.status(400).json({ message: 'Invalid status value.' });
     return;
   }
   if (!nextRole && !nextStatus) {
@@ -210,14 +266,20 @@ router.patch('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => 
     return;
   }
 
-  res.json({ user: data });
+  try {
+    const emailByUserId = await buildAuthEmailIndex();
+    const [user] = attachAuthEmailsToUsers([data], emailByUserId);
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to load updated user email.' });
+  }
 });
 
 router.delete('/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
   const targetUserId = req.params.id;
 
-  if (!targetUserId) {
-    res.status(400).json({ message: 'User id is required.' });
+  if (!targetUserId || !isUuid(targetUserId)) {
+    res.status(400).json({ message: 'User id must be a valid UUID.' });
     return;
   }
 

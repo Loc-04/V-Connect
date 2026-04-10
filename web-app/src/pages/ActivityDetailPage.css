@@ -283,11 +283,10 @@
   overflow: hidden;
 }
 
-.activity-detail-map-card img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  display: block;
+.activity-detail-map-card .activity-location-map {
+  border: 0;
+  border-radius: 0;
+  min-height: 220px;
 }
 
 .activity-detail-map-btn.secondary-btn {

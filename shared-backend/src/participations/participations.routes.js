@@ -151,6 +151,13 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
     throw error;
   }
 
+  const activityEndTime = new Date(activity.end_time ?? '');
+  if (requesterRole !== 'admin' && !Number.isNaN(activityEndTime.getTime()) && activityEndTime.getTime() <= Date.now()) {
+    const error = new Error('Registration is closed because this activity has already ended.');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const { data: existingRegistration, error: existingError } = await supabaseAdmin
     .from('activity_participations')
     .select(participationColumns)
@@ -175,21 +182,44 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
   if (requesterRole !== 'admin') {
     const { data: otherCommitted, error: otherCommittedError } = await supabaseAdmin
       .from('activity_participations')
-      .select('id')
+      .select('id, activity_id')
       .eq('volunteer_id', volunteerId)
-      .in('status', ['approved', 'checked_in'])
+      .eq('status', 'approved')
       .neq('activity_id', activityId);
 
     if (otherCommittedError) {
       throw new Error(otherCommittedError.message);
     }
 
-    if (otherCommitted && otherCommitted.length > 0) {
-      const error = new Error(
-        'You already have an approved registration for another activity. Cancel that registration before signing up elsewhere.',
-      );
-      error.statusCode = 400;
-      throw error;
+    const committedActivityIds = Array.from(
+      new Set(
+        (otherCommitted ?? [])
+          .map((row) => (typeof row.activity_id === 'string' ? row.activity_id : ''))
+          .filter((id) => id.length > 0)
+      )
+    );
+
+    if (committedActivityIds.length > 0) {
+      const { data: conflictingActivities, error: conflictingActivitiesError } = await supabaseAdmin
+        .from('activities')
+        .select('id')
+        .in('id', committedActivityIds)
+        .is('deleted_at', null)
+        .gt('end_time', new Date().toISOString())
+        .neq('status', 'completed')
+        .neq('status', 'cancelled');
+
+      if (conflictingActivitiesError) {
+        throw new Error(conflictingActivitiesError.message);
+      }
+
+      if ((conflictingActivities ?? []).length > 0) {
+        const error = new Error(
+          'You already have an approved registration for another activity. Approved registrations must be handled by the organizer before you can sign up elsewhere.',
+        );
+        error.statusCode = 400;
+        throw error;
+      }
     }
   }
 
@@ -301,6 +331,12 @@ async function cancelRegistration({ activityId, volunteerId }) {
 
   if (String(existingRegistration.status ?? '') === 'checked_in') {
     const error = new Error('Checked-in registration cannot be cancelled.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (String(existingRegistration.status ?? '') === 'approved') {
+    const error = new Error('Approved registration cannot be cancelled by the volunteer.');
     error.statusCode = 400;
     throw error;
   }
@@ -847,6 +883,11 @@ router.post('/participations/:id/check-in', requireAuth, async (req, res) => {
 
   if (participation.status === 'rejected') {
     res.status(400).json({ message: 'Rejected participation cannot be checked in.' });
+    return;
+  }
+
+  if (participation.status !== 'approved') {
+    res.status(400).json({ message: 'Only approved participations can be checked in.' });
     return;
   }
 

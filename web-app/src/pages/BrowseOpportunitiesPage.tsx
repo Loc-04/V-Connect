@@ -19,6 +19,7 @@ interface OpportunityViewModel {
   id: string;
   category: string;
   categoryTone: CategoryTone;
+  isExpired: boolean;
   imageUrl: string;
   date: string;
   title: string;
@@ -47,6 +48,7 @@ function mapStatusToTone(status: string): CategoryTone {
     case 'completed':
       return 'success';
     case 'cancelled':
+    case 'expired':
       return 'danger';
     case 'draft':
       return 'neutral';
@@ -75,14 +77,22 @@ function getLocationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
+function isActivityExpired(activity: ActivityRecord) {
+  const end = new Date(activity.end_time ?? '');
+  return !Number.isNaN(end.getTime()) && end.getTime() <= Date.now();
+}
+
 function toOpportunity(activity: ActivityRecord, index: number): OpportunityViewModel {
-  const status = String(activity.status ?? '').toLowerCase();
+  const baseStatus = String(activity.status ?? '').toLowerCase();
+  const isExpired = baseStatus === 'published' && isActivityExpired(activity);
+  const status = isExpired ? 'expired' : baseStatus;
   const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
 
   return {
     id: activity.id,
     category: status || 'opportunity',
     categoryTone: mapStatusToTone(status),
+    isExpired,
     imageUrl: fallbackImages[index % fallbackImages.length],
     date: formatDateLabel(activity.start_time),
     title: activity.title ?? 'Untitled activity',
@@ -396,9 +406,10 @@ export function BrowseOpportunitiesPage() {
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
                       activityId={opportunity.id}
-                      canRegister={canApply}
+                      canRegister={canApply && !opportunity.isExpired}
                       className="browse-registration-action"
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
+                      registerDisabledLabel={canApply ? 'Registration closed' : 'Volunteer only'}
                       onNotice={handleRegistrationNotice}
                       onRegistered={(participation) => {
                         setParticipationByActivityId((current) => ({

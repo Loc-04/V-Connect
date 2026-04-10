@@ -4,19 +4,26 @@ import { CalendarClock, Heart, MapPin, Share2, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
+import { ActivityLocationMap } from '../components/maps/ActivityLocationMap';
 import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
-import { formatActivityLocation } from '../lib/activityLocation';
+import {
+  buildActivityMapUrl,
+  formatActivityLocation,
+  getActivityAddressLine,
+  getActivityCoordinates,
+  type ActivityCoordinates,
+} from '../lib/activityLocation';
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
-import { listParticipations } from '../lib/participations';
+import { cancelParticipation, listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
 import type { ActivityDetailMock } from '../lib/participationMocks';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './ActivityDetailPage.css';
 
-type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published';
+type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published' | 'expired';
 
 interface ActivityDetailViewModel {
   id: string;
@@ -35,7 +42,8 @@ interface ActivityDetailViewModel {
   categories: string[];
   requirements: string[];
   heroImageUrl: string;
-  mapImageUrl: string;
+  locationCoordinates: ActivityCoordinates | null;
+  mapUrl: string | null;
 }
 
 const FALLBACK_HERO_IMAGES = [
@@ -45,9 +53,6 @@ const FALLBACK_HERO_IMAGES = [
   'https://images.pexels.com/photos/5731866/pexels-photo-5731866.jpeg?auto=compress&cs=tinysrgb&w=1400',
 ];
 
-const FALLBACK_MAP_IMAGE =
-  'https://staticmap.openstreetmap.de/staticmap.php?center=30.2672,-97.7431&zoom=12&size=640x360&markers=30.2672,-97.7431,red-pushpin';
-
 const PARTICIPANT_AVATARS = [
   'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&cs=tinysrgb&w=150',
   'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
@@ -55,8 +60,17 @@ const PARTICIPANT_AVATARS = [
   'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150',
 ];
 
-function toStatus(value: string): ViewStatus {
+function toStatus(value: string, endTime?: string | null): ViewStatus {
   const normalized = value.trim().toLowerCase();
+  if (normalized === 'cancelled' || normalized === 'completed') {
+    return normalized;
+  }
+  if (endTime) {
+    const end = new Date(endTime);
+    if (!Number.isNaN(end.getTime()) && end.getTime() <= Date.now()) {
+      return 'expired';
+    }
+  }
   if (normalized === 'completed' || normalized === 'cancelled' || normalized === 'published') {
     return normalized;
   }
@@ -107,14 +121,6 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
-function getMapQuery(activity: ActivityDetailViewModel): string {
-  const address = activity.locationAddress.trim();
-  if (address.length > 0) {
-    return address;
-  }
-  return activity.locationName.trim();
-}
-
 function hashString(input: string) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -138,12 +144,15 @@ function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
     volunteerHours: mock.volunteerHours,
     maxParticipants: mock.maxParticipants,
     currentParticipants: mock.currentParticipants,
-    status: mock.status === 'published' ? 'published' : mock.status,
+    status: toStatus(mock.status, mock.endTime),
     level: mock.level,
     categories: mock.categories,
     requirements: mock.requirements,
     heroImageUrl: mock.heroImageUrl,
-    mapImageUrl: mock.mapImageUrl,
+    locationCoordinates: null,
+    mapUrl: mock.locationAddress
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mock.locationAddress)}`
+      : null,
   };
 }
 
@@ -163,18 +172,19 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
       fallback?.description ||
       'Details for this activity are being updated by the organizer.',
     locationName: locationLabel(activity.location),
-    locationAddress: fallback?.locationAddress || locationLabel(activity.location),
+    locationAddress: getActivityAddressLine(activity.location) || fallback?.locationAddress || locationLabel(activity.location),
     dateLabel,
     timeLabel,
     volunteerHours: toHours(activity.start_time, activity.end_time),
     maxParticipants,
     currentParticipants: fallback?.currentParticipants ?? null,
-    status: toStatus(String(activity.status ?? 'upcoming')),
+    status: toStatus(String(activity.status ?? 'upcoming'), activity.end_time),
     level: fallback?.level || 'Open to all levels',
     categories,
     requirements,
     heroImageUrl: fallback?.heroImageUrl || FALLBACK_HERO_IMAGES[hashString(activity.id) % FALLBACK_HERO_IMAGES.length],
-    mapImageUrl: fallback?.mapImageUrl || FALLBACK_MAP_IMAGE,
+    locationCoordinates: getActivityCoordinates(activity.location),
+    mapUrl: buildActivityMapUrl(activity.location),
   };
 }
 
@@ -183,6 +193,9 @@ function getStatusTone(status: ViewStatus) {
     return 'success' as const;
   }
   if (status === 'cancelled') {
+    return 'danger' as const;
+  }
+  if (status === 'expired') {
     return 'danger' as const;
   }
   if (status === 'published') {
@@ -391,15 +404,13 @@ export function ActivityDetailPage() {
       return;
     }
 
-    const query = getMapQuery(activity);
-    if (!query) {
+    if (!activity.mapUrl) {
       setMessage(null);
       setError('No location data is available to open map.');
       return;
     }
 
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-    window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+    window.open(activity.mapUrl, '_blank', 'noopener,noreferrer');
   };
 
   const openSlotsLabel = useMemo(() => {
@@ -411,6 +422,8 @@ export function ActivityDetailPage() {
     }
     return `${activity.currentParticipants} / ${activity.maxParticipants}`;
   }, [activity]);
+
+  const canSubmitRegistration = canRegister && activity?.status !== 'expired';
 
   return (
     <VolunteerShell
@@ -600,9 +613,19 @@ export function ActivityDetailPage() {
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
                       activityId={activity.id}
-                      canRegister={canRegister}
+                      canRegister={canSubmitRegistration}
                       className="activity-detail-registration-action"
                       currentStatus={participation?.status ?? 'none'}
+                      confirmCancelMessage="Cancel this registration for the activity?"
+                      registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
+                      onCancel={async ({ activityId }) => {
+                        if (!session?.access_token) {
+                          throw new Error('No active session token.');
+                        }
+
+                        const cancelledParticipation = await cancelParticipation(activityId, session.access_token);
+                        setParticipation(cancelledParticipation);
+                      }}
                       onNotice={handleRegistrationNotice}
                       onRegistered={(nextParticipation) => {
                         setParticipation(nextParticipation);
@@ -613,8 +636,22 @@ export function ActivityDetailPage() {
                 </Card>
 
                 <Card as="article" className="activity-detail-map-card">
-                  <img alt="Activity location map" src={activity.mapImageUrl} />
-                  <Button className="activity-detail-map-btn" onClick={handleOpenMap} type="button" variant="secondary">
+                  <ActivityLocationMap
+                    address={activity.locationAddress || activity.locationName}
+                    compact
+                    coordinates={activity.locationCoordinates}
+                    emptyMessage="The organizer has not saved map coordinates for this activity yet. You can still open the address in your maps app."
+                    emptyTitle="Live map preview is not available"
+                    interactive
+                    title={activity.title}
+                  />
+                  <Button
+                    className="activity-detail-map-btn"
+                    disabled={!activity.mapUrl}
+                    onClick={handleOpenMap}
+                    type="button"
+                    variant="secondary"
+                  >
                     Open in Map
                   </Button>
                 </Card>

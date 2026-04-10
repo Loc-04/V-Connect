@@ -12,7 +12,7 @@ import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './OrganizerCheckInManagementPage.css';
 
-type AttendanceStatusFilter = 'all' | 'pending' | 'approved' | 'checked_in' | 'rejected' | 'cancelled';
+type AttendanceStatusFilter = 'all' | 'approved' | 'checked_in' | 'rejected' | 'cancelled';
 
 function normalizeStatus(value: string | null | undefined) {
   return String(value ?? '').trim().toLowerCase();
@@ -140,7 +140,10 @@ export function OrganizerCheckInManagementPage() {
           activityId,
           limit: 400,
         });
-        setAttendees(rows);
+        setAttendees(rows.filter((item) => {
+          const status = normalizeStatus(item.status);
+          return status !== 'pending' && status !== 'assigned';
+        }));
       } catch (loadError) {
         setNotice({
           tone: 'error',
@@ -166,7 +169,7 @@ export function OrganizerCheckInManagementPage() {
   );
 
   const metrics = useMemo(() => {
-    const activeStatuses = new Set(['pending', 'approved', 'checked_in']);
+    const activeStatuses = new Set(['approved', 'checked_in']);
     const totalRegistered = attendees.filter((item) => activeStatuses.has(normalizeStatus(item.status))).length;
     const checkedIn = attendees.filter((item) => normalizeStatus(item.status) === 'checked_in').length;
     const notCheckedIn = Math.max(0, totalRegistered - checkedIn);
@@ -207,7 +210,7 @@ export function OrganizerCheckInManagementPage() {
     () =>
       filteredAttendees.filter((item) => {
         const status = normalizeStatus(item.status);
-        return status === 'pending' || status === 'approved';
+        return status === 'approved';
       }),
     [filteredAttendees]
   );
@@ -218,7 +221,7 @@ export function OrganizerCheckInManagementPage() {
     }
 
     if (metrics.totalRegistered === 0) {
-      return 'No registrations yet. Attendance insight will appear once attendees are registered.';
+      return 'No approved attendees yet. Attendance insight will appear once registrations are approved.';
     }
 
     const checkedInTimes = attendees
@@ -285,7 +288,7 @@ export function OrganizerCheckInManagementPage() {
       setNotice({
         tone: 'info',
         title: 'No eligible attendees',
-        description: 'There are no pending or approved attendees in the current filtered list.',
+        description: 'There are no approved attendees in the current filtered list.',
       });
       return;
     }
@@ -387,7 +390,7 @@ export function OrganizerCheckInManagementPage() {
             <span className="org-checkin-metric-icon">
               <UsersRound size={16} />
             </span>
-            <p>Total Registered</p>
+            <p>Approved Attendees</p>
             <strong>{metrics.totalRegistered}</strong>
           </Card>
 
@@ -442,7 +445,6 @@ export function OrganizerCheckInManagementPage() {
                   value={statusFilter}
                 >
                   <option value="all">All statuses</option>
-                  <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
                   <option value="checked_in">Checked In</option>
                   <option value="rejected">Rejected</option>
@@ -469,7 +471,7 @@ export function OrganizerCheckInManagementPage() {
               <tbody>
                 {filteredAttendees.map((attendee) => {
                   const status = normalizeStatus(attendee.status);
-                  const canCheckIn = status === 'pending' || status === 'approved';
+                  const canCheckIn = status === 'approved';
                   const volunteerName = attendee.volunteer?.full_name?.trim() || 'Volunteer';
                   const volunteerMeta = attendee.volunteer?.phone?.trim() || attendee.id.slice(0, 8);
 

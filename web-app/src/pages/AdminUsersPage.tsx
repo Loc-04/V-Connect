@@ -16,7 +16,7 @@ import { apiRequest } from '../lib/api';
 import type { UserRecord } from '../types/domain';
 
 const roleOptions = ['admin', 'organizer', 'volunteer'];
-const baseStatusOptions = ['active', 'inactive', 'suspended'];
+const baseStatusOptions = ['active', 'banned'];
 const USERS_PER_PAGE = 10;
 
 interface UserEditDraft {
@@ -41,12 +41,12 @@ type PageItem = number | 'ellipsis';
 
 function formatRelativeDate(date: string | null): string {
   if (!date) {
-    return 'Last active: just now';
+    return 'Updated just now';
   }
 
   const timestamp = new Date(date).getTime();
   if (Number.isNaN(timestamp)) {
-    return 'Last active: recently';
+    return 'Updated recently';
   }
 
   const diffMs = Date.now() - timestamp;
@@ -55,15 +55,15 @@ function formatRelativeDate(date: string | null): string {
   const day = 24 * hour;
 
   if (diffMs < minute) {
-    return 'Last active: just now';
+    return 'Updated just now';
   }
   if (diffMs < hour) {
-    return `Last active: ${Math.floor(diffMs / minute)}m ago`;
+    return `Updated ${Math.floor(diffMs / minute)}m ago`;
   }
   if (diffMs < day) {
-    return `Last active: ${Math.floor(diffMs / hour)}h ago`;
+    return `Updated ${Math.floor(diffMs / hour)}h ago`;
   }
-  return `Last active: ${Math.floor(diffMs / day)}d ago`;
+  return `Updated ${Math.floor(diffMs / day)}d ago`;
 }
 
 function getInitials(fullName: string | null, fallbackId: string): string {
@@ -79,7 +79,12 @@ function getInitials(fullName: string | null, fallbackId: string): string {
 
 function getContactDisplay(user: UserRecord): string {
   const phone = String(user.phone ?? '').trim();
-  return phone.length > 0 ? phone : 'Unavailable from API';
+  if (phone.length > 0) {
+    return phone;
+  }
+
+  const email = String(user.email ?? '').trim();
+  return email.length > 0 ? email : 'No contact info';
 }
 
 function tokenOf(value: string): string {
@@ -198,7 +203,8 @@ export function AdminUsersPage() {
         !keyword ||
         user.id.toLowerCase().includes(keyword) ||
         (user.full_name ?? '').toLowerCase().includes(keyword) ||
-        (user.phone ?? '').toLowerCase().includes(keyword);
+        (user.phone ?? '').toLowerCase().includes(keyword) ||
+        (user.email ?? '').toLowerCase().includes(keyword);
 
       const matchesRole = roleFilter === 'all' || String(user.role) === roleFilter;
       const matchesStatus = statusFilter === 'all' || String(user.status ?? 'active') === statusFilter;
@@ -396,7 +402,7 @@ export function AdminUsersPage() {
             <input
               className="text-input users-search-input"
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search by name, phone, or UUID"
+              placeholder="Search by name, email, phone, or UUID"
               value={searchTerm}
             />
           </label>
