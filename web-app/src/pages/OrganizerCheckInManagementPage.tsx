@@ -1,4 +1,4 @@
-import { Check, CircleDashed, Filter, RefreshCw, Search, UsersRound } from 'lucide-react';
+import { Check, CircleDashed, Filter, KeyRound, RefreshCw, Search, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -7,15 +7,31 @@ import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } fro
 import { Button, Card, Input, Select, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
-import { checkInParticipation, listParticipations } from '../lib/participations';
+import { checkInParticipationByCode, listParticipations } from '../lib/participations';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './OrganizerCheckInManagementPage.css';
 
-type AttendanceStatusFilter = 'all' | 'approved' | 'checked_in' | 'rejected' | 'cancelled';
+type AttendanceStatusFilter = 'all' | 'approved' | 'checked_in';
 
 function normalizeStatus(value: string | null | undefined) {
   return String(value ?? '').trim().toLowerCase();
+}
+
+function toDateKey(value: string | Date | null | undefined) {
+  if (!value) {
+    return '';
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatCheckInTime(value: string | null | undefined) {
@@ -68,10 +84,10 @@ export function OrganizerCheckInManagementPage() {
   const [attendees, setAttendees] = useState<ParticipationRecord[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
-  const [bulkChecking, setBulkChecking] = useState(false);
-  const [checkingInId, setCheckingInId] = useState<string | null>(null);
+  const [checkingInByCode, setCheckingInByCode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>('all');
+  const [checkInCode, setCheckInCode] = useState('');
   const [notice, setNotice] = useState<CheckInNoticeState | null>(null);
 
   const loadActivities = useCallback(async () => {
@@ -140,10 +156,12 @@ export function OrganizerCheckInManagementPage() {
           activityId,
           limit: 400,
         });
-        setAttendees(rows.filter((item) => {
-          const status = normalizeStatus(item.status);
-          return status !== 'pending' && status !== 'assigned';
-        }));
+        setAttendees(
+          rows.filter((item) => {
+            const status = normalizeStatus(item.status);
+            return status === 'approved' || status === 'checked_in';
+          })
+        );
       } catch (loadError) {
         setNotice({
           tone: 'error',
@@ -167,6 +185,12 @@ export function OrganizerCheckInManagementPage() {
     () => activities.find((activity) => activity.id === selectedActivityId) ?? null,
     [activities, selectedActivityId]
   );
+  const todayDateKey = useMemo(() => toDateKey(new Date()), []);
+  const selectedStartDateKey = useMemo(() => toDateKey(selectedActivity?.start_time), [selectedActivity?.start_time]);
+  const checkInOpenToday = Boolean(selectedStartDateKey) && selectedStartDateKey === todayDateKey;
+  const checkInLockedHint = selectedStartDateKey
+    ? `Check-in is available only on ${selectedStartDateKey}.`
+    : 'Check-in is available only on the activity start date.';
 
   const metrics = useMemo(() => {
     const activeStatuses = new Set(['approved', 'checked_in']);
@@ -206,18 +230,13 @@ export function OrganizerCheckInManagementPage() {
     });
   }, [attendees, searchTerm, statusFilter]);
 
-  const checkInEligibleRows = useMemo(
-    () =>
-      filteredAttendees.filter((item) => {
-        const status = normalizeStatus(item.status);
-        return status === 'approved';
-      }),
-    [filteredAttendees]
-  );
-
   const attendanceInsight = useMemo(() => {
     if (!selectedActivity) {
       return 'Select an activity to view attendance insight.';
+    }
+
+    if (!checkInOpenToday) {
+      return checkInLockedHint;
     }
 
     if (metrics.totalRegistered === 0) {
@@ -240,9 +259,9 @@ export function OrganizerCheckInManagementPage() {
     const firstLabel = first.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     const lastLabel = last.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     return `Current check-in rate is ${metrics.attendanceRate}%. Peak check-in flow is between ${firstLabel} and ${lastLabel}.`;
-  }, [attendees, metrics.attendanceRate, metrics.totalRegistered, selectedActivity]);
+  }, [attendees, checkInLockedHint, checkInOpenToday, metrics.attendanceRate, metrics.totalRegistered, selectedActivity]);
 
-  const handleCheckIn = async (participationId: string) => {
+  const handleCheckInByCode = async () => {
     if (!session?.access_token) {
       setNotice({
         tone: 'error',
@@ -252,16 +271,59 @@ export function OrganizerCheckInManagementPage() {
       return;
     }
 
-    setCheckingInId(participationId);
+    if (!selectedActivityId) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Please select an activity first.',
+      });
+      return;
+    }
+
+    const normalizedCode = checkInCode.trim();
+    if (!normalizedCode) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Check-in code is required.',
+      });
+      return;
+    }
+    if (!/^\d{5}$/.test(normalizedCode)) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Check-in code must be exactly 5 digits.',
+      });
+      return;
+    }
+
+    if (!checkInOpenToday) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in is locked',
+        description: checkInLockedHint,
+      });
+      return;
+    }
+
+    setCheckingInByCode(true);
     setNotice(null);
 
     try {
-      const updated = await checkInParticipation(participationId, session.access_token);
-      setAttendees((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      const updated = await checkInParticipationByCode(selectedActivityId, normalizedCode, session.access_token);
+      setAttendees((current) => {
+        const hasExisting = current.some((item) => item.id === updated.id);
+        if (!hasExisting) {
+          return [updated, ...current];
+        }
+        return current.map((item) => (item.id === updated.id ? updated : item));
+      });
+      setCheckInCode('');
       setNotice({
         tone: 'success',
         title: 'Check-in successful',
-        description: 'Attendance was recorded for this attendee.',
+        description: 'Attendance was recorded using the submitted check-in code.',
       });
     } catch (checkInError) {
       setNotice({
@@ -270,73 +332,8 @@ export function OrganizerCheckInManagementPage() {
         description: checkInError instanceof Error ? checkInError.message : 'Failed to check in attendee.',
       });
     } finally {
-      setCheckingInId(null);
+      setCheckingInByCode(false);
     }
-  };
-
-  const handleCheckInAll = async () => {
-    if (!session?.access_token) {
-      setNotice({
-        tone: 'error',
-        title: 'Bulk check-in failed',
-        description: 'No active session token.',
-      });
-      return;
-    }
-
-    if (checkInEligibleRows.length === 0) {
-      setNotice({
-        tone: 'info',
-        title: 'No eligible attendees',
-        description: 'There are no approved attendees in the current filtered list.',
-      });
-      return;
-    }
-
-    setBulkChecking(true);
-    setNotice(null);
-
-    const results = await Promise.allSettled(
-      checkInEligibleRows.map((row) => checkInParticipation(row.id, session.access_token))
-    );
-
-    const successful = results.filter(
-      (result): result is PromiseFulfilledResult<ParticipationRecord> => result.status === 'fulfilled'
-    );
-    const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-
-    if (successful.length > 0) {
-      const updatedMap = new Map(successful.map((result) => [result.value.id, result.value]));
-      setAttendees((current) => current.map((item) => updatedMap.get(item.id) ?? item));
-    }
-
-    if (failed.length > 0) {
-      const firstError = failed[0].reason;
-      const errorMessage =
-        firstError instanceof Error ? firstError.message : 'Some check-ins could not be completed.';
-
-      if (successful.length > 0) {
-        setNotice({
-          tone: 'info',
-          title: `${successful.length} attendee${successful.length === 1 ? '' : 's'} checked in`,
-          description: `Some remaining attendees could not be checked in. ${errorMessage}`,
-        });
-      } else {
-        setNotice({
-          tone: 'error',
-          title: 'Bulk check-in failed',
-          description: errorMessage,
-        });
-      }
-    } else if (successful.length > 0) {
-      setNotice({
-        tone: 'success',
-        title:
-          successful.length === 1 ? '1 attendee checked in successfully.' : `${successful.length} attendees checked in successfully.`,
-      });
-    }
-
-    setBulkChecking(false);
   };
 
   const loading = loadingActivities || loadingAttendees;
@@ -415,13 +412,28 @@ export function OrganizerCheckInManagementPage() {
         <Card as="section" className="org-checkin-table-shell">
           <div className="org-checkin-toolbar">
             <div className="org-checkin-actions">
-              <Button disabled={bulkChecking || checkInEligibleRows.length === 0} onClick={() => void handleCheckInAll()} type="button">
+              <label className="org-checkin-code-field" htmlFor="org-checkin-code-input">
+                <KeyRound size={14} />
+                <Input
+                  id="org-checkin-code-input"
+                  onChange={(event) => setCheckInCode(event.target.value.replace(/\D/g, '').slice(0, 5))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void handleCheckInByCode();
+                    }
+                  }}
+                  placeholder="Enter 5-digit check-in code"
+                  value={checkInCode}
+                />
+              </label>
+              <Button
+                disabled={!checkInOpenToday || checkingInByCode || !selectedActivityId || !/^\d{5}$/.test(checkInCode.trim())}
+                onClick={() => void handleCheckInByCode()}
+                type="button"
+              >
                 <Check size={14} />
-                <span>{bulkChecking ? 'Checking In...' : 'Check-in All'}</span>
-              </Button>
-              <Button disabled type="button" variant="secondary">
-                <CircleDashed size={14} />
-                <span>Mark All Absent</span>
+                <span>{checkingInByCode ? 'Checking...' : 'Check-in by Code'}</span>
               </Button>
             </div>
 
@@ -444,15 +456,14 @@ export function OrganizerCheckInManagementPage() {
                   sizeMode="small"
                   value={statusFilter}
                 >
-                  <option value="all">All statuses</option>
+                  <option value="all">All</option>
                   <option value="approved">Approved</option>
                   <option value="checked_in">Checked In</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="cancelled">Cancelled</option>
                 </Select>
               </label>
             </div>
           </div>
+          {!checkInOpenToday ? <p className="org-checkin-lock-note">{checkInLockedHint}</p> : null}
 
           {notice ? <CheckInResultState description={notice.description} title={notice.title} tone={notice.tone} /> : null}
 
@@ -465,13 +476,11 @@ export function OrganizerCheckInManagementPage() {
                   <th>Volunteer</th>
                   <th>Status</th>
                   <th>Check-in Time</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAttendees.map((attendee) => {
                   const status = normalizeStatus(attendee.status);
-                  const canCheckIn = status === 'approved';
                   const volunteerName = attendee.volunteer?.full_name?.trim() || 'Volunteer';
                   const volunteerMeta = attendee.volunteer?.phone?.trim() || attendee.id.slice(0, 8);
 
@@ -498,23 +507,13 @@ export function OrganizerCheckInManagementPage() {
                           />
                         </div>
                       </td>
-                      <td>
-                        <Button
-                          disabled={checkingInId === attendee.id || !canCheckIn}
-                          onClick={() => void handleCheckIn(attendee.id)}
-                          type="button"
-                          variant="secondary"
-                        >
-                          {checkingInId === attendee.id ? 'Checking...' : status === 'checked_in' ? 'Checked In' : 'Check-in'}
-                        </Button>
-                      </td>
                     </tr>
                   );
                 })}
 
                 {!loading && filteredAttendees.length === 0 && (
                   <tr>
-                    <td className="org-checkin-empty-cell" colSpan={4}>
+                    <td className="org-checkin-empty-cell" colSpan={3}>
                       No attendees found for this filter.
                     </td>
                   </tr>

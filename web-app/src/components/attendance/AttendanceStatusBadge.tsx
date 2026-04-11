@@ -6,6 +6,7 @@ import './AttendanceShared.css';
 export type AttendanceDisplayStatus =
   | 'checked_in'
   | 'not_checked_in'
+  | 'assigned'
   | 'pending'
   | 'absent'
   | 'approved'
@@ -35,6 +36,7 @@ function normalizeAttendanceStatus(status?: string | null): AttendanceDisplaySta
   if (
     normalized === 'checked_in' ||
     normalized === 'not_checked_in' ||
+    normalized === 'assigned' ||
     normalized === 'pending' ||
     normalized === 'absent' ||
     normalized === 'approved' ||
@@ -54,7 +56,7 @@ function getTone(status: AttendanceDisplayStatus) {
   if (status === 'approved') {
     return 'accent' as const;
   }
-  if (status === 'pending') {
+  if (status === 'pending' || status === 'assigned') {
     return 'info' as const;
   }
   if (status === 'absent' || status === 'rejected' || status === 'cancelled') {

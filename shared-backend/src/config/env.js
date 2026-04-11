@@ -58,6 +58,7 @@ const AI_CACHE_TTL_SECONDS = parseInteger(process.env.AI_CACHE_TTL_SECONDS, 3600
   min: 0,
   max: 86400,
 });
+const CHECKIN_CODE_SALT = String(process.env.CHECKIN_CODE_SALT ?? 'v-connect-checkin-salt').trim();
 
 export {
   CORS_ORIGINS,
@@ -77,4 +78,5 @@ export {
   GEMINI_API_KEY,
   AI_TIMEOUT_MS,
   AI_CACHE_TTL_SECONDS,
+  CHECKIN_CODE_SALT,
 };
