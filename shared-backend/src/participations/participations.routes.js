@@ -13,6 +13,12 @@ import {
 } from './participations.service.js';
 import { recommend as aiRecommend } from '../ai/ai.router.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
+import {
+  generateCheckInCode,
+  isSameCalendarDate,
+  normalizeCheckInCode,
+  toLocalDateKey,
+} from './checkin-code.js';
 
 const router = Router();
 
@@ -57,6 +63,31 @@ async function getUserDisplayName(userId, fallback = 'A volunteer') {
   } catch {
     return fallback;
   }
+}
+
+function createCheckInDateLockedError(activity) {
+  const eventDateLabel = toLocalDateKey(activity?.start_time);
+  const message = eventDateLabel
+    ? `Check-in opens only on the event start date (${eventDateLabel}).`
+    : 'Check-in opens only on the event start date.';
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+function parseAndValidateCheckInCode(rawCode) {
+  const normalized = normalizeCheckInCode(rawCode);
+  if (!normalized) {
+    const error = new Error('checkInCode is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!/^\d{5}$/.test(normalized)) {
+    const error = new Error('checkInCode must be exactly 5 digits.');
+    error.statusCode = 400;
+    throw error;
+  }
+  return normalized;
 }
 
 async function getActiveRegistrationCount(activityId, excludeParticipationId = null) {
@@ -452,10 +483,11 @@ async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
     throw new Error(error.message);
   }
 
+  const checkInCode = nextStatus === 'approved' ? generateCheckInCode(participation.id) : null;
   const notificationTitle = nextStatus === 'approved' ? 'Registration Approved' : 'Registration Rejected';
   const notificationMessage =
     nextStatus === 'approved'
-      ? `Your registration for "${activity.title}" has been approved.`
+      ? `Your registration for "${activity.title}" has been approved. Your check-in code is ${checkInCode}.`
       : `Your registration for "${activity.title}" has been rejected.`;
   const volunteerName = await getUserDisplayName(participation.volunteer_id);
 
@@ -468,6 +500,7 @@ async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
       activityId: activity.id,
       registrationId: participation.id,
       status: nextStatus,
+      checkInCode,
     },
   });
 
@@ -485,6 +518,7 @@ async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
         registrationId: participation.id,
         volunteerId: participation.volunteer_id,
         status: nextStatus,
+        checkInCode,
       },
     });
   }
@@ -493,6 +527,104 @@ async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
     registration: await enrichParticipation(data),
     message: `Registration ${nextStatus} successfully.`,
   };
+}
+
+async function performCheckIn({ participation, activity }) {
+  if (!isSameCalendarDate(activity?.start_time)) {
+    throw createCheckInDateLockedError(activity);
+  }
+
+  if (participation.status === 'checked_in') {
+    const error = new Error('Participant already checked in.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (participation.status === 'rejected') {
+    const error = new Error('Rejected participation cannot be checked in.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (participation.status !== 'approved') {
+    const error = new Error('Only approved participations can be checked in.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  let updatePayload = {
+    status: 'checked_in',
+    checked_in_at: now,
+    updated_at: now,
+  };
+
+  let updateResult = await supabaseAdmin
+    .from('activity_participations')
+    .update(updatePayload)
+    .eq('id', participation.id)
+    .select(participationColumns)
+    .maybeSingle();
+
+  if (updateResult.error?.code === '42703') {
+    updatePayload = {
+      status: 'checked_in',
+      updated_at: now,
+    };
+    updateResult = await supabaseAdmin
+      .from('activity_participations')
+      .update(updatePayload)
+      .eq('id', participation.id)
+      .select(participationColumns)
+      .maybeSingle();
+  }
+
+  const { data, error } = updateResult;
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502' || error.code === '23503') {
+      const validationError = new Error(error.message);
+      validationError.statusCode = 400;
+      throw validationError;
+    }
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    const notFoundError = new Error('Participation not found.');
+    notFoundError.statusCode = 404;
+    throw notFoundError;
+  }
+
+  const updatedParticipation = await enrichParticipation(data);
+  await tryCreateNotification({
+    userId: participation.volunteer_id,
+    title: 'Check-in Confirmed',
+    message: `Your attendance for "${activity.title}" has been checked in successfully.`,
+    type: 'message',
+    data: {
+      activityId: activity.id,
+      registrationId: participation.id,
+      status: 'checked_in',
+    },
+  });
+
+  if (activity.organizer_id) {
+    const volunteerName = await getUserDisplayName(participation.volunteer_id);
+    await tryCreateNotification({
+      userId: activity.organizer_id,
+      title: 'Check-in Recorded',
+      message: `${volunteerName} was checked in for "${activity.title}".`,
+      type: 'message',
+      data: {
+        activityId: activity.id,
+        registrationId: participation.id,
+        volunteerId: participation.volunteer_id,
+        status: 'checked_in',
+      },
+    });
+  }
+
+  return { participation: updatedParticipation ?? data };
 }
 
 router.get('/participation-history', requireAuth, async (req, res) => {
@@ -837,131 +969,92 @@ router.post('/participations/:id/check-in', requireAuth, async (req, res) => {
     return;
   }
 
-  const { data: participation, error: participationError } = await supabaseAdmin
-    .from('activity_participations')
-    .select(participationColumns)
-    .eq('id', participationId)
-    .maybeSingle();
-
-  if (participationError) {
-    res.status(500).json({ message: participationError.message });
-    return;
-  }
-
-  if (!participation) {
-    res.status(404).json({ message: 'Participation not found.' });
-    return;
-  }
-
-  let activity;
+  let providedCode;
   try {
-    activity = await getActivityById(participation.activity_id);
+    providedCode = parseAndValidateCheckInCode(req.body?.checkInCode);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load activity.';
-    res.status(500).json({ message });
+    const message = error instanceof Error ? error.message : 'Invalid check-in code.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
+    res.status(statusCode).json({ message });
     return;
   }
 
-  if (!activity) {
-    res.status(404).json({ message: 'Activity not found for this participation.' });
-    return;
-  }
+  try {
+    const { participation, activity } = await getRegistrationWithActivityForAccess(participationId, req.auth);
 
-  if (role !== 'admin' && activity.organizer_id !== req.auth.user.id) {
-    res.status(403).json({ message: 'You can check in participations only for your own activities.' });
-    return;
-  }
-
-  if (participation.status === 'checked_in') {
-    const alreadyCheckedIn = await enrichParticipation(participation);
-    res.json({
-      participation: alreadyCheckedIn ?? participation,
-      message: 'Participant already checked in.',
-    });
-    return;
-  }
-
-  if (participation.status === 'rejected') {
-    res.status(400).json({ message: 'Rejected participation cannot be checked in.' });
-    return;
-  }
-
-  if (participation.status !== 'approved') {
-    res.status(400).json({ message: 'Only approved participations can be checked in.' });
-    return;
-  }
-
-  const now = new Date().toISOString();
-  let updatePayload = {
-    status: 'checked_in',
-    checked_in_at: now,
-    updated_at: now,
-  };
-
-  let updateResult = await supabaseAdmin
-    .from('activity_participations')
-    .update(updatePayload)
-    .eq('id', participationId)
-    .select(participationColumns)
-    .maybeSingle();
-
-  if (updateResult.error?.code === '42703') {
-    updatePayload = {
-      status: 'checked_in',
-      updated_at: now,
-    };
-    updateResult = await supabaseAdmin
-      .from('activity_participations')
-      .update(updatePayload)
-      .eq('id', participationId)
-      .select(participationColumns)
-      .maybeSingle();
-  }
-
-  const { data, error } = updateResult;
-  if (error) {
-    if (error.code === '23514' || error.code === '22P02' || error.code === '23502' || error.code === '23503') {
-      res.status(400).json({ message: error.message });
+    const expectedCode = normalizeCheckInCode(generateCheckInCode(participation.id));
+    if (!expectedCode || expectedCode !== providedCode) {
+      res.status(400).json({ message: 'Invalid check-in code for this registration.' });
       return;
     }
-    res.status(500).json({ message: error.message });
+
+    const result = await performCheckIn({ participation, activity });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to check in participant.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.post('/activities/:id/check-in-by-code', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'organizer' && role !== 'admin') {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
     return;
   }
 
-  if (!data) {
-    res.status(404).json({ message: 'Participation not found.' });
+  const activityId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!isUuid(activityId)) {
+    res.status(400).json({ message: 'Activity id must be a valid UUID.' });
     return;
   }
 
-  const updatedParticipation = await enrichParticipation(data);
-  await tryCreateNotification({
-    userId: participation.volunteer_id,
-    title: 'Check-in Confirmed',
-    message: `Your attendance for "${activity.title}" has been checked in successfully.`,
-    type: 'message',
-    data: {
-      activityId: activity.id,
-      registrationId: participation.id,
-      status: 'checked_in',
-    },
-  });
+  let submittedCode;
+  try {
+    submittedCode = parseAndValidateCheckInCode(req.body?.checkInCode);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid check-in code.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
+    res.status(statusCode).json({ message });
+    return;
+  }
 
-  if (activity.organizer_id) {
-    const volunteerName = await getUserDisplayName(participation.volunteer_id);
-    await tryCreateNotification({
-      userId: activity.organizer_id,
-      title: 'Check-in Recorded',
-      message: `${volunteerName} was checked in for "${activity.title}".`,
-      type: 'message',
-      data: {
-        activityId: activity.id,
-        registrationId: participation.id,
-        volunteerId: participation.volunteer_id,
-        status: 'checked_in',
-      },
+  try {
+    const activity = await assertActivityAccessForOrganizerOrAdmin(activityId, req.auth);
+    if (!isSameCalendarDate(activity.start_time)) {
+      throw createCheckInDateLockedError(activity);
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('activity_participations')
+      .select(participationColumns)
+      .eq('activity_id', activityId)
+      .in('status', ['assigned', 'pending', 'approved', 'checked_in', 'rejected', 'cancelled'])
+      .limit(1000);
+
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
+
+    const participation = (data ?? []).find((row) => {
+      const rowCode = normalizeCheckInCode(generateCheckInCode(row.id));
+      return Boolean(rowCode) && rowCode === submittedCode;
     });
+
+    if (!participation) {
+      res.status(404).json({ message: 'Invalid check-in code for this activity.' });
+      return;
+    }
+
+    const result = await performCheckIn({ participation, activity });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to check in by code.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
   }
-  res.json({ participation: updatedParticipation ?? data });
 });
 
 export default router;

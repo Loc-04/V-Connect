@@ -15,7 +15,7 @@ import { Badge, Button, Card, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
-import { checkInParticipation, listParticipations } from '../lib/participations';
+import { checkInParticipationWithCode, listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './OrganizerActivityManagementPage.css';
@@ -255,11 +255,29 @@ export function OrganizerActivityManagementPage() {
       return;
     }
 
+    const checkInCode = window.prompt('Enter volunteer 5-digit check-in code');
+    if (!checkInCode || checkInCode.trim().length === 0) {
+      setAttendanceNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Check-in code is required.',
+      });
+      return;
+    }
+    if (!/^\d{5}$/.test(checkInCode.trim())) {
+      setAttendanceNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Check-in code must be exactly 5 digits.',
+      });
+      return;
+    }
+
     setCheckingInParticipationId(participationId);
     setAttendanceNotice(null);
 
     try {
-      const updated = await checkInParticipation(participationId, session.access_token);
+      const updated = await checkInParticipationWithCode(participationId, session.access_token, checkInCode.trim());
       setAttendanceRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setParticipations((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setAttendanceNotice({
