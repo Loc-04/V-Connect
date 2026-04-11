@@ -7,6 +7,7 @@ const participationColumns = '*';
 const feedbackColumns = 'id, participation_id, volunteer_id, organizer_id, rating, comment, created_at';
 
 const validRoles = new Set(['admin', 'organizer', 'volunteer']);
+const validUserStatuses = new Set(['active', 'banned']);
 const validActivityStatuses = new Set(['draft', 'published', 'completed', 'cancelled']);
 const validParticipationStatuses = new Set(['assigned', 'pending', 'approved', 'rejected', 'checked_in', 'cancelled']);
 const activityWriteRoles = new Set(['admin', 'organizer']);
@@ -20,6 +21,7 @@ export {
   participationColumns,
   feedbackColumns,
   validRoles,
+  validUserStatuses,
   validActivityStatuses,
   validParticipationStatuses,
   activityWriteRoles,

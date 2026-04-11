@@ -991,17 +991,11 @@ p {
   border-color: #bbf7d0;
 }
 
-.users-pill.status-inactive {
-  color: var(--muted);
-  background: var(--bg-soft);
-  border-color: #e2e8f0;
-}
-
-.users-pill.status-suspended {
-  color: #b91c1c;
-  background: #fee2e2;
-  border-color: #fecaca;
-}
+.users-pill.status-banned {
+    color: #b91c1c;
+    background: #fee2e2;
+    border-color: #fecaca;
+  }
 
 .users-cell-edit {
   display: grid;

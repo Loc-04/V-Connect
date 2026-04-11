@@ -143,9 +143,32 @@ export async function cancelParticipation(activityId: string, accessToken: strin
 }
 
 export async function checkInParticipation(participationId: string, accessToken: string): Promise<ParticipationRecord> {
+  return checkInParticipationWithCode(participationId, accessToken);
+}
+
+export async function checkInParticipationWithCode(
+  participationId: string,
+  accessToken: string,
+  checkInCode?: string
+): Promise<ParticipationRecord> {
   const response = await apiRequest<ParticipationResponse>(`/participations/${participationId}/check-in`, {
     method: 'POST',
     accessToken,
+    body: checkInCode ? { checkInCode } : {},
+  });
+
+  return normalizeParticipationRecord(response.participation);
+}
+
+export async function checkInParticipationByCode(
+  activityId: string,
+  checkInCode: string,
+  accessToken: string
+): Promise<ParticipationRecord> {
+  const response = await apiRequest<ParticipationResponse>(`/activities/${activityId}/check-in-by-code`, {
+    method: 'POST',
+    accessToken,
+    body: { checkInCode },
   });
 
   return normalizeParticipationRecord(response.participation);

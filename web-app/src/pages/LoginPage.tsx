@@ -4,7 +4,7 @@ import { Activity } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
-import { getRoleHomePath } from '../auth/rolePaths';
+import { canRoleAccessPath, getRoleHomePath } from '../auth/rolePaths';
 import { useAuth } from '../auth/useAuth';
 
 const heroSlides = [
@@ -104,8 +104,9 @@ export function LoginPage() {
       const profile = await signInWithPassword(email.trim(), password);
       const queryTarget = resolveSafeNextPath(new URLSearchParams(location.search).get('next'));
       const stateTarget = resolveSafeNextPath((location.state as { from?: string } | null)?.from);
-      const target = queryTarget ?? stateTarget;
+      const candidateTarget = queryTarget ?? stateTarget;
       const roleHome = getRoleHomePath(profile.role);
+      const target = canRoleAccessPath(profile.role, candidateTarget) ? candidateTarget : null;
 
       if (target) {
         navigate(target, { replace: true });

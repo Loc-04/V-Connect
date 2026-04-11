@@ -16,6 +16,7 @@ const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
   { label: 'All', value: 'all' },
   { label: 'Completed', value: 'completed' },
   { label: 'Upcoming', value: 'upcoming' },
+  { label: 'Expired', value: 'expired' },
   { label: 'Cancelled', value: 'cancelled' },
 ];
 

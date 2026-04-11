@@ -144,6 +144,32 @@
   flex-wrap: wrap;
 }
 
+.org-checkin-code-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  padding: 0 0.62rem;
+  min-height: 34px;
+}
+
+.org-checkin-code-field .text-input {
+  border: 0;
+  background: transparent;
+  min-width: 190px;
+  width: 250px;
+  padding-inline: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.org-checkin-code-field .text-input:focus {
+  box-shadow: none;
+  transform: none;
+}
+
 .org-checkin-filter-row {
   display: inline-flex;
   align-items: center;
@@ -201,6 +227,13 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+}
+
+.org-checkin-lock-note {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #b45309;
+  font-weight: 600;
 }
 
 .org-checkin-table thead th {
@@ -333,5 +366,10 @@
   .org-checkin-search-field .text-input {
     min-width: 140px;
     width: 160px;
+  }
+
+  .org-checkin-code-field .text-input {
+    min-width: 150px;
+    width: 190px;
   }
 }
