@@ -3,6 +3,7 @@ import type {
   GeocodeLocationPayload,
   GeocodedLocationRecord,
   ProvinceRecord,
+  ReverseGeocodeLocationPayload,
   WardRecord,
 } from '../types/location';
 
@@ -16,6 +17,10 @@ interface WardsResponse {
 
 interface GeocodeLocationResponse {
   geocodedLocation: GeocodedLocationRecord;
+}
+
+interface ReverseGeocodeLocationResponse {
+  reversedLocation: GeocodedLocationRecord;
 }
 
 export async function listProvinces(accessToken: string): Promise<ProvinceRecord[]> {
@@ -45,4 +50,17 @@ export async function geocodeLocation(
   });
 
   return response.geocodedLocation;
+}
+
+export async function reverseGeocodeLocation(
+  payload: ReverseGeocodeLocationPayload,
+  accessToken: string
+): Promise<GeocodedLocationRecord> {
+  const response = await apiRequest<ReverseGeocodeLocationResponse>('/locations/reverse-geocode', {
+    method: 'POST',
+    accessToken,
+    body: payload,
+  });
+
+  return response.reversedLocation;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ClipboardList, ExternalLink, MapPin, Sparkles } from 'lucide-react';
 
@@ -9,7 +9,7 @@ import { Button, Card } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
-import { geocodeLocation, listProvinces, listWards } from '../lib/locations';
+import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { GeocodedLocationRecord, ProvinceRecord, WardRecord } from '../types/location';
 import './CreateActivityPage.css';
@@ -49,6 +49,14 @@ function getAddressValue(location: ActivityRecord['location']) {
 
 function buildLocationRequestKey(address: string, provinceCode: string, wardCode: string) {
   return [address.trim().toLowerCase(), provinceCode.trim(), wardCode.trim()].join('|');
+}
+
+function areSameCoordinates(a: GeocodedLocationRecord | null, b: GeocodedLocationRecord | null) {
+  if (!a || !b) {
+    return false;
+  }
+
+  return Math.abs(a.lat - b.lat) < 0.0000001 && Math.abs(a.lng - b.lng) < 0.0000001;
 }
 
 function mapActivityLocationToGeocodedRecord(activity: ActivityRecord): GeocodedLocationRecord | null {
@@ -100,15 +108,18 @@ export function CreateActivityPage() {
   const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
   const [wards, setWards] = useState<WardRecord[]>([]);
   const [mapLocation, setMapLocation] = useState<GeocodedLocationRecord | null>(null);
+  const [suggestedMapLocation, setSuggestedMapLocation] = useState<GeocodedLocationRecord | null>(null);
   const [resolvedLocationKey, setResolvedLocationKey] = useState('');
   const [loadingActivity, setLoadingActivity] = useState(Boolean(activityId));
   const [loadingProvinces, setLoadingProvinces] = useState(true);
   const [loadingWards, setLoadingWards] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [reverseGeocoding, setReverseGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const reverseGeocodeRequestId = useRef(0);
 
   const role = normalizeRole(profile?.role);
   const canManageActivities = role === 'organizer' || role === 'admin';
@@ -125,6 +136,14 @@ export function CreateActivityPage() {
     [provinceCode, streetAddress, wardCode]
   );
   const resolvedMapLocation = currentLocationKey === resolvedLocationKey ? mapLocation : null;
+  const hasManualPinAdjustment = useMemo(
+    () =>
+      currentLocationKey === resolvedLocationKey &&
+      Boolean(resolvedMapLocation) &&
+      Boolean(suggestedMapLocation) &&
+      !areSameCoordinates(resolvedMapLocation, suggestedMapLocation),
+    [currentLocationKey, resolvedLocationKey, resolvedMapLocation, suggestedMapLocation]
+  );
   const locationSummary = useMemo(
     () =>
       [
@@ -258,6 +277,7 @@ export function CreateActivityPage() {
         setWardCode(activity.ward_code ?? '');
         const existingMapLocation = mapActivityLocationToGeocodedRecord(activity);
         setMapLocation(existingMapLocation);
+        setSuggestedMapLocation(existingMapLocation);
         setResolvedLocationKey(
           existingMapLocation ? buildLocationRequestKey(getAddressValue(activity.location), activity.province_code ?? '', activity.ward_code ?? '') : ''
         );
@@ -295,6 +315,7 @@ export function CreateActivityPage() {
     if (!address || !provinceCode || !wardCode) {
       if (currentLocationKey !== resolvedLocationKey) {
         setMapLocation(null);
+        setSuggestedMapLocation(null);
       }
       setGeocoding(false);
       setGeocodeError(null);
@@ -309,45 +330,202 @@ export function CreateActivityPage() {
       setGeocoding(true);
       setGeocodeError(null);
 
-      void geocodeLocation(
-        {
-          address,
-          provinceCode,
-          wardCode,
-        },
-        session.access_token
-      )
-        .then((nextLocation) => {
+      const fallbackAddressCandidate = selectedWard?.name ?? selectedProvince?.name ?? '';
+
+      void (async () => {
+        try {
+          const nextLocation = await geocodeLocation(
+            {
+              address,
+              provinceCode,
+              wardCode,
+            },
+            session.access_token
+          );
           if (cancelled) {
             return;
           }
           setMapLocation(nextLocation);
+          setSuggestedMapLocation(nextLocation);
           setResolvedLocationKey(currentLocationKey);
-        })
-        .catch((geocodeLoadError) => {
+        } catch (geocodeLoadError) {
           if (cancelled) {
             return;
           }
+
+          const shouldAttemptAreaFallback =
+            fallbackAddressCandidate.length > 0 && fallbackAddressCandidate.toLowerCase() !== address.toLowerCase();
+
+          if (shouldAttemptAreaFallback) {
+            try {
+              const areaPreviewLocation = await geocodeLocation(
+                {
+                  address: fallbackAddressCandidate,
+                  provinceCode,
+                  wardCode,
+                },
+                session.access_token
+              );
+              if (cancelled) {
+                return;
+              }
+
+              const nextFallbackLocation = {
+                ...areaPreviewLocation,
+                address,
+                formattedAddress: locationSummary || areaPreviewLocation.formattedAddress,
+                mapProvider: 'area-preview',
+                providerDisplayName: areaPreviewLocation.providerDisplayName ?? areaPreviewLocation.formattedAddress,
+              };
+
+              setMapLocation(nextFallbackLocation);
+              setSuggestedMapLocation(nextFallbackLocation);
+              setResolvedLocationKey(currentLocationKey);
+              setGeocodeError(
+                'The exact address could not be resolved, so the map is centered on the selected area. Click the map to place the exact activity location.'
+              );
+              return;
+            } catch {
+              // Fall through to the original geocode error below.
+            }
+          }
+
           setMapLocation(null);
+          setSuggestedMapLocation(null);
           setResolvedLocationKey('');
           setGeocodeError(
             geocodeLoadError instanceof Error
               ? geocodeLoadError.message
               : 'Map preview is unavailable for the selected address.'
           );
-        })
-        .finally(() => {
+        } finally {
           if (!cancelled) {
             setGeocoding(false);
           }
-        });
+        }
+      })();
     }, 450);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [currentLocationKey, loadingActivity, provinceCode, resolvedLocationKey, session?.access_token, streetAddress, wardCode]);
+  }, [
+    currentLocationKey,
+    loadingActivity,
+    locationSummary,
+    provinceCode,
+    resolvedLocationKey,
+    selectedProvince?.name,
+    selectedWard?.name,
+    session?.access_token,
+    streetAddress,
+    wardCode,
+  ]);
+
+  const handleManualMapSelection = ({ lat, lng }: { lat: number; lng: number }) => {
+    const address = streetAddress.trim();
+    const provinceName = selectedProvince?.name ?? resolvedMapLocation?.province ?? '';
+    const wardName = selectedWard?.name ?? resolvedMapLocation?.ward ?? '';
+    const formattedAddress = locationSummary || [address, wardName, provinceName].filter(Boolean).join(', ') || address;
+
+    const nextManualLocation = {
+      address,
+      city: provinceName || resolvedMapLocation?.city || null,
+      province: provinceName || resolvedMapLocation?.province || null,
+      ward: wardName || resolvedMapLocation?.ward || null,
+      formattedAddress,
+      provinceCode: provinceCode || resolvedMapLocation?.provinceCode || null,
+      wardCode: wardCode || resolvedMapLocation?.wardCode || null,
+      mapProvider: 'manual-adjusted',
+      geocodedAt: new Date().toISOString(),
+      geocodeConfidence: null,
+      lat: Number(lat.toFixed(7)),
+      lng: Number(lng.toFixed(7)),
+      providerDisplayName: formattedAddress,
+    };
+
+    setMapLocation(nextManualLocation);
+    setResolvedLocationKey(currentLocationKey);
+    setGeocodeError(null);
+
+    if (!session?.access_token) {
+      return;
+    }
+
+    const requestId = reverseGeocodeRequestId.current + 1;
+    reverseGeocodeRequestId.current = requestId;
+    setReverseGeocoding(true);
+
+    void reverseGeocodeLocation(
+      {
+        lat: nextManualLocation.lat,
+        lng: nextManualLocation.lng,
+      },
+      session.access_token
+    )
+      .then((reversedLocation) => {
+        if (reverseGeocodeRequestId.current !== requestId) {
+          return;
+        }
+
+        setMapLocation((current) => {
+          if (!current || Math.abs(current.lat - nextManualLocation.lat) > 0.0000001 || Math.abs(current.lng - nextManualLocation.lng) > 0.0000001) {
+            return current;
+          }
+
+          const reversedFormattedAddress =
+            reversedLocation.formattedAddress ||
+            reversedLocation.providerDisplayName ||
+            current.formattedAddress;
+
+          return {
+            ...current,
+            city: reversedLocation.city ?? current.city,
+            province: reversedLocation.province ?? current.province,
+            ward: reversedLocation.ward ?? current.ward,
+            formattedAddress: reversedFormattedAddress,
+            geocodedAt: reversedLocation.geocodedAt ?? current.geocodedAt,
+            providerDisplayName: reversedLocation.providerDisplayName ?? reversedFormattedAddress,
+          };
+        });
+      })
+      .catch(() => {
+        if (reverseGeocodeRequestId.current !== requestId) {
+          return;
+        }
+      })
+      .finally(() => {
+        if (reverseGeocodeRequestId.current === requestId) {
+          setReverseGeocoding(false);
+        }
+      });
+  };
+
+  const handleManualMapPreview = ({ lat, lng }: { lat: number; lng: number }) => {
+    setMapLocation((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        lat: Number(lat.toFixed(7)),
+        lng: Number(lng.toFixed(7)),
+      };
+    });
+    setResolvedLocationKey(currentLocationKey);
+  };
+
+  const restoreSuggestedPin = () => {
+    if (!suggestedMapLocation) {
+      return;
+    }
+
+    setMapLocation(suggestedMapLocation);
+    setResolvedLocationKey(currentLocationKey);
+    setGeocodeError(null);
+  };
 
   const addSkill = () => {
     const nextSkill = skillDraft.trim();
@@ -655,12 +833,24 @@ export function CreateActivityPage() {
                     <strong>Map Preview</strong>
                     <p>
                       {resolvedMapLocation
-                        ? 'The preview is synced from the geocoded activity address.'
+                        ? hasManualPinAdjustment
+                          ? 'The pin has been adjusted manually. Drag the marker again to refine it further.'
+                          : resolvedMapLocation.mapProvider === 'area-preview'
+                            ? 'The exact address was not found. The map is centered on the selected ward/province so you can drag the marker to the exact location.'
+                          : 'The preview is synced from the geocoded activity address. Drag the marker if you need to refine the exact location.'
                         : 'Complete the address fields to load a live map preview.'}
                     </p>
                   </div>
                   <div className="activity-map-preview-card__actions">
                     {geocoding ? <span className="activity-map-preview-card__status">Locating...</span> : null}
+                    {!geocoding && reverseGeocoding ? (
+                      <span className="activity-map-preview-card__status">Updating address...</span>
+                    ) : null}
+                    {hasManualPinAdjustment ? (
+                      <Button disabled={!suggestedMapLocation || geocoding} onClick={restoreSuggestedPin} type="button" variant="secondary">
+                        Use geocoded pin
+                      </Button>
+                    ) : null}
                     <Button
                       disabled={!openMapUrl}
                       onClick={() => {
@@ -691,15 +881,23 @@ export function CreateActivityPage() {
                   emptyMessage="Enter a valid street address, province, and ward to load the live map preview."
                   emptyTitle="Live map preview is waiting for a complete address"
                   error={geocodeError}
+                  editable={Boolean(resolvedMapLocation && !geocoding)}
+                  editInstruction="Drag the marker to the exact event location. The nearest formatted address updates after you release it."
                   interactive
                   loading={geocoding}
+                  onCoordinatesChange={handleManualMapSelection}
+                  onCoordinatesPreviewChange={handleManualMapPreview}
                   title={title.trim() || 'Activity location preview'}
                 />
                 <div className="activity-map-preview-card__summary">
                   <strong>{resolvedMapLocation?.formattedAddress ?? locationSummary ?? 'No formatted address yet'}</strong>
                   <p>
                     {resolvedMapLocation
-                      ? `Lat ${resolvedMapLocation.lat.toFixed(6)}, Lng ${resolvedMapLocation.lng.toFixed(6)} via ${resolvedMapLocation.mapProvider ?? 'geocoding provider'}.`
+                      ? hasManualPinAdjustment
+                        ? `Lat ${resolvedMapLocation.lat.toFixed(6)}, Lng ${resolvedMapLocation.lng.toFixed(6)} with a manual pin adjustment.${reverseGeocoding ? ' Reverse geocoding is updating the nearest formatted address.' : ' The typed address stays the same, only the exact map point changes.'}`
+                        : resolvedMapLocation.mapProvider === 'area-preview'
+                          ? `Lat ${resolvedMapLocation.lat.toFixed(6)}, Lng ${resolvedMapLocation.lng.toFixed(6)} from an area-level preview. Move the pin on the map if the village or hamlet does not have a precise geocoded point.`
+                        : `Lat ${resolvedMapLocation.lat.toFixed(6)}, Lng ${resolvedMapLocation.lng.toFixed(6)} via ${resolvedMapLocation.mapProvider ?? 'geocoding provider'}.`
                       : geocodeError
                         ? 'Publishing still works, but the map preview is unavailable until the address resolves successfully.'
                         : 'The form will automatically geocode the selected address and keep those coordinates when you save or reopen this activity.'}
