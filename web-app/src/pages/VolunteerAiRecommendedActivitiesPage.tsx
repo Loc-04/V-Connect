@@ -107,7 +107,9 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     timeLabel,
     hoursLabel: toHoursLabel(record.hours),
     categories: toCategoryList(record),
-    heroImageUrl: FALLBACK_IMAGES[hashString(record.activityId || record.title) % FALLBACK_IMAGES.length],
+    heroImageUrl:
+      (typeof record.coverImageUrl === 'string' && record.coverImageUrl.trim()) ||
+      FALLBACK_IMAGES[hashString(record.activityId || record.title) % FALLBACK_IMAGES.length],
     startTime: record.startTime,
   };
 }

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ClipboardList, ExternalLink, MapPin, Sparkles } from 'lucide-react';
+import { ClipboardList, ExternalLink, ImagePlus, MapPin, Sparkles, X } from 'lucide-react';
 
 import { normalizeRole } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
@@ -33,6 +33,24 @@ function splitDateAndTime(value: string) {
     date: iso.slice(0, 10),
     time: iso.slice(11, 16),
   };
+}
+
+const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
+const maxCoverImageBytes = 10 * 1024 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Failed to read selected image.'));
+    };
+    reader.onerror = () => reject(new Error('Failed to read selected image.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function getAddressValue(location: ActivityRecord['location']) {
@@ -96,6 +114,7 @@ export function CreateActivityPage() {
   const { profile, session } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
   const [streetAddress, setStreetAddress] = useState('');
   const [provinceCode, setProvinceCode] = useState('');
   const [wardCode, setWardCode] = useState('');
@@ -272,6 +291,7 @@ export function CreateActivityPage() {
         const end = splitDateAndTime(activity.end_time);
         setTitle(activity.title ?? '');
         setDescription(activity.description ?? '');
+        setCoverImageUrl(typeof activity.cover_image_url === 'string' ? activity.cover_image_url : null);
         setStreetAddress(getAddressValue(activity.location));
         setProvinceCode(activity.province_code ?? '');
         setWardCode(activity.ward_code ?? '');
@@ -539,6 +559,31 @@ export function CreateActivityPage() {
     setSkillDraft('');
   };
 
+  const handleCoverImageSelection = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      if (!acceptedCoverImageMimeTypes.has(file.type)) {
+        throw new Error('Cover image must be PNG, JPG, or GIF.');
+      }
+
+      if (file.size > maxCoverImageBytes) {
+        throw new Error('Cover image must be 10MB or less.');
+      }
+
+      const encodedImage = await readFileAsDataUrl(file);
+      setCoverImageUrl(encodedImage);
+      setError(null);
+    } catch (imageError) {
+      setError(imageError instanceof Error ? imageError.message : 'Failed to process cover image.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   const removeSkill = (skillToRemove: string) => {
     setRequiredSkills((current) => current.filter((skill) => skill !== skillToRemove));
   };
@@ -593,6 +638,7 @@ export function CreateActivityPage() {
       const payload = {
         title: title.trim(),
         description: description.trim(),
+        coverImageUrl: coverImageUrl ?? null,
         location: {
           address: streetAddress.trim(),
           city: resolvedMapLocation?.city ?? selectedProvince?.name ?? '',
@@ -691,6 +737,41 @@ export function CreateActivityPage() {
                   value={description}
                 />
               </label>
+
+              <div className="activity-field">
+                <span>Cover Image</span>
+                {coverImageUrl ? (
+                  <div className="activity-cover-preview">
+                    <img alt="Selected activity cover" src={coverImageUrl} />
+                    <div className="activity-cover-preview__actions">
+                      <label className="action-btn is-secondary activity-cover-upload-btn">
+                        <input accept="image/png,image/jpeg,image/gif" hidden onChange={(event) => void handleCoverImageSelection(event)} type="file" />
+                        Change image
+                      </label>
+                      <button className="action-btn is-ghost" onClick={() => setCoverImageUrl(null)} type="button">
+                        <X size={16} />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="activity-upload" htmlFor="cover-image-upload">
+                    <div className="activity-upload__icon">
+                      <ImagePlus />
+                    </div>
+                    <strong>Upload a file</strong>
+                    <p>or drag and drop (click to browse)</p>
+                    <small>PNG, JPG, GIF up to 10MB</small>
+                    <input
+                      accept="image/png,image/jpeg,image/gif"
+                      hidden
+                      id="cover-image-upload"
+                      onChange={(event) => void handleCoverImageSelection(event)}
+                      type="file"
+                    />
+                  </label>
+                )}
+              </div>
             </Card>
 
             <Card as="section" className="activity-card">
