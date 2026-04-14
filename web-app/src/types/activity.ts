@@ -17,6 +17,7 @@ export interface ActivityRecord {
   id: string;
   title: string;
   description: string | null;
+  cover_image_url?: string | null;
   location: ActivityLocation | string | null;
   start_time: string;
   end_time: string;
@@ -34,6 +35,7 @@ export interface ActivityRecord {
 export interface ActivityPayload {
   title: string;
   description: string;
+  coverImageUrl: string | null;
   location: ActivityLocation | string;
   provinceCode: string;
   wardCode: string;

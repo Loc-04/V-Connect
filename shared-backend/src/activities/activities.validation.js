@@ -2,6 +2,47 @@ import { validActivityStatuses } from '../config/constants.js';
 import { isPlainObject, normalizeStringArray, toIsoDateString } from '../common/utils/validators.js';
 import { normalizeActivityMapLocation } from '../locations/locations.validation.js';
 
+const allowedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
+const maxCoverImageBytes = 10 * 1024 * 1024;
+
+function normalizeCoverImageUrl(value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error('coverImageUrl must be a string or null.');
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const dataUrlMatch = normalized.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!dataUrlMatch) {
+    throw new Error('coverImageUrl must be an HTTP URL or base64 image data URL.');
+  }
+
+  const mimeType = dataUrlMatch[1].toLowerCase();
+  if (!allowedCoverImageMimeTypes.has(mimeType)) {
+    throw new Error('coverImageUrl must be PNG, JPG, or GIF.');
+  }
+
+  const base64Payload = dataUrlMatch[2];
+  const paddingBytes = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
+  const fileSizeBytes = Math.floor((base64Payload.length * 3) / 4) - paddingBytes;
+  if (fileSizeBytes > maxCoverImageBytes) {
+    throw new Error('coverImageUrl is too large. Maximum size is 10MB.');
+  }
+
+  return normalized;
+}
+
 function normalizeActivityLocation(value) {
   if (typeof value === 'string') {
     const address = value.trim();
@@ -74,6 +115,12 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
     payload.description = body.description.trim();
   } else if (!partial) {
     payload.description = '';
+  }
+
+  if (Object.hasOwn(body, 'coverImageUrl')) {
+    payload.cover_image_url = normalizeCoverImageUrl(body.coverImageUrl);
+  } else if (!partial) {
+    payload.cover_image_url = null;
   }
 
   if (Object.hasOwn(body, 'location')) {

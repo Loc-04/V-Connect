@@ -6,6 +6,7 @@ CREATE TABLE public.activities (
   organizer_id uuid,
   title character varying NOT NULL,
   description text NOT NULL,
+  cover_image_url text,
   location jsonb NOT NULL,
   start_time timestamp with time zone NOT NULL,
   end_time timestamp with time zone NOT NULL,
