@@ -6,7 +6,7 @@ import { Badge, Button, Card, Input, Select } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listFeedbackReview, updateFeedbackAiLabel } from '../lib/feedback';
 import { listParticipations } from '../lib/participations';
-import type { FeedbackRecord } from '../types/feedback';
+import type { FeedbackInsights, FeedbackRecord } from '../types/feedback';
 import type { ParticipationRecord } from '../types/participation';
 import './AdminFeedbackPage.css';
 
@@ -39,7 +39,16 @@ interface FeedbackViewModel {
   aiSemanticLabel: SemanticLabel | null;
   aiSentimentLabel: FeedbackSentiment | null;
   aiIncidentLabel: IncidentLabel | null;
+  aiModerationLabels: string[];
+  aiSemanticLabels: string[];
+  aiIssueTags: string[];
+  aiConfidence: {
+    sentiment: number;
+    incident: number;
+    semantic: number;
+  } | null;
   aiSemanticReasons: string[];
+  hasClassifierData: boolean;
 }
 
 interface FeedbackPaginationState {
@@ -50,6 +59,25 @@ interface FeedbackPaginationState {
   hasPrev: boolean;
   hasNext: boolean;
 }
+
+const emptyFeedbackInsights: FeedbackInsights = {
+  totals: {
+    feedback_count: 0,
+    spam_count: 0,
+    average_rating: 0,
+    sentiment: {
+      positive: 0,
+      neutral: 0,
+      negative: 0,
+    },
+  },
+  repeatedIssues: [],
+  strengths: [],
+  weaknesses: [],
+  prominentIssues: [],
+  byActivity: [],
+  scope: 'filtered_result',
+};
 
 interface ExcelStyleCell {
   font?: Record<string, unknown>;
@@ -187,6 +215,16 @@ function normalizeAiReasons(rawValue: string[] | null | undefined) {
   return rawValue.filter((value) => typeof value === 'string' && value.trim().length > 0).map((value) => value.trim());
 }
 
+function normalizeStringList(rawValue: string[] | null | undefined) {
+  if (!Array.isArray(rawValue)) {
+    return [];
+  }
+  return rawValue
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value.length > 0)
+    .slice(0, 8);
+}
+
 function normalizeSentimentLabel(rawValue: string | null | undefined): FeedbackSentiment | null {
   const normalized = typeof rawValue === 'string' ? rawValue.trim().toLowerCase() : '';
   if (normalized === 'positive' || normalized === 'neutral' || normalized === 'negative') {
@@ -230,7 +268,10 @@ function toAiBadgeTone(label: SpamLabel): 'danger' | 'success' {
   return label === 'spam' ? 'danger' : 'success';
 }
 
-function toAiBadgeLabel(label: SpamLabel): string {
+function toAiBadgeLabel(label: SpamLabel, hasClassifierData: boolean): string {
+  if (!hasClassifierData) {
+    return label === 'spam' ? 'Moderation: Spam' : 'Moderation: Not Spam';
+  }
   return label === 'spam' ? 'AI: Spam' : 'AI: Not Spam';
 }
 
@@ -304,8 +345,18 @@ const aiReasonLabelByKey: Record<string, string> = {
   positive_language_detected: 'Positive language detected',
   negative_language_detected: 'Negative language detected',
   incident_keyword_detected: 'Incident keywords detected',
+  logistics_issue_detected: 'Logistics issue detected',
+  communication_issue_detected: 'Communication issue detected',
   spam_keyword_match: 'Spam keyword match',
   injury_detected: 'Injury detected',
+  spam: 'Spam',
+  safety: 'Safety',
+  communication: 'Communication',
+  logistics: 'Logistics',
+  incident: 'Incident',
+  positive: 'Positive',
+  negative: 'Negative',
+  neutral: 'Neutral',
 };
 
 function humanizeAiReason(reason: string): string {
@@ -372,6 +423,28 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
     const aiSentimentLabel = normalizeSentimentLabel(feedback.ai_sentiment_label);
     const aiIncidentLabel = normalizeIncidentLabel(feedback.ai_incident_label);
     const aiSemanticReasons = normalizeSemanticReasons(feedback.ai_semantic_reasons);
+    const aiModerationLabels = normalizeStringList(feedback.ai_moderation_labels);
+    const aiSemanticLabels = normalizeStringList(feedback.ai_semantic_labels);
+    const aiIssueTags = normalizeStringList(feedback.ai_issue_tags);
+    const aiConfidence =
+      feedback.ai_confidence && typeof feedback.ai_confidence === 'object'
+        ? {
+            sentiment: Number(feedback.ai_confidence.sentiment ?? 0),
+            incident: Number(feedback.ai_confidence.incident ?? 0),
+            semantic: Number(feedback.ai_confidence.semantic ?? 0),
+          }
+        : null;
+    const hasClassifierData = Boolean(
+      feedback.ai_label ||
+        aiSpamReasons.length > 0 ||
+        aiSemanticLabel ||
+        aiSentimentLabel ||
+        aiIncidentLabel ||
+        aiSemanticReasons.length > 0 ||
+        aiModerationLabels.length > 0 ||
+        aiSemanticLabels.length > 0 ||
+        aiIssueTags.length > 0
+    );
 
     return {
       id: feedback.id,
@@ -393,7 +466,12 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       aiSemanticLabel,
       aiSentimentLabel,
       aiIncidentLabel,
+      aiModerationLabels,
+      aiSemanticLabels,
+      aiIssueTags,
+      aiConfidence,
       aiSemanticReasons,
+      hasClassifierData,
       reviewStatus: normalizeReviewStatus(feedback.review_status),
     };
   });
@@ -606,6 +684,7 @@ export function AdminFeedbackPage() {
   const reviewPageSize = 20;
 
   const [items, setItems] = useState<FeedbackViewModel[]>([]);
+  const [feedbackInsights, setFeedbackInsights] = useState<FeedbackInsights>(emptyFeedbackInsights);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -649,7 +728,7 @@ export function AdminFeedbackPage() {
 
     try {
       const numericRating = ratingFilter === 'all' ? undefined : Number(ratingFilter);
-      const [{ feedbacks, pagination: paginationMeta, moderation }, participations] = await Promise.all([
+      const [{ feedbacks, pagination: paginationMeta, moderation, insights }, participations] = await Promise.all([
         listFeedbackReview({
           accessToken: session.access_token,
           limit: reviewPageSize,
@@ -664,6 +743,7 @@ export function AdminFeedbackPage() {
       ]);
 
       setItems(buildFeedbackItems(feedbacks, participations));
+      setFeedbackInsights(insights ?? emptyFeedbackInsights);
       setPagination({
         page: paginationMeta.page,
         limit: paginationMeta.limit,
@@ -677,6 +757,7 @@ export function AdminFeedbackPage() {
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : 'Failed to load feedback.';
       setError(message);
+      setFeedbackInsights(emptyFeedbackInsights);
     } finally {
       setLoading(false);
     }
@@ -986,6 +1067,28 @@ export function AdminFeedbackPage() {
       const nextSentimentLabel = normalizeSentimentLabel(updated.ai_sentiment_label);
       const nextIncidentLabel = normalizeIncidentLabel(updated.ai_incident_label);
       const nextSemanticReasons = normalizeSemanticReasons(updated.ai_semantic_reasons);
+      const nextModerationLabels = normalizeStringList(updated.ai_moderation_labels);
+      const nextSemanticLabels = normalizeStringList(updated.ai_semantic_labels);
+      const nextIssueTags = normalizeStringList(updated.ai_issue_tags);
+      const nextConfidence =
+        updated.ai_confidence && typeof updated.ai_confidence === 'object'
+          ? {
+              sentiment: Number(updated.ai_confidence.sentiment ?? 0),
+              incident: Number(updated.ai_confidence.incident ?? 0),
+              semantic: Number(updated.ai_confidence.semantic ?? 0),
+            }
+          : null;
+      const nextHasClassifierData = Boolean(
+        updated.ai_label ||
+          nextReasons.length > 0 ||
+          nextSemanticLabel ||
+          nextSentimentLabel ||
+          nextIncidentLabel ||
+          nextSemanticReasons.length > 0 ||
+          nextModerationLabels.length > 0 ||
+          nextSemanticLabels.length > 0 ||
+          nextIssueTags.length > 0
+      );
 
       setItems((previous) =>
         previous.map((item) =>
@@ -998,7 +1101,12 @@ export function AdminFeedbackPage() {
                 aiSemanticLabel: nextSemanticLabel,
                 aiSentimentLabel: nextSentimentLabel,
                 aiIncidentLabel: nextIncidentLabel,
+                aiModerationLabels: nextModerationLabels,
+                aiSemanticLabels: nextSemanticLabels,
+                aiIssueTags: nextIssueTags,
+                aiConfidence: nextConfidence,
                 aiSemanticReasons: nextSemanticReasons,
+                hasClassifierData: nextHasClassifierData,
               }
             : item
         )
@@ -1311,6 +1419,55 @@ export function AdminFeedbackPage() {
         </Card>
       </div>
 
+      <Card as="section" className="feedback-review-insights-card">
+        <div className="feedback-review-insights-head">
+          <h3>Feedback Insights (Rule-based Aggregation)</h3>
+          <small>
+            Avg rating {feedbackInsights.totals.average_rating.toFixed(2)} - Spam {feedbackInsights.totals.spam_count}
+          </small>
+        </div>
+        <div className="feedback-review-insights-grid">
+          <div>
+            <h4>Repeated Issues</h4>
+            {feedbackInsights.repeatedIssues.length === 0 ? (
+              <p className="muted">No repeated issue tags in current filtered result.</p>
+            ) : (
+              <div className="feedback-review-ai-tags">
+                {feedbackInsights.repeatedIssues.map((issue) => (
+                  <Badge key={`repeated-${issue.tag}`} tone={issue.priority === 'high' ? 'danger' : 'info'}>
+                    {issue.label} ({issue.count})
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h4>Strengths</h4>
+            {feedbackInsights.strengths.length === 0 ? (
+              <p className="muted">No strengths detected yet.</p>
+            ) : (
+              <ul className="feedback-review-insights-list">
+                {feedbackInsights.strengths.map((item) => (
+                  <li key={`strength-${item}`}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h4>Weaknesses</h4>
+            {feedbackInsights.weaknesses.length === 0 ? (
+              <p className="muted">No weaknesses detected yet.</p>
+            ) : (
+              <ul className="feedback-review-insights-list">
+                {feedbackInsights.weaknesses.map((item) => (
+                  <li key={`weakness-${item}`}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </Card>
+
       <Card as="section" className="feedback-review-list-shell">
         {error && <p className="form-error">{error}</p>}
         {lastSync && <p className="muted feedback-review-sync">Last sync: {lastSync}</p>}
@@ -1355,10 +1512,15 @@ export function AdminFeedbackPage() {
                   <div className="feedback-review-item-meta">
                     <Badge tone="info">{item.categoryLabel}</Badge>
                     <RatingStars rating={item.rating} />
-                    <Badge tone={toAiBadgeTone(item.aiLabel)}>{toAiBadgeLabel(item.aiLabel)}</Badge>
+                    <Badge tone={toAiBadgeTone(item.aiLabel)}>{toAiBadgeLabel(item.aiLabel, item.hasClassifierData)}</Badge>
                     {item.aiSemanticLabel && (
                       <Badge tone={toSemanticBadgeTone(item.aiSemanticLabel)}>Semantic: {formatSemanticLabel(item.aiSemanticLabel)}</Badge>
                     )}
+                    {item.aiIssueTags.slice(0, 2).map((tag) => (
+                      <Badge key={`${item.id}-${tag}`} tone="neutral">
+                        Tag: {humanizeAiReason(tag)}
+                      </Badge>
+                    ))}
                     {hasConflict && <Badge tone="danger">Moderation Priority</Badge>}
                     {item.flaggedIssue && (
                       <Badge tone="danger">
@@ -1468,8 +1630,10 @@ export function AdminFeedbackPage() {
 
             <section className="feedback-review-ai-panel">
               <div className="feedback-review-ai-head">
-                <small>AI Moderation Label</small>
-                <Badge tone={toAiBadgeTone(selectedFeedback.aiLabel)}>{toAiBadgeLabel(selectedFeedback.aiLabel)}</Badge>
+                <small>{selectedFeedback.hasClassifierData ? 'AI Moderation Label' : 'Moderation Label'}</small>
+                <Badge tone={toAiBadgeTone(selectedFeedback.aiLabel)}>
+                  {toAiBadgeLabel(selectedFeedback.aiLabel, selectedFeedback.hasClassifierData)}
+                </Badge>
               </div>
               {selectedFeedback.aiSpamReasons.length > 0 ? (
                 <p className="feedback-review-ai-reasons">
@@ -1504,6 +1668,16 @@ export function AdminFeedbackPage() {
                 ) : (
                   <Badge tone="neutral">Incident: Not available</Badge>
                 )}
+                {selectedFeedback.aiModerationLabels.map((label) => (
+                  <Badge key={`${selectedFeedback.id}-mod-${label}`} tone="info">
+                    Moderation tag: {humanizeAiReason(label)}
+                  </Badge>
+                ))}
+                {selectedFeedback.aiIssueTags.map((label) => (
+                  <Badge key={`${selectedFeedback.id}-issue-${label}`} tone="neutral">
+                    Issue tag: {humanizeAiReason(label)}
+                  </Badge>
+                ))}
               </div>
               {selectedFeedback.aiSemanticReasons.length > 0 && (
                 <div className="feedback-review-ai-reason-chips">
@@ -1516,6 +1690,12 @@ export function AdminFeedbackPage() {
               )}
               {hasAiModerationSemanticConflict(selectedFeedback.isSpam, selectedFeedback.aiSemanticLabel) && (
                 <p className="feedback-review-ai-warning">Marked as spam. Moderation signal is prioritized for review.</p>
+              )}
+              {selectedFeedback.aiConfidence && (
+                <p className="feedback-review-ai-reasons">
+                  Confidence (rule-based): sentiment {selectedFeedback.aiConfidence.sentiment.toFixed(2)}, incident{' '}
+                  {selectedFeedback.aiConfidence.incident.toFixed(2)}, semantic {selectedFeedback.aiConfidence.semantic.toFixed(2)}
+                </p>
               )}
 
               {isAdmin && labelWritable && (

@@ -37,11 +37,40 @@ function normalizeMatchResult(result) {
     : [];
 
   const explanation = String(result?.explanation ?? '').trim();
+  const reasonCodes = Array.isArray(result?.reason_codes)
+    ? result.reason_codes.map((code) => String(code ?? '').trim()).filter((code) => code.length > 0)
+    : [];
+  const scoreBreakdown =
+    result?.score_breakdown && typeof result.score_breakdown === 'object' && !Array.isArray(result.score_breakdown)
+      ? {
+          skill_score: Number(result.score_breakdown.skill_score ?? 0),
+          interest_score: Number(result.score_breakdown.interest_score ?? 0),
+          availability_score: Number(result.score_breakdown.availability_score ?? 0),
+          experience_score: Number(result.score_breakdown.experience_score ?? 0),
+          history_score: Number(result.score_breakdown.history_score ?? 0),
+          final_score: Number(result.score_breakdown.final_score ?? safeMatchScore),
+        }
+      : null;
+  const featureContributions = Array.isArray(result?.feature_contributions)
+    ? result.feature_contributions
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => ({
+          feature: String(item.feature ?? '').trim(),
+          score: Number(item.score ?? 0),
+          max_score: Number(item.max_score ?? 0),
+          detail: String(item.detail ?? '').trim(),
+        }))
+    : [];
+  const modelVersion = String(result?.model_version ?? '').trim() || 'heuristic-v2-lite-2026-04';
 
   return {
     matchScore: safeMatchScore,
     matchRatio,
     reasons,
+    reason_codes: reasonCodes,
+    score_breakdown: scoreBreakdown,
+    feature_contributions: featureContributions,
+    model_version: modelVersion,
     explanation:
       explanation || 'Calculated from volunteer skills, interests, availability, and prior activity history.',
   };
@@ -101,6 +130,17 @@ async function classifyFeedback(input = {}) {
     sentimentLabel: semantics.sentimentLabel,
     incidentLabel: semantics.incidentLabel,
     semanticLabel: semantics.semanticLabel,
+    moderationLabels: Array.isArray(semantics.moderationLabels) ? semantics.moderationLabels : [],
+    semanticLabels: Array.isArray(semantics.semanticLabels) ? semantics.semanticLabels : [],
+    issueTags: Array.isArray(semantics.issueTags) ? semantics.issueTags : [],
+    confidence:
+      semantics?.confidence && typeof semantics.confidence === 'object'
+        ? {
+            sentiment: Number(semantics.confidence.sentiment ?? 0),
+            incident: Number(semantics.confidence.incident ?? 0),
+            semantic: Number(semantics.confidence.semantic ?? 0),
+          }
+        : null,
     semanticReasons: semantics.semanticReasons,
   };
 }

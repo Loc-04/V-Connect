@@ -1,5 +1,5 @@
 import { apiRequest } from './api';
-import type { FeedbackPayload, FeedbackRecord } from '../types/feedback';
+import type { FeedbackInsights, FeedbackPayload, FeedbackRecord } from '../types/feedback';
 
 interface FeedbackResponse {
   feedback: FeedbackRecord;
@@ -16,6 +16,7 @@ interface FeedbackReviewResponse {
     flagWritable?: boolean;
     labelWritable?: boolean;
   };
+  insights?: FeedbackInsights;
   pagination?: {
     page?: number;
     limit?: number;
@@ -60,6 +61,7 @@ export interface FeedbackReviewResult {
     flagWritable: boolean;
     labelWritable: boolean;
   };
+  insights: FeedbackInsights;
   pagination: {
     page: number;
     limit: number;
@@ -156,6 +158,24 @@ export async function listFeedbackReview(options: ReviewFeedbackOptions): Promis
   const fallbackTotalPages = Math.max(1, Math.ceil(fallbackTotal / fallbackLimit));
   const pagination = response.pagination ?? {};
   const moderation = response.moderation ?? {};
+  const insights = response.insights ?? {
+    totals: {
+      feedback_count: 0,
+      spam_count: 0,
+      average_rating: 0,
+      sentiment: {
+        positive: 0,
+        neutral: 0,
+        negative: 0,
+      },
+    },
+    repeatedIssues: [],
+    strengths: [],
+    weaknesses: [],
+    prominentIssues: [],
+    byActivity: [],
+    scope: 'filtered_result',
+  };
 
   return {
     feedbacks: response.feedbacks ?? [],
@@ -164,6 +184,7 @@ export async function listFeedbackReview(options: ReviewFeedbackOptions): Promis
       flagWritable: Boolean(moderation.flagWritable),
       labelWritable: Boolean(moderation.labelWritable),
     },
+    insights,
     pagination: {
       page:
         typeof pagination.page === 'number' && Number.isFinite(pagination.page)

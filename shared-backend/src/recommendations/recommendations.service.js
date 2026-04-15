@@ -8,6 +8,53 @@ import {
   getAvailableChoices,
 } from '../common/utils/availability.js';
 
+const RECOMMENDATION_MODEL_VERSION = 'heuristic-v2-lite-2026-04';
+const SKILL_SCORE_MAX = 50;
+const INTEREST_SCORE_MAX = 20;
+const AVAILABILITY_SCORE_MAX = 15;
+const EXPERIENCE_SCORE_MAX = 10;
+const HISTORY_SCORE_MAX = 5;
+
+const synonymGroups = [
+  ['first aid', ['first-aid', 'medical aid', 'basic medical']],
+  ['communication', ['communications', 'public speaking', 'facilitation']],
+  ['teaching', ['mentoring', 'tutoring', 'coaching']],
+  ['logistics', ['operations', 'coordination']],
+  ['event planning', ['event organization', 'event management']],
+  ['fundraising', ['donation drive', 'resource mobilization']],
+  ['environment', ['eco', 'sustainability', 'green']],
+  ['healthcare', ['health care', 'medical support']],
+];
+
+const synonymLookup = new Map();
+for (const [canonical, variants] of synonymGroups) {
+  const normalizedCanonical = canonical;
+  synonymLookup.set(normalizedCanonical, normalizedCanonical);
+  for (const variant of variants) {
+    synonymLookup.set(variant, normalizedCanonical);
+  }
+}
+
+function normalizeText(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0111/g, 'd')
+    .replace(/\u0110/g, 'd')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function canonicalizeTerm(rawValue) {
+  const normalized = normalizeText(rawValue);
+  if (!normalized) {
+    return '';
+  }
+  return synonymLookup.get(normalized) ?? normalized;
+}
+
 function normalizeStringSet(values) {
   if (!Array.isArray(values)) {
     return new Set();
@@ -15,7 +62,7 @@ function normalizeStringSet(values) {
 
   return new Set(
     values
-      .map((value) => String(value).trim().toLowerCase())
+      .map((value) => canonicalizeTerm(value))
       .filter((value) => value.length > 0)
   );
 }
@@ -28,11 +75,53 @@ function getActivityText(activity) {
   return [activity?.title, activity?.description, locationText, ...(Array.isArray(activity?.required_skills) ? activity.required_skills : [])]
     .filter(Boolean)
     .join(' ')
-    .toLowerCase();
+    .split(' ')
+    .map((part) => canonicalizeTerm(part))
+    .join(' ')
+    .trim();
 }
 
 function uniqueReasons(reasons) {
   return Array.from(new Set(reasons.filter((reason) => String(reason).trim().length > 0)));
+}
+
+function uniqueCodes(codes) {
+  return Array.from(new Set(codes.filter((code) => String(code).trim().length > 0)));
+}
+
+function asContribution(feature, score, maxScore, detail) {
+  return {
+    feature,
+    score: Number.isFinite(score) ? Math.max(0, Math.round(score)) : 0,
+    max_score: maxScore,
+    detail: String(detail ?? '').trim(),
+  };
+}
+
+function buildGroundedExplanation({ contributions, fallbackText }) {
+  const highlights = contributions
+    .filter((item) => item.score > 0 && item.detail)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 3)
+    .map((item) => item.detail);
+
+  if (highlights.length === 0) {
+    return fallbackText;
+  }
+
+  return `${highlights.join('. ')}. Final match is derived from scored profile/activity signals only.`;
+}
+
+function toStructuredRecommendationFields(score) {
+  return {
+    reason_codes: Array.isArray(score?.reason_codes) ? score.reason_codes : [],
+    score_breakdown:
+      score?.score_breakdown && typeof score.score_breakdown === 'object' && !Array.isArray(score.score_breakdown)
+        ? score.score_breakdown
+        : null,
+    feature_contributions: Array.isArray(score?.feature_contributions) ? score.feature_contributions : [],
+    model_version: String(score?.model_version ?? '').trim() || RECOMMENDATION_MODEL_VERSION,
+  };
 }
 
 function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHistory = false }) {
@@ -40,56 +129,129 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
   const volunteerSkills = normalizeStringSet(profile?.skills);
   const interests = normalizeStringSet(profile?.interests);
   const activityText = getActivityText(activity);
+  const activityTextTokens = new Set(activityText.split(/\s+/).filter(Boolean));
 
   const matchedSkills = Array.from(requiredSkills).filter((skill) => volunteerSkills.has(skill));
-  const matchedInterests = Array.from(interests).filter((interest) => activityText.includes(interest));
+  const matchedInterests = Array.from(interests).filter((interest) => {
+    if (activityText.includes(interest)) {
+      return true;
+    }
+    const tokens = interest.split(/\s+/).filter(Boolean);
+    return tokens.length > 0 && tokens.every((token) => activityTextTokens.has(token));
+  });
   const availabilityMatch = computeAvailabilityMatch(profile?.available_choices, activity?.start_time, activity?.end_time);
 
   let skillScore = 0;
   if (requiredSkills.size === 0) {
     skillScore = volunteerSkills.size > 0 ? 15 : 5;
   } else if (matchedSkills.length > 0) {
-    skillScore = Math.round((matchedSkills.length / requiredSkills.size) * 50);
+    skillScore = Math.round((matchedSkills.length / requiredSkills.size) * SKILL_SCORE_MAX);
   }
 
-  const interestScore = interests.size > 0 && matchedInterests.length > 0 ? Math.round((matchedInterests.length / interests.size) * 20) : 0;
+  const interestScore =
+    interests.size > 0 && matchedInterests.length > 0
+      ? Math.round((matchedInterests.length / interests.size) * INTEREST_SCORE_MAX)
+      : 0;
   const totalHours = Number(profile?.total_hours ?? 0);
-  const experienceScore = Math.max(0, Math.min(10, Math.round(totalHours / 10)));
-  const organizerHistoryScore = hasOrganizerHistory ? 5 : 0;
+  const experienceScore = Math.max(0, Math.min(EXPERIENCE_SCORE_MAX, Math.round(totalHours / 10)));
+  const organizerHistoryScore = hasOrganizerHistory ? HISTORY_SCORE_MAX : 0;
 
   const reasons = [];
+  const reasonCodes = [];
   if (matchedSkills.length > 0) {
     reasons.push(`Matched ${matchedSkills.length}/${requiredSkills.size} required skills`);
+    reasonCodes.push(matchedSkills.length === requiredSkills.size ? 'skills_full_match' : 'skills_partial_match');
   } else if (requiredSkills.size === 0 && volunteerSkills.size > 0) {
     reasons.push('No required skills listed, volunteer profile still has relevant skills');
+    reasonCodes.push('skills_not_required_profile_has_skills');
   }
 
   if (matchedInterests.length > 0) {
     reasons.push(`Interest overlap: ${matchedInterests.slice(0, 2).join(', ')}`);
+    reasonCodes.push('interest_overlap');
   }
 
-  reasons.push(...availabilityMatch.reasons);
+  if (availabilityMatch.score > 0) {
+    reasons.push(...availabilityMatch.reasons);
+    reasonCodes.push('availability_overlap');
+  }
 
   if (experienceScore > 0) {
     reasons.push(`Volunteer has ${totalHours} recorded hours`);
+    reasonCodes.push('experience_signal');
   }
 
   if (hasOrganizerHistory) {
     reasons.push('Prior participation with this organizer');
+    reasonCodes.push('organizer_history_signal');
   }
 
   const matchScore = Math.max(
     0,
     Math.min(100, skillScore + interestScore + availabilityMatch.score + experienceScore + organizerHistoryScore)
   );
+  const scoreBreakdown = {
+    skill_score: skillScore,
+    interest_score: interestScore,
+    availability_score: availabilityMatch.score,
+    experience_score: experienceScore,
+    history_score: organizerHistoryScore,
+    final_score: matchScore,
+  };
+
+  const featureContributions = [
+    asContribution(
+      'skills',
+      skillScore,
+      SKILL_SCORE_MAX,
+      matchedSkills.length > 0
+        ? `${matchedSkills.length}/${Math.max(requiredSkills.size, 1)} required skills matched`
+        : requiredSkills.size === 0
+          ? 'No strict required skills found; baseline skill contribution applied'
+          : 'No required skill overlap found'
+    ),
+    asContribution(
+      'interests',
+      interestScore,
+      INTEREST_SCORE_MAX,
+      matchedInterests.length > 0
+        ? `Interest overlap found: ${matchedInterests.slice(0, 2).join(', ')}`
+        : 'No direct interest overlap detected'
+    ),
+    asContribution(
+      'availability',
+      availabilityMatch.score,
+      AVAILABILITY_SCORE_MAX,
+      availabilityMatch.score > 0
+        ? availabilityMatch.reasons[0] ?? 'Availability overlap detected'
+        : 'No availability overlap detected'
+    ),
+    asContribution(
+      'experience',
+      experienceScore,
+      EXPERIENCE_SCORE_MAX,
+      experienceScore > 0 ? `Recorded volunteer hours: ${totalHours}` : 'No experience score contribution yet'
+    ),
+    asContribution(
+      'history',
+      organizerHistoryScore,
+      HISTORY_SCORE_MAX,
+      hasOrganizerHistory ? 'Volunteer has prior participation with this organizer' : 'No prior organizer history signal'
+    ),
+  ];
 
   return {
     matchScore,
     matchRatio: Number((matchScore / 100).toFixed(2)),
     reasons: uniqueReasons(reasons).slice(0, 4),
-    explanation:
-      uniqueReasons(reasons).slice(0, 2).join('. ') ||
-      'Calculated from volunteer skills, interests, availability, and prior activity history.',
+    reason_codes: uniqueCodes(reasonCodes).slice(0, 6),
+    score_breakdown: scoreBreakdown,
+    feature_contributions: featureContributions,
+    model_version: RECOMMENDATION_MODEL_VERSION,
+    explanation: buildGroundedExplanation({
+      contributions: featureContributions,
+      fallbackText: 'Calculated from volunteer skills, interests, availability, and prior activity history.',
+    }),
   };
 }
 
@@ -305,6 +467,8 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
         hours: computeDurationHours(activity.start_time, activity.end_time),
         requiredSkills: Array.isArray(activity.required_skills) ? activity.required_skills : [],
         status: activity.status,
+        cover_image_url: activity.cover_image_url ?? null,
+        ...toStructuredRecommendationFields(score),
       };
     })
     .sort((left, right) => right.matchScore - left.matchScore || String(left.startTime).localeCompare(String(right.startTime)))
@@ -354,6 +518,7 @@ async function getVolunteerRecommendationsForActivity(activityId, limit = 10) {
         availableChoices: getAvailableChoices(candidate.profile.available_choices),
         availabilitySummary: buildAvailableChoicesSummary(candidate.profile.available_choices),
         totalHours: Number(candidate.profile.total_hours ?? 0),
+        ...toStructuredRecommendationFields(score),
       };
     })
     .sort((left, right) => right.matchScore - left.matchScore || left.fullName.localeCompare(right.fullName))
@@ -431,8 +596,11 @@ async function getOrganizerRecommendationsForUser(userId, limit = 10) {
           matchedActivityId: activity.id,
           matchedActivityTitle: activity.title,
           skills: Array.isArray(candidate.profile.skills) ? candidate.profile.skills : [],
+          interests: Array.isArray(candidate.profile.interests) ? candidate.profile.interests : [],
           availableChoices: getAvailableChoices(candidate.profile.available_choices),
           availabilitySummary: buildAvailableChoicesSummary(candidate.profile.available_choices),
+          totalHours: Number(candidate.profile.total_hours ?? 0),
+          ...toStructuredRecommendationFields(score),
         });
       }
     }

@@ -13,6 +13,21 @@ export function pickHeroImage(seed: string): string {
   return HERO_IMAGES[sum % HERO_IMAGES.length];
 }
 
+/**
+ * Resolve the Explore card image: try each cover URL in order (activity / API),
+ * then fall back to deterministic Unsplash art from `pickHeroImage(seed)`.
+ */
+export function resolveExploreCoverUrl(
+  seed: string,
+  ...sources: (string | null | undefined)[]
+): string {
+  for (const s of sources) {
+    const t = typeof s === 'string' ? s.trim() : '';
+    if (t.length > 0) return t;
+  }
+  return pickHeroImage(seed);
+}
+
 export function categoryFromSkills(skills: string[]): string {
   const first = skills.find((s) => String(s).trim().length > 0);
   if (!first) return 'Community';

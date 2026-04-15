@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { EmptyLoadingErrorState } from '../components/feedback';
-import { Button } from '../components/ui';
+import { Badge, Button, Card } from '../components/ui';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
 import { IssueHighlightsCard } from '../components/reports/IssueHighlightsCard';
 import { ParticipationCountCard } from '../components/reports/ParticipationCountCard';
@@ -79,6 +79,11 @@ export function OrganizerReportSummaryPage() {
       (item) => matchesSearch(normalized, item.title) || matchesSearch(normalized, item.description)
     );
   }, [report, searchTerm]);
+
+  const analyticsFacts = report?.analyticsFacts ?? [];
+  const strengths = report?.strengths ?? [];
+  const weaknesses = report?.weaknesses ?? [];
+  const issueHighlights = report?.issueHighlights ?? [];
 
   const handleExportPdf = () => {
     setError(null);
@@ -188,6 +193,34 @@ export function OrganizerReportSummaryPage() {
             </div>
 
             <div className="org-report-lower-grid">
+              <Card as="section" className="org-report-lower-card org-report-facts-card">
+                <div className="org-report-card-head">
+                  <h3>Analytics Facts</h3>
+                  {report.modelVersion ? <small>{report.modelVersion}</small> : null}
+                </div>
+                {analyticsFacts.length === 0 ? (
+                  <p className="muted">No analytics facts available.</p>
+                ) : (
+                  <div className="org-report-facts-grid">
+                    {analyticsFacts.map((fact) => (
+                      <div className="org-report-fact-item" key={fact.key}>
+                        <span>{fact.label}</span>
+                        <strong>{fact.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {issueHighlights.length > 0 && (
+                  <div className="org-report-inline-tags">
+                    {issueHighlights.map((item) => (
+                      <Badge key={item.id} tone={item.priority === 'high' ? 'danger' : 'info'}>
+                        {item.label} ({item.count})
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
               <FeedbackOverviewCard
                 ariaLabel="Open feedback review"
                 onClick={() => navigate('/feedback')}
@@ -195,6 +228,38 @@ export function OrganizerReportSummaryPage() {
                 rating={report.feedbackRating}
                 sentiments={report.sentimentChips}
               />
+
+              <Card as="section" className="org-report-lower-card org-report-facts-card">
+                <div className="org-report-card-head">
+                  <h3>Strengths and Weaknesses</h3>
+                </div>
+                <div className="org-report-strength-grid">
+                  <div>
+                    <h4>Strengths</h4>
+                    {strengths.length > 0 ? (
+                      <ul className="org-report-list">
+                        {strengths.map((item) => (
+                          <li key={`strength-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">No explicit strengths detected yet.</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4>Weaknesses</h4>
+                    {weaknesses.length > 0 ? (
+                      <ul className="org-report-list">
+                        {weaknesses.map((item) => (
+                          <li key={`weakness-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">No explicit weaknesses detected yet.</p>
+                    )}
+                  </div>
+                </div>
+              </Card>
 
               {filteredIssues.length > 0 ? (
                 <IssueHighlightsCard issues={filteredIssues} />
