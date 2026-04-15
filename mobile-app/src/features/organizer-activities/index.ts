@@ -26,3 +26,5 @@ export type {
   ProvinceOption,
   WardOption,
 } from './services/activity-options-service';
+
+export { updateActivityCoverImageUrl } from './services/activity-cover-service';

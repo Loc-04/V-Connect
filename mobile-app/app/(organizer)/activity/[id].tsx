@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,6 +19,7 @@ import {
   deleteActivity,
   getActivity,
   updateActivity,
+  updateActivityCoverImageUrl,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
@@ -27,6 +29,7 @@ import {
   type ProvinceOption,
   type WardOption,
 } from '@/src/features/organizer-activities';
+import { pickImageFromLibrary, compressImage, assertUnderMaxBytes, uploadJpegAndGetPublicUrl } from '@/src/shared/lib/image-upload';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -69,6 +72,7 @@ export default function EditActivityScreen() {
   const [provinceCode, setProvinceCode] = useState<string | null>(null);
   const [wardCode, setWardCode] = useState<string | null>(null);
   const [status, setStatus] = useState<ActivityStatus>('draft');
+  const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
@@ -83,8 +87,8 @@ export default function EditActivityScreen() {
   const [initialWardLoaded, setInitialWardLoaded] = useState(false);
 
   useEffect(() => {
-    void fetchSkillOptions().then(setSkillOptions).catch(() => {});
-    void fetchProvinceOptions().then(setProvinceOptions).catch(() => {});
+    void fetchSkillOptions().then(setSkillOptions).catch(() => { });
+    void fetchProvinceOptions().then(setProvinceOptions).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -108,6 +112,11 @@ export default function EditActivityScreen() {
       }
     }
   }, [provinceCode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePickCover = useCallback(async () => {
+    const uri = await pickImageFromLibrary();
+    if (uri) setPendingCoverUri(uri);
+  }, []);
 
   const toggleSkill = useCallback((skillName: string) => {
     setSelectedSkills((prev) =>
@@ -218,7 +227,7 @@ export default function EditActivityScreen() {
   const handleSave = useCallback(async () => {
     if (!id) return;
     const patch = buildPatch();
-    if (Object.keys(patch).length === 0) {
+    if (Object.keys(patch).length === 0 && !pendingCoverUri) {
       Alert.alert('No changes', 'Nothing to update.');
       return;
     }
@@ -232,7 +241,22 @@ export default function EditActivityScreen() {
 
     setSaving(true);
     try {
-      await updateActivity(id, patch);
+      if (Object.keys(patch).length > 0) {
+        await updateActivity(id, patch);
+      }
+
+      if (pendingCoverUri) {
+        try {
+          const compressed = await compressImage(pendingCoverUri);
+          await assertUnderMaxBytes(compressed);
+          const objectPath = `${id}_${Date.now()}.jpg`;
+          const publicUrl = await uploadJpegAndGetPublicUrl('activity_covers', objectPath, compressed);
+          await updateActivityCoverImageUrl(id, publicUrl);
+        } catch (coverErr) {
+          Alert.alert('Cover Upload Failed', coverErr instanceof Error ? coverErr.message : 'Activity was saved but cover upload failed.');
+        }
+      }
+
       Alert.alert('Saved', 'Activity updated successfully.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -241,7 +265,7 @@ export default function EditActivityScreen() {
     } finally {
       setSaving(false);
     }
-  }, [id, buildPatch]);
+  }, [id, buildPatch, pendingCoverUri]);
 
   const handleDelete = useCallback(() => {
     if (!id || !original) return;
@@ -308,6 +332,27 @@ export default function EditActivityScreen() {
             </ThemedText>
           </View>
         )}
+
+        <FieldLabel label="Cover Image" />
+        <Pressable
+          style={[styles.coverPicker, shouldDimReadOnly && styles.coverPickerDisabled]}
+          onPress={() => isDraft && void handlePickCover()}
+          disabled={!isDraft}
+        >
+          {pendingCoverUri || original?.cover_image_url ? (
+            <Image
+              source={{ uri: pendingCoverUri ?? original!.cover_image_url! }}
+              style={styles.coverPreview}
+            />
+          ) : (
+            <View style={styles.coverPlaceholder}>
+              <MaterialIcons name="add-photo-alternate" size={32} color="#9ca3af" />
+              <ThemedText style={styles.coverPlaceholderText}>
+                {isDraft ? 'Tap to add cover image' : 'No cover image'}
+              </ThemedText>
+            </View>
+          )}
+        </Pressable>
 
         <FieldLabel label="Title" required />
         <TextInput
@@ -757,6 +802,31 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  coverPicker: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+    backgroundColor: '#f3f4f6',
+  },
+  coverPickerDisabled: {
+    opacity: 0.5,
+  },
+  coverPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+  },
+  coverPlaceholder: {
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  coverPlaceholderText: {
+    fontSize: 14,
+    color: '#9ca3af',
   },
   deleteButton: {
     marginTop: 12,

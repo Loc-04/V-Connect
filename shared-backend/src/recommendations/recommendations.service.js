@@ -305,6 +305,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
         hours: computeDurationHours(activity.start_time, activity.end_time),
         requiredSkills: Array.isArray(activity.required_skills) ? activity.required_skills : [],
         status: activity.status,
+        cover_image_url: activity.cover_image_url ?? null,
       };
     })
     .sort((left, right) => right.matchScore - left.matchScore || String(left.startTime).localeCompare(String(right.startTime)))

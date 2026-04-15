@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View, Image } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { router } from 'expo-router';
 
@@ -15,6 +15,8 @@ import {
   type VolunteerProfileView,
   type ProfileStats,
 } from '@/src/features/profile';
+import { AvatarWithUploadOverlay } from '@/src/features/profile/components/avatar-with-upload-overlay';
+import { UserQrCodeModal } from '@/src/features/profile/components/user-qr-code-modal';
 import { ROUTES } from '@/src/shared/constants/route-constants';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 import { ThemedView } from '@/src/shared/ui/themed-view';
@@ -25,7 +27,7 @@ type LoadState = 'loading' | 'ready' | 'empty' | 'error';
 const PICKER_PLACEHOLDER = '__placeholder__';
 
 export default function ProfileScreen() {
-  const { user, role, signOut } = useAuth();
+  const { user, role, signOut, status: authStatus } = useAuth();
   const [state, setState] = useState<LoadState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [profile, setProfile] = useState<VolunteerProfileView | null>(null);
@@ -36,6 +38,7 @@ export default function ProfileScreen() {
   const [pickerValue, setPickerValue] = useState<string>(PICKER_PLACEHOLDER);
   const [isSavingSkills, setIsSavingSkills] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [qrVisible, setQrVisible] = useState(false);
 
   const initials = useMemo(() => {
     if (!profile?.fullName) return '?';
@@ -155,6 +158,25 @@ export default function ProfileScreen() {
     );
   }
 
+  if (authStatus === 'loading') {
+    return (
+      <ThemedView style={styles.centeredContainer}>
+        <ThemedText type="title">Volunteer Profile</ThemedText>
+        <ThemedText style={styles.statusText}>Loading session...</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (authStatus !== 'authenticated' || !user) {
+    return (
+      <ThemedView style={styles.centeredContainer}>
+        <ThemedText style={styles.statusText}>
+          {isSigningOut ? 'Signing out...' : 'You are signed out.'}
+        </ThemedText>
+      </ThemedView>
+    );
+  }
+
   if (state === 'loading') {
     return (
       <ThemedView style={styles.centeredContainer}>
@@ -212,13 +234,12 @@ export default function ProfileScreen() {
         </ThemedText>
 
         <View style={styles.headerCard}>
-          {profile.avatarUrl ? (
-            <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <ThemedText style={styles.avatarFallbackText}>{initials}</ThemedText>
-            </View>
-          )}
+          <AvatarWithUploadOverlay
+            userId={user.id}
+            avatarUrl={profile.avatarUrl}
+            initials={initials}
+            onAvatarUpdated={(url) => setProfile((prev) => (prev ? { ...prev, avatarUrl: url } : prev))}
+          />
           <ThemedText type="subtitle" style={styles.nameText}>
             {profile.fullName}
           </ThemedText>
@@ -260,6 +281,21 @@ export default function ProfileScreen() {
           style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
           <ThemedText style={styles.availabilityNavButtonText}>My registrations</ThemedText>
         </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show my QR code"
+          onPress={() => setQrVisible(true)}
+          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+          <ThemedText style={styles.availabilityNavButtonText}>My QR Code</ThemedText>
+        </Pressable>
+
+        <UserQrCodeModal
+          visible={qrVisible}
+          onClose={() => setQrVisible(false)}
+          userId={user.id}
+          fullName={profile.fullName}
+        />
 
         <ThemedText style={styles.sectionTitle}>CORE SKILLS</ThemedText>
         <View style={styles.pickerWrapper}>
