@@ -10,6 +10,7 @@ import { AdminActivitiesPage } from './pages/AdminActivitiesPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminFeedbackPage } from './pages/AdminFeedbackPage';
 import { AdminNotificationsPage } from './pages/AdminNotificationsPage';
+import { AdminParticipationsPage } from './pages/AdminParticipationsPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { ActivityDetailPage } from './pages/ActivityDetailPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
@@ -284,6 +285,7 @@ function App() {
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="notifications" element={<AdminNotificationsPage />} />
+            <Route path="participations" element={<AdminParticipationsPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
