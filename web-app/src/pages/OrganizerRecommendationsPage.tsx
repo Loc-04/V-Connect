@@ -76,6 +76,20 @@ function isExperienced(volunteer: RecommendedVolunteerRecord) {
   return Number(volunteer.totalHours ?? 0) >= 10;
 }
 
+function humanizeReasonCode(code: string) {
+  const dictionary: Record<string, string> = {
+    skills_full_match: 'Full skill match',
+    skills_partial_match: 'Partial skill match',
+    skills_not_required_profile_has_skills: 'Profile skills support this activity',
+    interest_overlap: 'Interest overlap',
+    availability_overlap: 'Availability overlap',
+    experience_signal: 'Experience signal',
+    organizer_history_signal: 'Prior organizer history',
+  };
+  const normalized = String(code ?? '').trim().toLowerCase();
+  return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
+}
+
 function normalizeAssignmentStatus(value: string | null | undefined) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -626,13 +640,62 @@ export function OrganizerRecommendationsPage() {
                   <h4>Why this volunteer</h4>
                   <p>{selectedVolunteer.explanation}</p>
                   <div className="org-reco-badge-list">
-                    {selectedVolunteer.reasons.map((reason) => (
-                      <Badge className="org-reco-mini-badge" key={reason} tone="accent">
-                        {reason}
-                      </Badge>
-                    ))}
+                    {Array.isArray(selectedVolunteer.reason_codes) && selectedVolunteer.reason_codes.length > 0
+                      ? selectedVolunteer.reason_codes.map((code) => (
+                          <Badge className="org-reco-mini-badge" key={code} tone="accent">
+                            {humanizeReasonCode(code)}
+                          </Badge>
+                        ))
+                      : selectedVolunteer.reasons.map((reason) => (
+                          <Badge className="org-reco-mini-badge" key={reason} tone="accent">
+                            {reason}
+                          </Badge>
+                        ))}
                   </div>
                 </div>
+
+                {selectedVolunteer.score_breakdown && (
+                  <div className="org-reco-note">
+                    <h4>Score Breakdown</h4>
+                    <p>
+                      <strong>Skills:</strong> {Math.round(selectedVolunteer.score_breakdown.skill_score)}
+                    </p>
+                    <p>
+                      <strong>Interests:</strong> {Math.round(selectedVolunteer.score_breakdown.interest_score)}
+                    </p>
+                    <p>
+                      <strong>Availability:</strong> {Math.round(selectedVolunteer.score_breakdown.availability_score)}
+                    </p>
+                    <p>
+                      <strong>Experience:</strong> {Math.round(selectedVolunteer.score_breakdown.experience_score)}
+                    </p>
+                    <p>
+                      <strong>History:</strong> {Math.round(selectedVolunteer.score_breakdown.history_score)}
+                    </p>
+                    <p>
+                      <strong>Total:</strong> {Math.round(selectedVolunteer.score_breakdown.final_score)}
+                    </p>
+                  </div>
+                )}
+
+                {Array.isArray(selectedVolunteer.feature_contributions) &&
+                  selectedVolunteer.feature_contributions.length > 0 && (
+                    <div className="org-reco-note">
+                      <h4>Feature Contributions</h4>
+                      {selectedVolunteer.feature_contributions.map((item) => (
+                        <p key={`${selectedVolunteer.userId}-${item.feature}`}>
+                          <strong>{item.feature}:</strong> {Math.round(item.score)}/{Math.round(item.max_score)} - {item.detail}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                {selectedVolunteer.model_version && (
+                  <div className="org-reco-note">
+                    <h4>Scoring Model</h4>
+                    <p>{selectedVolunteer.model_version}</p>
+                  </div>
+                )}
 
                 <div className="org-reco-note">
                   <h4>Skills & Interests</h4>

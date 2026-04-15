@@ -21,7 +21,7 @@ function getCopy(action: GuestProtectedAction | undefined) {
     return 'Create an account to save this opportunity and come back to it later from your personal workspace.';
   }
   if (action === 'ai_match') {
-    return 'Sign in to compare this activity with your skills, interests, and availability using AI-assisted recommendations.';
+    return 'Sign in to compare this activity with your skills, interests, and availability using personalized recommendation scoring.';
   }
   if (action === 'contact') {
     return 'Log in or sign up to contact the organizer and ask questions before joining.';

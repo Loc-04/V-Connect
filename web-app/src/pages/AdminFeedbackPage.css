@@ -214,6 +214,57 @@
   gap: 0.7rem;
 }
 
+.feedback-review-insights-card.card {
+  padding: 0.86rem;
+  display: grid;
+  gap: 0.62rem;
+}
+
+.feedback-review-insights-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.feedback-review-insights-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.feedback-review-insights-head small {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.feedback-review-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.feedback-review-insights-grid h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.74rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.feedback-review-insights-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.feedback-review-insights-list li {
+  color: #334155;
+  font-size: 0.76rem;
+}
+
 .feedback-review-metric-card.card {
   padding: 0.86rem;
   display: grid;
@@ -638,6 +689,10 @@
   }
 
   .feedback-review-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .feedback-review-insights-grid {
     grid-template-columns: 1fr;
   }
 }
