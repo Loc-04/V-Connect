@@ -265,7 +265,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
 
   const { data: activities, error } = await supabaseAdmin
     .from('activities')
-    .select('id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id')
+    .select('id, title, description, cover_image_url, location, start_time, end_time, capacity, required_skills, status, organizer_id')
     .eq('status', 'published')
     .is('deleted_at', null)
     .gte('end_time', new Date().toISOString())
@@ -299,11 +299,13 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
         reasons: score.reasons,
         explanation: score.explanation,
         location: activity.location,
+        coverImageUrl: activity.cover_image_url || null,
         startTime: activity.start_time,
         endTime: activity.end_time,
         hours: computeDurationHours(activity.start_time, activity.end_time),
         requiredSkills: Array.isArray(activity.required_skills) ? activity.required_skills : [],
         status: activity.status,
+        cover_image_url: activity.cover_image_url ?? null,
       };
     })
     .sort((left, right) => right.matchScore - left.matchScore || String(left.startTime).localeCompare(String(right.startTime)))

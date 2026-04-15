@@ -3,6 +3,7 @@ export { fetchVolunteerRecommendations } from './recommendations-service';
 export type { VolunteerRecommendationActivity, VolunteerRecommendationsResponse } from './types';
 export {
   categoryFromSkills,
+  resolveExploreCoverUrl,
   formatDateRangeLine,
   formatLocationLine,
   pickHeroImage,

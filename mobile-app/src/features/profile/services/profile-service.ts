@@ -545,3 +545,14 @@ export async function getOrganizerRecommendedVolunteers(
     })
     .filter((item): item is OrganizerRecommendedVolunteerItem => item !== null);
 }
+
+export async function updateUserAvatar(userId: string, publicUrl: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ avatar_url: publicUrl })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

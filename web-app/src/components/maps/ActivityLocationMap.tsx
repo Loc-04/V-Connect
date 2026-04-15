@@ -1,5 +1,5 @@
-import type { LatLngExpression } from 'leaflet';
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
+import { divIcon, type LatLngExpression } from 'leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import { useEffect } from 'react';
 
 import type { ActivityCoordinates } from '../../lib/activityLocation';
@@ -17,6 +17,10 @@ interface ActivityLocationMapProps {
   error?: string | null;
   emptyTitle?: string;
   emptyMessage?: string;
+  editable?: boolean;
+  onCoordinatesChange?: ((coordinates: ActivityCoordinates) => void) | null;
+  onCoordinatesPreviewChange?: ((coordinates: ActivityCoordinates) => void) | null;
+  editInstruction?: string;
 }
 
 function MapViewportSync({ center }: { center: LatLngExpression }) {
@@ -30,6 +34,14 @@ function MapViewportSync({ center }: { center: LatLngExpression }) {
   return null;
 }
 
+const draggableMarkerIcon = divIcon({
+  className: 'activity-location-map__marker',
+  iconSize: [24, 24],
+  iconAnchor: [12, 24],
+  popupAnchor: [0, -18],
+  html: '<span class="activity-location-map__marker-pin"></span>',
+});
+
 export function ActivityLocationMap({
   coordinates,
   title,
@@ -41,6 +53,10 @@ export function ActivityLocationMap({
   error = null,
   emptyTitle = 'Map preview unavailable',
   emptyMessage = 'Complete the location details to preview the map.',
+  editable = false,
+  onCoordinatesChange = null,
+  onCoordinatesPreviewChange = null,
+  editInstruction = 'Drag the marker to place the exact activity location.',
 }: ActivityLocationMapProps) {
   const classes = ['activity-location-map', compact ? 'is-compact' : '', className].filter(Boolean).join(' ');
 
@@ -59,7 +75,7 @@ export function ActivityLocationMap({
   const center: LatLngExpression = [coordinates.lat, coordinates.lng];
 
   return (
-    <div className={classes}>
+    <div className={`${classes}${editable ? ' is-editable' : ''}`}>
       <MapContainer
         attributionControl
         center={center}
@@ -76,22 +92,47 @@ export function ActivityLocationMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <CircleMarker
-          center={center}
-          color="#7c3aed"
-          fillColor="#a855f7"
-          fillOpacity={0.92}
-          radius={9}
-          stroke
-          weight={2}
+        <Marker
+          draggable={editable}
+          eventHandlers={
+            editable
+              ? {
+                  drag(event) {
+                    if (!onCoordinatesPreviewChange) {
+                      return;
+                    }
+
+                    const position = event.target.getLatLng();
+                    onCoordinatesPreviewChange({
+                      lat: Number(position.lat.toFixed(7)),
+                      lng: Number(position.lng.toFixed(7)),
+                    });
+                  },
+                  dragend(event) {
+                    if (!onCoordinatesChange) {
+                      return;
+                    }
+
+                    const position = event.target.getLatLng();
+                    onCoordinatesChange({
+                      lat: Number(position.lat.toFixed(7)),
+                      lng: Number(position.lng.toFixed(7)),
+                    });
+                  },
+                }
+              : undefined
+          }
+          icon={draggableMarkerIcon}
+          position={center}
         >
           <Popup>
             <strong>{title}</strong>
             <br />
             {address}
           </Popup>
-        </CircleMarker>
+        </Marker>
       </MapContainer>
+      {editable ? <div className="activity-location-map__overlay">{editInstruction}</div> : null}
     </div>
   );
 }

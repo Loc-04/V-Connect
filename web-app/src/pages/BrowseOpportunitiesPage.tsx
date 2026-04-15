@@ -93,7 +93,9 @@ function toOpportunity(activity: ActivityRecord, index: number): OpportunityView
     category: status || 'opportunity',
     categoryTone: mapStatusToTone(status),
     isExpired,
-    imageUrl: fallbackImages[index % fallbackImages.length],
+    imageUrl:
+      (typeof activity.cover_image_url === 'string' && activity.cover_image_url.trim()) ||
+      fallbackImages[index % fallbackImages.length],
     date: formatDateLabel(activity.start_time),
     title: activity.title ?? 'Untitled activity',
     location: getLocationLabel(activity.location),

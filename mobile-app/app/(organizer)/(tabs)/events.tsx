@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   TextInput,
@@ -119,10 +120,14 @@ export default function OrganizerEventsScreen() {
             })
           }
         >
-          <View style={styles.activityIconWrap}>
-            <MaterialIcons name="event-note" size={22} color="#0f766e" />
-          </View>
-          <View style={styles.activityContent}>
+          {item.cover_image_url ? (
+            <Image source={{ uri: item.cover_image_url }} style={styles.coverImage} />
+          ) : (
+            <View style={styles.coverPlaceholder}>
+              <MaterialIcons name="image" size={32} color="#d1d5db" />
+            </View>
+          )}
+          <View style={styles.cardBody}>
             <View style={styles.activityTopRow}>
               <ThemedText type="defaultSemiBold" style={styles.activityTitle} numberOfLines={1}>
                 {item.title}
@@ -360,22 +365,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eceff1',
     backgroundColor: '#f8faf9',
-    padding: 12,
-    marginBottom: 10,
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
+    marginBottom: 12,
+    overflow: 'hidden',
   },
-  activityIconWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+  coverImage: {
+    width: '100%',
+    height: 140,
+  },
+  coverPlaceholder: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#dff3ef',
   },
-  activityContent: {
-    flex: 1,
+  cardBody: {
+    padding: 12,
   },
   activityTopRow: {
     flexDirection: 'row',

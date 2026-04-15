@@ -14,9 +14,9 @@ import {
   categoryFromSkills,
   ExploreActivityCard,
   fetchVolunteerRecommendations,
+  resolveExploreCoverUrl,
   formatDateRangeLine,
   formatLocationLine,
-  pickHeroImage,
   type VolunteerRecommendationActivity,
 } from '@/src/features/volunteer-explore';
 import { listActivities } from '@/src/features/organizer-activities';
@@ -35,7 +35,10 @@ interface ExploreRow {
   imageUrl: string;
 }
 
-function mapRecommendation(item: VolunteerRecommendationActivity): ExploreRow {
+function mapRecommendation(
+  item: VolunteerRecommendationActivity,
+  coverFromPublished?: string | null,
+): ExploreRow {
   return {
     id: item.activityId,
     title: item.title,
@@ -45,7 +48,11 @@ function mapRecommendation(item: VolunteerRecommendationActivity): ExploreRow {
     dateLine: formatDateRangeLine(item.startTime, item.endTime),
     locationLine: formatLocationLine(item.location),
     organizerName: item.organizerName,
-    imageUrl: pickHeroImage(item.activityId),
+    imageUrl: resolveExploreCoverUrl(
+      item.activityId,
+      coverFromPublished,
+      item.cover_image_url,
+    ),
   };
 }
 
@@ -59,7 +66,7 @@ function mapPublishedActivity(activity: ActivityRecord): ExploreRow {
     dateLine: formatDateRangeLine(activity.start_time, activity.end_time),
     locationLine: formatLocationLine(activity.location),
     organizerName: 'Organizer',
-    imageUrl: pickHeroImage(activity.id),
+    imageUrl: resolveExploreCoverUrl(activity.id, activity.cover_image_url),
   };
 }
 
@@ -104,18 +111,20 @@ export default function ExploreScreen() {
       }
 
       if (published.length === 0) {
-        setRows(recActivities.map(mapRecommendation));
+        setRows(recActivities.map((r) => mapRecommendation(r)));
         setLoadState('ready');
         return;
       }
 
+      const publishedById = new Map(published.map((p) => [p.id, p]));
       const publishedIds = new Set(published.map((p) => p.id));
       const merged: ExploreRow[] = [];
       const seen = new Set<string>();
 
       for (const r of recActivities) {
         if (!publishedIds.has(r.activityId)) continue;
-        merged.push(mapRecommendation(r));
+        const coverFromPublished = publishedById.get(r.activityId)?.cover_image_url ?? null;
+        merged.push(mapRecommendation(r, coverFromPublished));
         seen.add(r.activityId);
       }
 

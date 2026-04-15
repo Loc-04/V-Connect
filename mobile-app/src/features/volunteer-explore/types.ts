@@ -14,6 +14,8 @@ export interface VolunteerRecommendationActivity {
   hours: number;
   requiredSkills: string[];
   status: string;
+  /** Set when API returns it; otherwise merged from published activities in Explore. */
+  cover_image_url?: string | null;
 }
 
 export interface VolunteerRecommendationsResponse {

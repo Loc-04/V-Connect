@@ -49,6 +49,28 @@ function normalizeGeocodePayload(body) {
   };
 }
 
+function normalizeReverseGeocodePayload(body) {
+  if (!isPlainObject(body)) {
+    throw new Error('Body must be a JSON object.');
+  }
+
+  const lat = normalizeOptionalCoordinate(body.lat, 'lat');
+  const lng = normalizeOptionalCoordinate(body.lng, 'lng');
+
+  if (!Number.isFinite(lat)) {
+    throw new Error('lat is required.');
+  }
+
+  if (!Number.isFinite(lng)) {
+    throw new Error('lng is required.');
+  }
+
+  return {
+    lat: Number(lat.toFixed(7)),
+    lng: Number(lng.toFixed(7)),
+  };
+}
+
 function normalizeActivityMapLocation(value) {
   if (value == null) {
     return {};
@@ -74,4 +96,4 @@ function normalizeActivityMapLocation(value) {
   };
 }
 
-export { normalizeActivityMapLocation, normalizeGeocodePayload };
+export { normalizeActivityMapLocation, normalizeGeocodePayload, normalizeReverseGeocodePayload };
