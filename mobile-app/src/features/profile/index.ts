@@ -17,6 +17,7 @@ export type {
 export {
   getCoreSkills,
   updateVolunteerSkills,
+  updateUserAvatar,
   getVolunteerProfile,
   getVolunteerStats,
   getRecentParticipations,

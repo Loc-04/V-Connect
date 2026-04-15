@@ -19,6 +19,8 @@ import {
   type OrganizerRecommendedVolunteerItem,
   type OrganizerTopStats,
 } from '@/src/features/profile';
+import { AvatarWithUploadOverlay } from '@/src/features/profile/components/avatar-with-upload-overlay';
+import { UserQrCodeModal } from '@/src/features/profile/components/user-qr-code-modal';
 import { ROUTES } from '@/src/shared/constants/route-constants';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 import { ThemedView } from '@/src/shared/ui/themed-view';
@@ -38,7 +40,7 @@ function toInitials(fullName: string): string {
 }
 
 export default function DashboardScreen() {
-  const { user } = useAuth();
+  const { user, signOut, status: authStatus } = useAuth();
   const [state, setState] = useState<LoadState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [profile, setProfile] = useState<OrganizerProfileView | null>(null);
@@ -46,6 +48,8 @@ export default function DashboardScreen() {
   const [recommendedVolunteers, setRecommendedVolunteers] = useState<
     OrganizerRecommendedVolunteerItem[]
   >([]);
+  const [qrVisible, setQrVisible] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const initials = useMemo(
     () => (profile?.fullName ? toInitials(profile.fullName) : '?'),
@@ -95,6 +99,61 @@ export default function DashboardScreen() {
     void loadOrganizerProfile();
   }, [loadOrganizerProfile]);
 
+  function handleSignOut() {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          if (isSigningOut) return;
+          setIsSigningOut(true);
+          try {
+            const { error } = await signOut();
+            if (error) {
+              Alert.alert('Sign Out Failed', error);
+            }
+          } finally {
+            setIsSigningOut(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  function renderSignOutButton() {
+    return (
+      <Pressable
+        style={[styles.signOutButton, isSigningOut && styles.signOutButtonDisabled]}
+        onPress={handleSignOut}
+        disabled={isSigningOut}
+      >
+        <ThemedText style={styles.signOutButtonText}>
+          {isSigningOut ? 'Signing Out...' : 'Sign Out'}
+        </ThemedText>
+      </Pressable>
+    );
+  }
+
+  if (authStatus === 'loading') {
+    return (
+      <ThemedView style={styles.centeredContainer}>
+        <ThemedText type="title">Organizer Profile</ThemedText>
+        <ThemedText style={styles.statusText}>Loading session...</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (authStatus !== 'authenticated' || !user) {
+    return (
+      <ThemedView style={styles.centeredContainer}>
+        <ThemedText style={styles.statusText}>
+          {isSigningOut ? 'Signing out...' : 'You are signed out.'}
+        </ThemedText>
+      </ThemedView>
+    );
+  }
+
   if (state === 'loading') {
     return (
       <ThemedView style={styles.centeredContainer}>
@@ -114,6 +173,7 @@ export default function DashboardScreen() {
         <Pressable style={styles.retryButton} onPress={() => void loadOrganizerProfile()}>
           <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
         </Pressable>
+        {renderSignOutButton()}
       </ThemedView>
     );
   }
@@ -126,6 +186,7 @@ export default function DashboardScreen() {
         <Pressable style={styles.retryButton} onPress={() => void loadOrganizerProfile()}>
           <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
         </Pressable>
+        {renderSignOutButton()}
       </ThemedView>
     );
   }
@@ -147,13 +208,12 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.profileCard}>
-          {profile.avatarUrl ? (
-            <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <ThemedText style={styles.avatarFallbackText}>{initials}</ThemedText>
-            </View>
-          )}
+          <AvatarWithUploadOverlay
+            userId={user.id}
+            avatarUrl={profile.avatarUrl}
+            initials={initials}
+            onAvatarUpdated={(url) => setProfile((prev) => (prev ? { ...prev, avatarUrl: url } : prev))}
+          />
           <ThemedText type="subtitle" style={styles.nameText}>
             {profile.fullName}
           </ThemedText>
@@ -194,6 +254,20 @@ export default function DashboardScreen() {
         >
           <ThemedText style={styles.editButtonText}>Register Management</ThemedText>
         </Pressable>
+
+        <Pressable
+          style={styles.editButton}
+          onPress={() => setQrVisible(true)}
+        >
+          <ThemedText style={styles.editButtonText}>My QR Code</ThemedText>
+        </Pressable>
+
+        <UserQrCodeModal
+          visible={qrVisible}
+          onClose={() => setQrVisible(false)}
+          userId={user.id}
+          fullName={profile.fullName}
+        />
 
         <View style={styles.aiHeaderRow}>
           <MaterialIcons name="auto-awesome" size={18} color="#0f766e" />
@@ -253,6 +327,8 @@ export default function DashboardScreen() {
         ) : (
           <ThemedText style={styles.emptyInlineText}>No recommendations available yet.</ThemedText>
         )}
+
+        {renderSignOutButton()}
       </ScrollView>
 
     </ThemedView>
@@ -581,6 +657,22 @@ const styles = StyleSheet.create({
   emptyInlineText: {
     fontSize: 14,
     color: '#6b7280',
+  },
+  signOutButton: {
+    marginTop: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    backgroundColor: '#dc2626',
+    alignSelf: 'stretch',
+  },
+  signOutButtonDisabled: {
+    opacity: 0.7,
+  },
+  signOutButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

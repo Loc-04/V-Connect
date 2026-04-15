@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +16,7 @@ import {
 
 import {
   createActivity,
+  updateActivityCoverImageUrl,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
@@ -24,6 +26,7 @@ import {
   type ProvinceOption,
   type WardOption,
 } from '@/src/features/organizer-activities';
+import { pickImageFromLibrary, compressImage, assertUnderMaxBytes, uploadJpegAndGetPublicUrl } from '@/src/shared/lib/image-upload';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 
 const STATUS_OPTIONS: ActivityStatus[] = ['draft', 'published'];
@@ -54,6 +57,7 @@ export default function CreateActivityScreen() {
   const [provinceCode, setProvinceCode] = useState<string | null>(null);
   const [wardCode, setWardCode] = useState<string | null>(null);
   const [status, setStatus] = useState<ActivityStatus>('draft');
+  const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
@@ -79,6 +83,11 @@ export default function CreateActivityScreen() {
     }
     setWardCode(null);
   }, [provinceCode]);
+
+  const handlePickCover = useCallback(async () => {
+    const uri = await pickImageFromLibrary();
+    if (uri) setPendingCoverUri(uri);
+  }, []);
 
   const toggleSkill = useCallback((skillName: string) => {
     setSelectedSkills((prev) =>
@@ -159,7 +168,20 @@ export default function CreateActivityScreen() {
 
     setSubmitting(true);
     try {
-      await createActivity(payload);
+      const activity = await createActivity(payload);
+
+      if (pendingCoverUri) {
+        try {
+          const compressed = await compressImage(pendingCoverUri);
+          await assertUnderMaxBytes(compressed);
+          const objectPath = `${activity.id}_${Date.now()}.jpg`;
+          const publicUrl = await uploadJpegAndGetPublicUrl('activity_covers', objectPath, compressed);
+          await updateActivityCoverImageUrl(activity.id, publicUrl);
+        } catch (coverErr) {
+          Alert.alert('Cover Upload Failed', coverErr instanceof Error ? coverErr.message : 'Activity was created but cover upload failed.');
+        }
+      }
+
       Alert.alert('Success', 'Activity created successfully.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -168,7 +190,7 @@ export default function CreateActivityScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [validate, title, description, location, startDateTime, endDateTime, capacity, selectedSkills, status, provinceCode, wardCode]);
+  }, [validate, title, description, location, startDateTime, endDateTime, capacity, selectedSkills, status, provinceCode, wardCode, pendingCoverUri]);
 
   const selectedProvinceName = provinceOptions.find((p) => p.code === provinceCode)?.name;
   const selectedWardName = wardOptions.find((w) => w.code === wardCode)?.name;
@@ -183,6 +205,18 @@ export default function CreateActivityScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <FieldLabel label="Cover Image" />
+        <Pressable style={styles.coverPicker} onPress={() => void handlePickCover()}>
+          {pendingCoverUri ? (
+            <Image source={{ uri: pendingCoverUri }} style={styles.coverPreview} />
+          ) : (
+            <View style={styles.coverPlaceholder}>
+              <MaterialIcons name="add-photo-alternate" size={32} color="#9ca3af" />
+              <ThemedText style={styles.coverPlaceholderText}>Tap to add cover image</ThemedText>
+            </View>
+          )}
+        </Pressable>
+
         <FieldLabel label="Title" required />
         <TextInput
           style={styles.input}
@@ -576,5 +610,27 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  coverPicker: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+    backgroundColor: '#f3f4f6',
+  },
+  coverPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+  },
+  coverPlaceholder: {
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  coverPlaceholderText: {
+    fontSize: 14,
+    color: '#9ca3af',
   },
 });

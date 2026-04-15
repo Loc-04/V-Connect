@@ -21,6 +21,7 @@ export interface ActivityRecord {
   organizer_id: string;
   province_code: string | null;
   ward_code: string | null;
+  cover_image_url: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
