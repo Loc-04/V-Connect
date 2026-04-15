@@ -9,7 +9,11 @@ import { formatActivityLocation } from '../lib/activityLocation';
 import { createParticipation } from '../lib/participations';
 import { getRecommendedActivitiesForVolunteer } from '../lib/recommendations';
 import type { ActivityLocation } from '../types/activity';
-import type { RecommendedActivityRecord } from '../types/recommendation';
+import type {
+  RecommendationFeatureContribution,
+  RecommendationScoreBreakdown,
+  RecommendedActivityRecord,
+} from '../types/recommendation';
 import './VolunteerAiRecommendedActivitiesPage.css';
 
 type MatchFilter = 'all' | 'high' | 'weekend' | 'skill-based';
@@ -22,6 +26,11 @@ interface RecommendationViewModel {
   matchScore: number;
   explanation: string;
   reasons: string[];
+  reasonCodes: string[];
+  scoreBreakdown: RecommendationScoreBreakdown | null;
+  featureContributions: RecommendationFeatureContribution[];
+  modelVersion: string | null;
+  hasAiData: boolean;
   locationLabel: string;
   dateLabel: string;
   timeLabel: string;
@@ -93,8 +102,72 @@ function toHoursLabel(hours: number | null | undefined): string {
   return `${rounded} volunteer hours`;
 }
 
+function normalizeReasonCodes(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => String(item ?? '').trim().toLowerCase())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
+}
+
+function normalizeFeatureContributions(value: unknown): RecommendationFeatureContribution[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => {
+      const row = item as RecommendationFeatureContribution;
+      return {
+        feature: String(row.feature ?? '').trim(),
+        score: Number(row.score ?? 0),
+        max_score: Number(row.max_score ?? 0),
+        detail: String(row.detail ?? '').trim(),
+      };
+    })
+    .filter((item) => item.feature.length > 0)
+    .slice(0, 5);
+}
+
+function normalizeScoreBreakdown(value: unknown): RecommendationScoreBreakdown | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const item = value as RecommendationScoreBreakdown;
+  return {
+    skill_score: Number(item.skill_score ?? 0),
+    interest_score: Number(item.interest_score ?? 0),
+    availability_score: Number(item.availability_score ?? 0),
+    experience_score: Number(item.experience_score ?? 0),
+    history_score: Number(item.history_score ?? 0),
+    final_score: Number(item.final_score ?? 0),
+  };
+}
+
+function humanizeReasonCode(code: string): string {
+  const dictionary: Record<string, string> = {
+    skills_full_match: 'Full skill match',
+    skills_partial_match: 'Partial skill match',
+    skills_not_required_profile_has_skills: 'Profile skills support this activity',
+    interest_overlap: 'Interest overlap',
+    availability_overlap: 'Availability overlap',
+    experience_signal: 'Experience signal',
+    organizer_history_signal: 'Prior organizer history',
+  };
+  const normalized = String(code ?? '').trim().toLowerCase();
+  return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
+}
+
 function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel {
   const { dateLabel, timeLabel } = formatDateTime(record.startTime, record.endTime);
+  const reasonCodes = normalizeReasonCodes(record.reason_codes);
+  const scoreBreakdown = normalizeScoreBreakdown(record.score_breakdown);
+  const featureContributions = normalizeFeatureContributions(record.feature_contributions);
+  const modelVersion = String(record.model_version ?? '').trim() || null;
+  const hasAiData = Boolean(scoreBreakdown || featureContributions.length > 0 || reasonCodes.length > 0 || modelVersion);
+
   return {
     activityId: record.activityId,
     title: record.title,
@@ -102,6 +175,11 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     matchScore: Math.max(0, Math.min(100, Math.round(record.matchScore))),
     explanation: record.explanation,
     reasons: Array.isArray(record.reasons) ? record.reasons.slice(0, 4) : [],
+    reasonCodes,
+    scoreBreakdown,
+    featureContributions,
+    modelVersion,
+    hasAiData,
     locationLabel: formatLocation(record.location),
     dateLabel,
     timeLabel,
@@ -115,11 +193,19 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
 }
 
 function hasWeekendSignal(item: RecommendationViewModel) {
-  return item.reasons.some((reason) => reason.toLowerCase().includes('weekend'));
+  return (
+    Number(item.scoreBreakdown?.availability_score ?? 0) > 0 ||
+    item.reasonCodes.includes('availability_overlap') ||
+    item.reasons.some((reason) => reason.toLowerCase().includes('weekend'))
+  );
 }
 
 function hasSkillSignal(item: RecommendationViewModel) {
-  return item.reasons.some((reason) => reason.toLowerCase().includes('skill'));
+  return (
+    Number(item.scoreBreakdown?.skill_score ?? 0) > 0 ||
+    item.reasonCodes.some((code) => code.startsWith('skills_')) ||
+    item.reasons.some((reason) => reason.toLowerCase().includes('skill'))
+  );
 }
 
 export function VolunteerAiRecommendedActivitiesPage() {
@@ -205,6 +291,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
     return sorted;
   }, [recommendations, matchFilter, sortMode]);
 
+  const hasStructuredAiData = useMemo(
+    () => recommendations.some((item) => item.hasAiData),
+    [recommendations]
+  );
+
   const selectedRecommendation = useMemo(() => {
     if (filteredRecommendations.length === 0) {
       return null;
@@ -269,8 +360,12 @@ export function VolunteerAiRecommendedActivitiesPage() {
         </Button>
       }
       pageEyebrow="Sprint 3 Matching"
-      pageSubtitle="Recommendations are ranked from your skills, interests, availability, and participation history."
-      pageTitle="AI Recommended Activities"
+      pageSubtitle={
+        hasStructuredAiData
+          ? 'Recommendations are ranked from structured profile/activity signals with score breakdowns.'
+          : 'Recommendations are ranked from profile and activity signals.'
+      }
+      pageTitle={hasStructuredAiData ? 'AI Recommended Activities' : 'Recommended Activities'}
     >
       <section className="ai-reco-page">
         {error && <p className="form-error">{error}</p>}
@@ -357,26 +452,65 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   <div className="ai-reco-meta-row">
                     <span>
                       <CalendarDays size={15} />
-                      {selectedRecommendation.dateLabel} · {selectedRecommendation.timeLabel}
+                      {selectedRecommendation.dateLabel} - {selectedRecommendation.timeLabel}
                     </span>
                     <span>
                       <MapPin size={15} />
                       {selectedRecommendation.locationLabel}
                     </span>
                     <span>{selectedRecommendation.hoursLabel}</span>
+                    {selectedRecommendation.modelVersion && <span>Model: {selectedRecommendation.modelVersion}</span>}
                   </div>
 
                   <div className="ai-reco-why-card">
-                    <p className="ai-reco-why-title">Why this was recommended</p>
-                    <p>{selectedRecommendation.explanation}</p>
+                    <p className="ai-reco-why-title">
+                      {selectedRecommendation.hasAiData ? 'Why this was recommended' : 'Recommendation summary'}
+                    </p>
+                    <p>{selectedRecommendation.explanation || 'Score is calculated from profile and activity signals.'}</p>
                     <div className="ai-reco-why-tags">
-                      {selectedRecommendation.reasons.map((reason) => (
-                        <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                          {reason}
-                        </Badge>
-                      ))}
+                      {selectedRecommendation.reasonCodes.length > 0
+                        ? selectedRecommendation.reasonCodes.map((reasonCode) => (
+                            <Badge className="ai-reco-reason-tag" key={reasonCode} tone="info">
+                              {humanizeReasonCode(reasonCode)}
+                            </Badge>
+                          ))
+                        : selectedRecommendation.reasons.map((reason) => (
+                            <Badge className="ai-reco-reason-tag" key={reason} tone="info">
+                              {reason}
+                            </Badge>
+                          ))}
                     </div>
                   </div>
+
+                  {selectedRecommendation.scoreBreakdown && (
+                    <div className="ai-reco-breakdown-card">
+                      <p className="ai-reco-why-title">Score breakdown</p>
+                      <div className="ai-reco-breakdown-grid">
+                        <span>Skills: {Math.round(selectedRecommendation.scoreBreakdown.skill_score)}</span>
+                        <span>Interests: {Math.round(selectedRecommendation.scoreBreakdown.interest_score)}</span>
+                        <span>Availability: {Math.round(selectedRecommendation.scoreBreakdown.availability_score)}</span>
+                        <span>Experience: {Math.round(selectedRecommendation.scoreBreakdown.experience_score)}</span>
+                        <span>History: {Math.round(selectedRecommendation.scoreBreakdown.history_score)}</span>
+                        <span>Total: {Math.round(selectedRecommendation.scoreBreakdown.final_score)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedRecommendation.featureContributions.length > 0 && (
+                    <div className="ai-reco-breakdown-card">
+                      <p className="ai-reco-why-title">Feature contributions</p>
+                      <ul className="ai-reco-contribution-list">
+                        {selectedRecommendation.featureContributions.map((item) => (
+                          <li key={`${selectedRecommendation.activityId}-${item.feature}`}>
+                            <strong>
+                              {item.feature}: {Math.round(item.score)}/{Math.round(item.max_score)}
+                            </strong>
+                            <span>{item.detail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div className="ai-reco-cta-row">
                     <Button
@@ -414,7 +548,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   <h3>{secondaryRecommendation.title}</h3>
                   <p className="muted">{secondaryRecommendation.explanation}</p>
                   <p className="muted">
-                    {secondaryRecommendation.matchScore}% match · {secondaryRecommendation.dateLabel}
+                    {secondaryRecommendation.matchScore}% match - {secondaryRecommendation.dateLabel}
                   </p>
                   <Button onClick={() => setSelectedActivityId(secondaryRecommendation.activityId)} type="button" variant="secondary">
                     Preview next recommendation

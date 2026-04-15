@@ -188,6 +188,10 @@ function normalizeAiClassification(classification) {
       incidentLabel: null,
       semanticLabel: null,
       semanticReasons: [],
+      moderationLabels: [],
+      semanticLabels: [],
+      issueTags: [],
+      confidence: null,
     };
   }
 
@@ -202,6 +206,29 @@ function normalizeAiClassification(classification) {
         .map((reason) => String(reason ?? '').trim())
         .filter((reason) => reason.length > 0)
     : [];
+  const moderationLabels = Array.isArray(classification.moderationLabels)
+    ? classification.moderationLabels
+        .map((value) => String(value ?? '').trim().toLowerCase())
+        .filter((value) => value.length > 0)
+    : [];
+  const semanticLabels = Array.isArray(classification.semanticLabels)
+    ? classification.semanticLabels
+        .map((value) => String(value ?? '').trim().toLowerCase())
+        .filter((value) => value.length > 0)
+    : [];
+  const issueTags = Array.isArray(classification.issueTags)
+    ? classification.issueTags
+        .map((value) => String(value ?? '').trim().toLowerCase())
+        .filter((value) => value.length > 0)
+    : [];
+  const confidence =
+    classification?.confidence && typeof classification.confidence === 'object'
+      ? {
+          sentiment: Number(classification.confidence.sentiment ?? 0),
+          incident: Number(classification.confidence.incident ?? 0),
+          semantic: Number(classification.confidence.semantic ?? 0),
+        }
+      : null;
 
   const sentimentRaw = String(classification.sentimentLabel ?? '').trim().toLowerCase();
   const incidentRaw = String(classification.incidentLabel ?? '').trim().toLowerCase();
@@ -221,6 +248,10 @@ function normalizeAiClassification(classification) {
     incidentLabel,
     semanticLabel,
     semanticReasons: Array.from(new Set(semanticReasons)).slice(0, 4),
+    moderationLabels: Array.from(new Set(moderationLabels)).slice(0, 6),
+    semanticLabels: Array.from(new Set(semanticLabels)).slice(0, 6),
+    issueTags: Array.from(new Set(issueTags)).slice(0, 8),
+    confidence,
   };
 }
 
@@ -243,6 +274,37 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
     normalizedClassification.semanticReasons.length > 0
       ? normalizedClassification.semanticReasons
       : semanticFromComment.semanticReasons;
+  const moderationLabels =
+    normalizedClassification.moderationLabels.length > 0
+      ? normalizedClassification.moderationLabels
+      : Array.isArray(semanticFromComment.moderationLabels)
+        ? semanticFromComment.moderationLabels
+        : [];
+  const semanticLabels =
+    normalizedClassification.semanticLabels.length > 0
+      ? normalizedClassification.semanticLabels
+      : Array.isArray(semanticFromComment.semanticLabels)
+        ? semanticFromComment.semanticLabels
+        : [];
+  const issueTags =
+    normalizedClassification.issueTags.length > 0
+      ? normalizedClassification.issueTags
+      : Array.isArray(semanticFromComment.issueTags)
+        ? semanticFromComment.issueTags
+        : [];
+  const confidence =
+    normalizedClassification.confidence && typeof normalizedClassification.confidence === 'object'
+      ? normalizedClassification.confidence
+      : semanticFromComment?.confidence && typeof semanticFromComment.confidence === 'object'
+        ? semanticFromComment.confidence
+        : null;
+  const normalizedModerationLabels = Array.from(
+    new Set([
+      ...moderationLabels,
+      aiLabel === 'spam' ? 'spam' : null,
+      incidentLabel === 'incident' ? 'incident' : null,
+    ].filter(Boolean))
+  ).slice(0, 6);
 
   return {
     ...feedback,
@@ -253,6 +315,10 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
     ai_incident_label: incidentLabel,
     ai_semantic_label: semanticLabel,
     ai_semantic_reasons: semanticReasons,
+    ai_moderation_labels: normalizedModerationLabels,
+    ai_semantic_labels: Array.from(new Set(semanticLabels)).slice(0, 6),
+    ai_issue_tags: Array.from(new Set(issueTags)).slice(0, 8),
+    ai_confidence: confidence,
   };
 }
 
@@ -302,6 +368,275 @@ function parsePositiveInteger(value, fallbackValue, { min = 1, max = Number.MAX_
 
 function escapeIlikePattern(value) {
   return String(value).replace(/[\\%_]/g, '\\$&');
+}
+
+function chunkArray(values, chunkSize = 200) {
+  const source = Array.isArray(values) ? values : [];
+  const chunks = [];
+  for (let index = 0; index < source.length; index += chunkSize) {
+    chunks.push(source.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function formatIssueTagLabel(tag) {
+  const normalized = String(tag ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  const byTag = {
+    spam: 'Spam',
+    safety: 'Safety',
+    logistics: 'Logistics',
+    communication: 'Communication',
+    incident: 'Incident',
+    negative: 'Negative sentiment',
+    neutral: 'Neutral sentiment',
+    positive: 'Positive sentiment',
+  };
+  return byTag[normalized] ?? normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getIssuePriority(tag) {
+  const normalized = String(tag ?? '').trim().toLowerCase();
+  if (normalized === 'incident' || normalized === 'safety') {
+    return 'high';
+  }
+  if (normalized === 'logistics' || normalized === 'communication' || normalized === 'negative') {
+    return 'medium';
+  }
+  return 'low';
+}
+
+function normalizeFeedbackIssueTags(feedback) {
+  if (Array.isArray(feedback?.ai_issue_tags)) {
+    return feedback.ai_issue_tags
+      .map((tag) => String(tag ?? '').trim().toLowerCase())
+      .filter((tag) => tag.length > 0);
+  }
+
+  const fallbackTags = [];
+  const semanticLabel = String(feedback?.ai_semantic_label ?? '').trim().toLowerCase();
+  const incidentLabel = String(feedback?.ai_incident_label ?? '').trim().toLowerCase();
+  if (incidentLabel === 'incident') {
+    fallbackTags.push('incident', 'safety');
+  }
+  if (semanticLabel === 'positive' || semanticLabel === 'negative' || semanticLabel === 'neutral') {
+    fallbackTags.push(semanticLabel);
+  }
+  return Array.from(new Set(fallbackTags));
+}
+
+function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
+  const safeFeedbacks = Array.isArray(feedbacks) ? feedbacks : [];
+  const activityContext =
+    activityContextByParticipationId instanceof Map ? activityContextByParticipationId : new Map();
+
+  if (safeFeedbacks.length === 0) {
+    return {
+      totals: {
+        feedback_count: 0,
+        spam_count: 0,
+        average_rating: 0,
+        sentiment: { positive: 0, neutral: 0, negative: 0 },
+      },
+      repeatedIssues: [],
+      strengths: [],
+      weaknesses: [],
+      prominentIssues: [],
+      byActivity: [],
+      scope: 'filtered_result',
+    };
+  }
+
+  let ratingSum = 0;
+  let ratingCount = 0;
+  let spamCount = 0;
+  let positiveCount = 0;
+  let neutralCount = 0;
+  let negativeCount = 0;
+
+  const repeatedIssueCounts = new Map();
+  const byActivity = new Map();
+
+  for (const feedback of safeFeedbacks) {
+    const rating = Number(feedback?.rating ?? 0);
+    if (Number.isFinite(rating) && rating > 0) {
+      ratingSum += rating;
+      ratingCount += 1;
+      if (rating >= 4) {
+        positiveCount += 1;
+      } else if (rating <= 2) {
+        negativeCount += 1;
+      } else {
+        neutralCount += 1;
+      }
+    }
+
+    if (feedback?.is_spam === true) {
+      spamCount += 1;
+      repeatedIssueCounts.set('spam', (repeatedIssueCounts.get('spam') ?? 0) + 1);
+    }
+
+    const tags = normalizeFeedbackIssueTags(feedback);
+    for (const tag of tags) {
+      if (tag === 'positive' || tag === 'neutral') {
+        continue;
+      }
+      repeatedIssueCounts.set(tag, (repeatedIssueCounts.get(tag) ?? 0) + 1);
+    }
+
+    const participationId = String(feedback?.participation_id ?? '').trim();
+    const context = activityContext.get(participationId) ?? null;
+    const activityKey = String(context?.activity_id ?? 'unknown').trim() || 'unknown';
+    const activityTitle = String(context?.activity_title ?? 'Unknown activity').trim() || 'Unknown activity';
+    const current =
+      byActivity.get(activityKey) ??
+      {
+        activityId: activityKey === 'unknown' ? null : activityKey,
+        activityTitle,
+        feedbackCount: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        issueCounts: new Map(),
+      };
+
+    current.feedbackCount += 1;
+    if (Number.isFinite(rating) && rating > 0) {
+      current.ratingSum += rating;
+      current.ratingCount += 1;
+    }
+    for (const tag of tags) {
+      if (tag === 'positive' || tag === 'neutral') {
+        continue;
+      }
+      current.issueCounts.set(tag, (current.issueCounts.get(tag) ?? 0) + 1);
+    }
+    byActivity.set(activityKey, current);
+  }
+
+  const averageRating = ratingCount > 0 ? Number((ratingSum / ratingCount).toFixed(2)) : 0;
+  const repeatedIssues = Array.from(repeatedIssueCounts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 6)
+    .map(([tag, count]) => ({
+      tag,
+      label: formatIssueTagLabel(tag),
+      count,
+      priority: getIssuePriority(tag),
+    }));
+
+  const strengths = [];
+  if (positiveCount > 0) {
+    strengths.push(`${positiveCount} feedback entries are positive.`);
+  }
+  if (averageRating >= 4 && ratingCount > 0) {
+    strengths.push(`Average rating is ${averageRating.toFixed(1)}/5.`);
+  }
+  if (repeatedIssues.length === 0) {
+    strengths.push('No repeated operational issues detected in current filtered results.');
+  }
+
+  const weaknesses = [];
+  if (negativeCount > 0) {
+    weaknesses.push(`${negativeCount} feedback entries are negative.`);
+  }
+  if (repeatedIssues.length > 0) {
+    weaknesses.push(...repeatedIssues.slice(0, 3).map((item) => `${item.label} reported ${item.count} times.`));
+  }
+  if (spamCount > 0) {
+    weaknesses.push(`${spamCount} feedback entries are marked as spam.`);
+  }
+
+  const byActivityRows = Array.from(byActivity.values())
+    .map((item) => {
+      const issueRows = Array.from(item.issueCounts.entries())
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+        .slice(0, 4)
+        .map(([tag, count]) => ({
+          tag,
+          label: formatIssueTagLabel(tag),
+          count,
+          priority: getIssuePriority(tag),
+        }));
+
+      return {
+        activityId: item.activityId,
+        activityTitle: item.activityTitle,
+        feedbackCount: item.feedbackCount,
+        averageRating: item.ratingCount > 0 ? Number((item.ratingSum / item.ratingCount).toFixed(2)) : 0,
+        repeatedIssues: issueRows,
+      };
+    })
+    .sort((left, right) => right.feedbackCount - left.feedbackCount || left.activityTitle.localeCompare(right.activityTitle))
+    .slice(0, 8);
+
+  return {
+    totals: {
+      feedback_count: safeFeedbacks.length,
+      spam_count: spamCount,
+      average_rating: averageRating,
+      sentiment: {
+        positive: positiveCount,
+        neutral: neutralCount,
+        negative: negativeCount,
+      },
+    },
+    repeatedIssues,
+    strengths,
+    weaknesses,
+    prominentIssues: repeatedIssues.slice(0, 3),
+    byActivity: byActivityRows,
+    scope: 'filtered_result',
+  };
+}
+
+async function buildActivityContextByParticipationIds(feedbacks) {
+  const participationIds = Array.from(
+    new Set(
+      (Array.isArray(feedbacks) ? feedbacks : [])
+        .map((feedback) => String(feedback?.participation_id ?? '').trim())
+        .filter((value) => value.length > 0)
+    )
+  );
+
+  if (participationIds.length === 0) {
+    return new Map();
+  }
+
+  const participationRows = [];
+  for (const idChunk of chunkArray(participationIds, 200)) {
+    const { data, error } = await supabaseAdmin
+      .from('activity_participations')
+      .select('id, activity_id')
+      .in('id', idChunk);
+    if (error) {
+      throw new Error(error.message);
+    }
+    participationRows.push(...(data ?? []));
+  }
+
+  const activityIds = Array.from(new Set(participationRows.map((row) => row.activity_id).filter(Boolean)));
+  const activitiesById = new Map();
+  for (const idChunk of chunkArray(activityIds, 200)) {
+    const { data, error } = await supabaseAdmin.from('activities').select('id, title').in('id', idChunk);
+    if (error) {
+      throw new Error(error.message);
+    }
+    for (const row of data ?? []) {
+      activitiesById.set(row.id, String(row.title ?? 'Unknown activity'));
+    }
+  }
+
+  const contextByParticipationId = new Map();
+  for (const row of participationRows) {
+    contextByParticipationId.set(row.id, {
+      activity_id: row.activity_id ?? null,
+      activity_title: row.activity_id ? activitiesById.get(row.activity_id) ?? 'Unknown activity' : 'Unknown activity',
+    });
+  }
+  return contextByParticipationId;
 }
 
 async function queryFeedbackWithBestLayout(buildQuery, { allowFallback = true } = {}) {
@@ -637,6 +972,34 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
 
+  let insights = {
+    totals: {
+      feedback_count: 0,
+      spam_count: 0,
+      average_rating: 0,
+      sentiment: { positive: 0, neutral: 0, negative: 0 },
+    },
+    repeatedIssues: [],
+    strengths: [],
+    weaknesses: [],
+    prominentIssues: [],
+    byActivity: [],
+    scope: 'filtered_result',
+  };
+  try {
+    const contextByParticipationId = await buildActivityContextByParticipationIds(filteredFeedbacks);
+    insights = toFeedbackInsights({
+      feedbacks: filteredFeedbacks,
+      activityContextByParticipationId: contextByParticipationId,
+    });
+  } catch (insightError) {
+    console.error(
+      `[feedback.review] failed to build insights: ${
+        insightError instanceof Error ? insightError.message : String(insightError)
+      }`
+    );
+  }
+
   res.json({
     feedbacks: pagedFeedbacks,
     moderation: {
@@ -652,6 +1015,7 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
       hasPrev,
       hasNext,
     },
+    insights,
   });
 });
 

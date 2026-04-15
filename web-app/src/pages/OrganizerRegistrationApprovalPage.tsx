@@ -684,10 +684,15 @@ export function OrganizerRegistrationApprovalPage() {
                 </div>
 
                 <div className="org-approval-insight">
-                  <h4>AI Key Insight</h4>
+                  <h4>{selectedApplicant.matchScore > 0 ? 'Match Insight (Score-Based)' : 'Application Insight'}</h4>
                   <p>
-                    Candidate aligns with <strong>{selectedApplicant.skills.join(', ')}</strong> requirements for{' '}
-                    {selectedApplicant.activity?.title ?? 'this activity'}.
+                    {selectedApplicant.matchScore > 0
+                      ? `Current match signal is ${selectedApplicant.matchScore}% for ${
+                          selectedApplicant.activity?.title ?? 'this activity'
+                        }, with key required skills: ${selectedApplicant.skills.join(', ')}.`
+                      : `No structured match diagnostics are available yet for ${
+                          selectedApplicant.activity?.title ?? 'this activity'
+                        }. Review profile details and participation history before approval.`}
                   </p>
                 </div>
 
@@ -709,7 +714,10 @@ export function OrganizerRegistrationApprovalPage() {
 
                 <div className="org-approval-note">
                   <h4>Internal Notes</h4>
-                  <p>Great communication in prior events. Suggested for team lead opportunities.</p>
+                  <p>
+                    Internal note is generated from current registration status and available history only. Add manual
+                    review notes before final approval when needed.
+                  </p>
                 </div>
               </>
             ) : (

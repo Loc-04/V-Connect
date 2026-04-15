@@ -27,6 +27,20 @@ export interface ReportIssueHighlight {
   priority: ReportIssuePriority;
 }
 
+export interface ReportAnalyticsFact {
+  key: string;
+  label: string;
+  value: string;
+}
+
+export interface ReportIssueTagHighlight {
+  id: string;
+  tag: string;
+  label: string;
+  count: number;
+  priority: ReportIssuePriority;
+}
+
 export interface OrganizerReportSummaryData {
   liveLabel: string;
   activityTitle: string;
@@ -42,6 +56,11 @@ export interface OrganizerReportSummaryData {
   feedbackQuote: string;
   sentimentChips: ReportSentimentChip[];
   issues: ReportIssueHighlight[];
+  analyticsFacts?: ReportAnalyticsFact[];
+  strengths?: string[];
+  weaknesses?: string[];
+  issueHighlights?: ReportIssueTagHighlight[];
+  modelVersion?: string;
 }
 
 export const organizerReportSummaryMock: OrganizerReportSummaryData = {
@@ -93,4 +112,14 @@ export const organizerReportSummaryMock: OrganizerReportSummaryData = {
       priority: 'low',
     },
   ],
+  analyticsFacts: [
+    { key: 'total_participations', label: 'Participation records', value: '1,284' },
+    { key: 'feedback_count', label: 'Feedback submissions', value: '420' },
+  ],
+  strengths: ['Average volunteer rating remains above 4.0/5.'],
+  weaknesses: ['Check-in throughput dips during peak slots.'],
+  issueHighlights: [
+    { id: 'feedback-issue-logistics', tag: 'logistics', label: 'Logistics', count: 12, priority: 'medium' },
+  ],
+  modelVersion: 'deterministic-facts-v2-2026-04',
 };

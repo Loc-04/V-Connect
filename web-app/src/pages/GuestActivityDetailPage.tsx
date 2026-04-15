@@ -183,7 +183,7 @@ export function GuestActivityDetailPage() {
                 </Button>
                 <Button onClick={() => setAuthPrompt('ai_match')} type="button" variant="secondary">
                   <Sparkles size={15} />
-                  <span>AI Match</span>
+                  <span>Personal Match</span>
                 </Button>
               </div>
             </Card>
