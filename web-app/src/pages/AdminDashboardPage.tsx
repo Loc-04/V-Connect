@@ -381,8 +381,8 @@ function buildInsights(
       tone: 'info',
       title: `${volunteerGaps} published activities have no volunteers yet`,
       description: 'Those activities may need promotion, scheduling changes, or staff follow-up to avoid last-minute gaps.',
-      actionLabel: 'Open browse view',
-      route: '/browse',
+      actionLabel: 'Open activities',
+      route: '/admin/activities',
     });
   }
 
@@ -852,7 +852,7 @@ export function AdminDashboardPage() {
         currentLabel: `${trends.totalActivities.current} created in ${timeWindow.shortLabel}`,
         icon: CalendarDays,
         tone: 'activity',
-        anchorId: DASHBOARD_ANCHORS.activities,
+        route: '/admin/activities',
       },
       {
         key: 'participations',

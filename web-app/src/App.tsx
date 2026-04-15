@@ -6,6 +6,7 @@ import { getRoleHomePath } from './auth/rolePaths';
 import { normalizeRole } from './auth/roleUtils';
 import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
+import { AdminActivitiesPage } from './pages/AdminActivitiesPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminFeedbackPage } from './pages/AdminFeedbackPage';
 import { AdminNotificationsPage } from './pages/AdminNotificationsPage';
@@ -279,6 +280,7 @@ function App() {
               </RequireAdminRoute>
             }
           >
+            <Route path="activities" element={<AdminActivitiesPage />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="notifications" element={<AdminNotificationsPage />} />
