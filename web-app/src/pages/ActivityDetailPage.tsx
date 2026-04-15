@@ -182,7 +182,10 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
     level: fallback?.level || 'Open to all levels',
     categories,
     requirements,
-    heroImageUrl: fallback?.heroImageUrl || FALLBACK_HERO_IMAGES[hashString(activity.id) % FALLBACK_HERO_IMAGES.length],
+    heroImageUrl:
+      (typeof activity.cover_image_url === 'string' && activity.cover_image_url.trim()) ||
+      fallback?.heroImageUrl ||
+      FALLBACK_HERO_IMAGES[hashString(activity.id) % FALLBACK_HERO_IMAGES.length],
     locationCoordinates: getActivityCoordinates(activity.location),
     mapUrl: buildActivityMapUrl(activity.location),
   };

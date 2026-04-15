@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth/auth.middleware.js';
-import { geocodeAddress, listProvinces, listWardsByProvince } from './locations.service.js';
-import { normalizeGeocodePayload } from './locations.validation.js';
+import { geocodeAddress, listProvinces, listWardsByProvince, reverseGeocodeCoordinates } from './locations.service.js';
+import { normalizeGeocodePayload, normalizeReverseGeocodePayload } from './locations.validation.js';
 
 const router = Router();
 
@@ -46,6 +46,25 @@ router.post('/locations/geocode', requireAuth, async (req, res) => {
   } catch (error) {
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
     const message = error instanceof Error ? error.message : 'Failed to geocode location.';
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.post('/locations/reverse-geocode', requireAuth, async (req, res) => {
+  let payload;
+  try {
+    payload = normalizeReverseGeocodePayload(req.body);
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid reverse geocode payload.' });
+    return;
+  }
+
+  try {
+    const reversedLocation = await reverseGeocodeCoordinates(payload);
+    res.json({ reversedLocation });
+  } catch (error) {
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    const message = error instanceof Error ? error.message : 'Failed to reverse geocode location.';
     res.status(statusCode).json({ message });
   }
 });

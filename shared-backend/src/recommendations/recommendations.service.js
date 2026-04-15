@@ -265,7 +265,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
 
   const { data: activities, error } = await supabaseAdmin
     .from('activities')
-    .select('id, title, description, location, start_time, end_time, capacity, required_skills, status, organizer_id, cover_image_url')
+    .select('id, title, description, cover_image_url, location, start_time, end_time, capacity, required_skills, status, organizer_id')
     .eq('status', 'published')
     .is('deleted_at', null)
     .gte('end_time', new Date().toISOString())
@@ -299,6 +299,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
         reasons: score.reasons,
         explanation: score.explanation,
         location: activity.location,
+        coverImageUrl: activity.cover_image_url || null,
         startTime: activity.start_time,
         endTime: activity.end_time,
         hours: computeDurationHours(activity.start_time, activity.end_time),

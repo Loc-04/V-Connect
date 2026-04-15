@@ -281,6 +281,33 @@
   font-size: 0.78rem;
 }
 
+.activity-cover-preview {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  background: var(--bg);
+}
+
+.activity-cover-preview img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.activity-cover-preview__actions {
+  display: inline-flex;
+  gap: 0.6rem;
+}
+
+.activity-cover-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .activity-grid {
   display: grid;
   gap: 1rem;

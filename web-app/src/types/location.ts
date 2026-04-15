@@ -32,3 +32,8 @@ export interface GeocodedLocationRecord {
   lng: number;
   providerDisplayName?: string | null;
 }
+
+export interface ReverseGeocodeLocationPayload {
+  lat: number;
+  lng: number;
+}
