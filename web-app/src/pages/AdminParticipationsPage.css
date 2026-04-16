@@ -1,0 +1,477 @@
+.admin-participations-page {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.admin-participations-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-participations-copy {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.admin-participations-eyebrow {
+  color: #7c3aed;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-participations-copy h2,
+.admin-participations-filter-head h3,
+.admin-participations-table-head h3,
+.admin-participation-detail-head h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.admin-participations-copy h2 {
+  font-size: clamp(1.55rem, 2.5vw, 2.2rem);
+  line-height: 1.05;
+}
+
+.admin-participations-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.admin-participations-actions button,
+.admin-participations-state button,
+.admin-participation-detail-actions button,
+.admin-participation-checkin-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.admin-participations-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.78rem;
+}
+
+.admin-participations-metric-card.card {
+  display: grid;
+  gap: 0.38rem;
+  padding: 1rem;
+  min-height: 124px;
+  align-content: start;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+}
+
+.admin-participations-metric-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  color: #4338ca;
+  background: rgba(99, 102, 241, 0.12);
+  display: inline-grid;
+  place-items: center;
+}
+
+.admin-participations-metric-icon.is-warning {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.admin-participations-metric-icon.is-danger {
+  color: #b42318;
+  background: #fee2e2;
+}
+
+.admin-participations-metric-icon.is-success {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.admin-participations-metric-icon.is-muted {
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.admin-participations-metric-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-participations-metric-card strong {
+  color: #0f172a;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.admin-participations-filter-card.card,
+.admin-participations-table-card.card {
+  padding: 0.95rem;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.admin-participations-filter-card,
+.admin-participations-table-card {
+  display: grid;
+  gap: 0.82rem;
+}
+
+.admin-participations-filter-head,
+.admin-participations-table-head,
+.admin-participation-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.admin-participations-filter-head p,
+.admin-participations-table-head p,
+.admin-participation-detail-head p {
+  margin: 0.18rem 0 0;
+}
+
+.admin-participations-filter-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.admin-participations-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.5fr) minmax(150px, 0.75fr) minmax(150px, 0.75fr);
+  gap: 0.72rem;
+  align-items: end;
+}
+
+.admin-participations-filter-grid label {
+  display: grid;
+  gap: 0.34rem;
+}
+
+.admin-participations-filter-grid label > span {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-participations-search-field {
+  grid-column: span 1;
+}
+
+.admin-participations-search-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-participations-search-input svg {
+  position: absolute;
+  left: 0.76rem;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.admin-participations-search-input .text-input {
+  width: 100%;
+  padding-left: 2.15rem;
+}
+
+.admin-participations-limit-pill {
+  border: 1px solid #dbe4f2;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.32rem 0.62rem;
+}
+
+.admin-participations-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: visible;
+}
+
+.admin-participations-table {
+  min-width: 1060px;
+}
+
+.admin-participations-table thead th {
+  background: #f6f8fc;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.72rem 0.65rem;
+  text-transform: uppercase;
+}
+
+.admin-participations-table tbody td {
+  border-bottom: 1px solid #e8edf6;
+  color: #334155;
+  font-size: 0.78rem;
+  padding: 0.78rem 0.65rem;
+  vertical-align: top;
+}
+
+.admin-participations-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-participations-volunteer-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  min-width: 190px;
+}
+
+.admin-participations-volunteer-cell img,
+.admin-participations-volunteer-cell > span {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.admin-participations-volunteer-cell img {
+  object-fit: cover;
+}
+
+.admin-participations-volunteer-cell > span {
+  display: inline-grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f9a8d4, #a78bfa);
+  color: #0f172a;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.admin-participations-volunteer-cell strong,
+.admin-participations-title-cell strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.86rem;
+}
+
+.admin-participations-volunteer-cell small,
+.admin-participations-title-cell small {
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.admin-participations-title-cell {
+  display: grid;
+  gap: 0.18rem;
+  max-width: 260px;
+}
+
+.admin-participations-checkin-cell {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 150px;
+}
+
+.admin-participations-checkin-cell > span {
+  color: #475569;
+  line-height: 1.35;
+}
+
+.admin-participations-checkin-badge.ui-badge {
+  justify-self: start;
+  font-size: 0.66rem;
+}
+
+.admin-participations-row-menu {
+  min-width: 198px;
+  z-index: 140;
+}
+
+.admin-participations-row-menu.is-drop-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.admin-participations-row-menu .row-action-item {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.admin-participations-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.admin-participations-state h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.admin-participations-state p {
+  max-width: 540px;
+  margin: 0;
+}
+
+.admin-participations-state--compact {
+  padding: 1.25rem 1rem;
+}
+
+.admin-participations-state--error {
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fff1f2;
+  color: #b42318;
+}
+
+.admin-participations-spinner {
+  animation: admin-participations-spin 0.9s linear infinite;
+}
+
+.admin-participation-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(6px);
+}
+
+.admin-participation-detail-modal.card {
+  width: min(760px, 100%);
+  max-height: min(780px, 90vh);
+  overflow: auto;
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.admin-participation-detail-head p {
+  color: #94a3b8;
+  font-size: 0.74rem;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.admin-participation-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+}
+
+.admin-participation-detail-grid > div {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid #e8edf6;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0.78rem;
+}
+
+.admin-participation-detail-grid span,
+.admin-participation-detail-section h4 {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-participation-detail-grid strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.admin-participation-detail-section {
+  display: grid;
+  gap: 0.48rem;
+}
+
+.admin-participation-detail-section h4,
+.admin-participation-detail-section p {
+  margin: 0;
+}
+
+.admin-participation-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-participation-detail-actions.is-footer {
+  justify-content: flex-end;
+  padding-top: 0.2rem;
+}
+
+.admin-participation-checkin-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@keyframes admin-participations-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1180px) {
+  .admin-participations-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-participations-filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-participations-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .admin-participations-table-wrap {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-participations-header {
+    display: grid;
+  }
+
+  .admin-participations-metrics,
+  .admin-participations-filter-grid,
+  .admin-participation-detail-grid,
+  .admin-participation-checkin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-participations-filter-card.card,
+  .admin-participations-table-card.card {
+    padding: 0.78rem;
+  }
+}

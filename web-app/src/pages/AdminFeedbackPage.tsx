@@ -1,5 +1,6 @@
 import { AlertTriangle, Download, MessageSquare, RefreshCw, Search, Star } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select } from '../components/ui';
@@ -23,6 +24,7 @@ type FeedbackBucket = 'spam' | 'low_signal' | 'valid';
 interface FeedbackViewModel {
   id: string;
   participationId: string;
+  activityId: string | null;
   activityTitle: string;
   organizerName: string;
   volunteerName: string;
@@ -586,6 +588,7 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
     return {
       id: feedback.id,
       participationId: feedback.participation_id,
+      activityId: participation?.activityId ?? participation?.activity_id ?? null,
       activityTitle,
       organizerName: participation?.organization?.trim() || 'Unknown Organizer',
       volunteerName: participation?.volunteer?.full_name?.trim() || 'Volunteer',
@@ -819,10 +822,12 @@ function withinPeriod(dateString: string | null, periodFilter: PeriodFilter) {
 
 export function AdminFeedbackPage() {
   const { session, profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const role = typeof profile?.role === 'string' ? profile.role.trim().toLowerCase() : '';
   const isAdmin = role === 'admin';
   const isOrganizer = role === 'organizer';
   const reviewPageSize = 20;
+  const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
 
   const [items, setItems] = useState<FeedbackViewModel[]>([]);
   const [feedbackInsights, setFeedbackInsights] = useState<FeedbackInsights>(emptyFeedbackInsights);
@@ -837,6 +842,7 @@ export function AdminFeedbackPage() {
   const [volunteerFilterQuery, setVolunteerFilterQuery] = useState('');
   const [organizerFilterQuery, setOrganizerFilterQuery] = useState('');
   const [activityFilterQuery, setActivityFilterQuery] = useState('');
+  const [activityIdFilter, setActivityIdFilter] = useState(requestedActivityId);
   const [activityDropdownOpen, setActivityDropdownOpen] = useState(false);
   const [activityHighlightedIndex, setActivityHighlightedIndex] = useState(-1);
   const [sentimentFilter, setSentimentFilter] = useState<'all' | FeedbackSentiment>('all');
@@ -918,6 +924,10 @@ export function AdminFeedbackPage() {
       setActivityHighlightedIndex(-1);
     }
   }, [showMoreFilters]);
+
+  useEffect(() => {
+    setActivityIdFilter(requestedActivityId);
+  }, [requestedActivityId]);
 
   const organizerOptions = useMemo(
     () => Array.from(new Set(items.map((item) => item.organizerName))).sort((left, right) => left.localeCompare(right)),
@@ -1004,11 +1014,24 @@ export function AdminFeedbackPage() {
     });
   }, [activityDropdownOpen, filteredActivityOptions]);
 
-  const selectActivityOption = useCallback((option: string) => {
-    setActivityFilterQuery(option);
-    setActivityDropdownOpen(false);
-    setActivityHighlightedIndex(-1);
-  }, []);
+  const clearActivityIdFilter = useCallback(() => {
+    setActivityIdFilter('');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('activityId');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const selectActivityOption = useCallback(
+    (option: string) => {
+      if (activityIdFilter) {
+        clearActivityIdFilter();
+      }
+      setActivityFilterQuery(option);
+      setActivityDropdownOpen(false);
+      setActivityHighlightedIndex(-1);
+    },
+    [activityIdFilter, clearActivityIdFilter]
+  );
 
   const handleActivityInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1070,6 +1093,10 @@ export function AdminFeedbackPage() {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
     return items.filter((item) => {
+      if (activityIdFilter && item.activityId !== activityIdFilter) {
+        return false;
+      }
+
       if (reviewStatusFilter !== 'all' && item.reviewStatus !== reviewStatusFilter) {
         return false;
       }
@@ -1118,6 +1145,7 @@ export function AdminFeedbackPage() {
       );
     });
   }, [
+    activityIdFilter,
     items,
     normalizedActivityFilter,
     normalizedOrganizerFilter,
@@ -1128,6 +1156,14 @@ export function AdminFeedbackPage() {
     searchTerm,
     sentimentFilter,
   ]);
+
+  const activityIdFilterLabel = useMemo(() => {
+    if (!activityIdFilter) {
+      return '';
+    }
+
+    return items.find((item) => item.activityId === activityIdFilter)?.activityTitle ?? activityIdFilter;
+  }, [activityIdFilter, items]);
 
   const metrics = useMemo(() => {
     const total = filteredItems.length;
@@ -1317,6 +1353,7 @@ export function AdminFeedbackPage() {
   const advancedFilterCount =
     Number(Boolean(volunteerFilterQuery.trim())) +
     Number(Boolean(organizerFilterQuery.trim())) +
+    Number(Boolean(activityIdFilter.trim())) +
     Number(Boolean(activityFilterQuery.trim())) +
     Number(sentimentFilter !== 'all');
 
@@ -1327,6 +1364,7 @@ export function AdminFeedbackPage() {
     setPeriodFilter('30');
     setVolunteerFilterQuery('');
     setOrganizerFilterQuery('');
+    clearActivityIdFilter();
     setActivityFilterQuery('');
     setSentimentFilter('all');
     setShowMoreFilters(false);
@@ -1374,6 +1412,13 @@ export function AdminFeedbackPage() {
       key: 'organizer',
       label: `Organizer: ${organizerFilterQuery.trim()}`,
       onRemove: () => setOrganizerFilterQuery(''),
+    });
+  }
+  if (activityIdFilter.trim()) {
+    appliedFilterChips.push({
+      key: 'activity-id',
+      label: `Activity: ${activityIdFilterLabel}`,
+      onRemove: clearActivityIdFilter,
     });
   }
   if (activityFilterQuery.trim()) {
@@ -1512,6 +1557,9 @@ export function AdminFeedbackPage() {
                 autoComplete="off"
                 className="feedback-review-filter-select"
                 onChange={(event) => {
+                  if (activityIdFilter) {
+                    clearActivityIdFilter();
+                  }
                   setActivityFilterQuery(event.target.value);
                   setActivityDropdownOpen(true);
                 }}
