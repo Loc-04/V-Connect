@@ -6,9 +6,11 @@ import { getRoleHomePath } from './auth/rolePaths';
 import { normalizeRole } from './auth/roleUtils';
 import { useAuth } from './auth/useAuth';
 import { AdminLayout } from './layouts/AdminLayout';
+import { AdminActivitiesPage } from './pages/AdminActivitiesPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdminFeedbackPage } from './pages/AdminFeedbackPage';
 import { AdminNotificationsPage } from './pages/AdminNotificationsPage';
+import { AdminParticipationsPage } from './pages/AdminParticipationsPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
 import { ActivityDetailPage } from './pages/ActivityDetailPage';
 import { CreateActivityPage } from './pages/CreateActivityPage';
@@ -279,9 +281,11 @@ function App() {
               </RequireAdminRoute>
             }
           >
+            <Route path="activities" element={<AdminActivitiesPage />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="feedback" element={<AdminFeedbackPage />} />
             <Route path="notifications" element={<AdminNotificationsPage />} />
+            <Route path="participations" element={<AdminParticipationsPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
