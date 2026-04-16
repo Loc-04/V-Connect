@@ -4,6 +4,35 @@
   align-content: start;
 }
 
+.org-report-activity-picker.card {
+  padding: 0.85rem 0.9rem;
+}
+
+.org-report-activity-picker-copy {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.org-report-eyebrow {
+  margin: 0;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.org-report-activity-select.text-input {
+  min-width: min(420px, 100%);
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  background: #ffffff;
+}
+
 .org-report-print-header {
   display: none;
 }
@@ -416,6 +445,7 @@
   body.org-report-printing .org-shell-sidebar,
   body.org-report-printing .org-shell-topbar,
   body.org-report-printing .org-shell-page-head,
+  body.org-report-printing .org-report-page > .org-report-activity-picker,
   body.org-report-printing .org-report-page > .form-success,
   body.org-report-printing .org-report-page > .form-error {
     display: none !important;

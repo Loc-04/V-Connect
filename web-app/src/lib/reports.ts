@@ -1,7 +1,7 @@
 import { apiRequest } from './api';
 import type { OrganizerReportSummaryData } from './organizerReportSummary';
 
-interface ActivitySummaryOption {
+export interface ActivitySummaryOption {
   id: string;
   title: string;
   status: string | null;
