@@ -8,7 +8,7 @@ import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { searchActivities } from '../lib/activities';
-import { listParticipations } from '../lib/participations';
+import { cancelParticipation, listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
@@ -199,7 +199,18 @@ export function BrowseOpportunitiesPage() {
     };
   }, [canApply, session?.access_token]);
 
-  const opportunities = useMemo(() => activities.map((activity, index) => toOpportunity(activity, index)), [activities]);
+  const visibleActivities = useMemo(() => {
+    if (statusFilter !== 'published') {
+      return activities;
+    }
+
+    return activities.filter((activity) => !isActivityExpired(activity));
+  }, [activities, statusFilter]);
+
+  const opportunities = useMemo(
+    () => visibleActivities.map((activity, index) => toOpportunity(activity, index)),
+    [visibleActivities]
+  );
 
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {
@@ -411,7 +422,19 @@ export function BrowseOpportunitiesPage() {
                       canRegister={canApply && !opportunity.isExpired}
                       className="browse-registration-action"
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
+                      participationId={participationByActivityId[opportunity.id]?.participationId ?? null}
                       registerDisabledLabel={canApply ? 'Registration closed' : 'Volunteer only'}
+                      onCancel={async ({ activityId }) => {
+                        if (!session?.access_token) {
+                          throw new Error('No active session token.');
+                        }
+
+                        const cancelledParticipation = await cancelParticipation(activityId, session.access_token);
+                        setParticipationByActivityId((current) => ({
+                          ...current,
+                          [activityId]: cancelledParticipation,
+                        }));
+                      }}
                       onNotice={handleRegistrationNotice}
                       onRegistered={(participation) => {
                         setParticipationByActivityId((current) => ({
