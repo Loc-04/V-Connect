@@ -11,10 +11,14 @@ export interface FeedbackRecord {
   ai_spam_reasons?: string[] | null;
   ai_sentiment_label?: 'positive' | 'negative' | 'neutral' | null;
   ai_incident_label?: 'incident' | 'none' | null;
-  ai_semantic_label?: 'incident' | 'positive' | 'negative' | 'neutral' | null;
+  ai_semantic_label?: 'incident' | 'positive' | 'negative' | 'neutral' | 'low_signal' | null;
   ai_moderation_labels?: string[] | null;
   ai_semantic_labels?: string[] | null;
   ai_issue_tags?: string[] | null;
+  ai_feedback_bucket?: 'spam' | 'low_signal' | 'valid' | string | null;
+  ai_text_quality_is_low_signal?: boolean | null;
+  ai_text_quality_label?: 'informative' | 'low_signal' | 'uninformative' | string | null;
+  ai_text_quality_reasons?: string[] | null;
   ai_confidence?: {
     sentiment?: number;
     incident?: number;
@@ -59,7 +63,10 @@ export interface FeedbackInsights {
   totals: {
     feedback_count: number;
     spam_count: number;
+    low_signal_count?: number;
+    valid_feedback_count?: number;
     average_rating: number;
+    average_rating_all?: number;
     sentiment: {
       positive: number;
       neutral: number;
@@ -72,4 +79,9 @@ export interface FeedbackInsights {
   prominentIssues: FeedbackInsightIssue[];
   byActivity: FeedbackInsightByActivity[];
   scope?: string;
+  reliability?: {
+    reliable: boolean;
+    min_valid_feedback_count?: number;
+    message?: string;
+  };
 }
