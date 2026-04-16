@@ -111,9 +111,11 @@ async function recommend(input = {}) {
 async function classifyFeedback(input = {}) {
   const comment = String(input?.comment ?? '');
   const classification = classifyFeedbackSpam(comment);
+  const isSpam = String(classification?.label ?? '').trim().toLowerCase() === 'spam';
   const semantics = classifyFeedbackSemantics({
     comment,
     rating: input?.rating ?? null,
+    isSpam,
   });
 
   const reasons = Array.isArray(classification?.reasons)
@@ -122,10 +124,12 @@ async function classifyFeedback(input = {}) {
         .filter((reason) => reason.length > 0)
     : [];
 
-  const label = String(classification?.label ?? '').trim().toLowerCase() === 'spam' ? 'spam' : 'not_spam';
+  const label = isSpam ? 'spam' : 'not_spam';
+  const isLowSignal = Boolean(semantics?.textQuality?.isLowSignal);
   return {
     label,
     isSpam: label === 'spam',
+    feedbackBucket: label === 'spam' ? 'spam' : isLowSignal ? 'low_signal' : 'valid',
     reasons,
     sentimentLabel: semantics.sentimentLabel,
     incidentLabel: semantics.incidentLabel,
@@ -139,6 +143,30 @@ async function classifyFeedback(input = {}) {
             sentiment: Number(semantics.confidence.sentiment ?? 0),
             incident: Number(semantics.confidence.incident ?? 0),
             semantic: Number(semantics.confidence.semantic ?? 0),
+          }
+        : null,
+    textQuality:
+      semantics?.textQuality && typeof semantics.textQuality === 'object'
+        ? {
+            isLowSignal: Boolean(semantics.textQuality.isLowSignal),
+            label: String(semantics.textQuality.label ?? '').trim() || 'informative',
+            reasons: Array.isArray(semantics.textQuality.reasons)
+              ? semantics.textQuality.reasons
+                  .map((reason) => String(reason ?? '').trim())
+                  .filter((reason) => reason.length > 0)
+                  .slice(0, 6)
+              : [],
+            metrics:
+              semantics.textQuality.metrics && typeof semantics.textQuality.metrics === 'object'
+                ? {
+                    tokenCount: Number(semantics.textQuality.metrics.tokenCount ?? 0),
+                    meaningfulWordCount: Number(semantics.textQuality.metrics.meaningfulWordCount ?? 0),
+                    alphabeticRatio: Number(semantics.textQuality.metrics.alphabeticRatio ?? 0),
+                    numericRatio: Number(semantics.textQuality.metrics.numericRatio ?? 0),
+                    longestRepeatedCharRun: Number(semantics.textQuality.metrics.longestRepeatedCharRun ?? 0),
+                    maxTokenFrequency: Number(semantics.textQuality.metrics.maxTokenFrequency ?? 0),
+                  }
+                : null,
           }
         : null,
     semanticReasons: semantics.semanticReasons,
