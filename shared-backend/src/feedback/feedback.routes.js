@@ -179,10 +179,31 @@ function normalizeSpamLabel(aiLabelRaw) {
   return null;
 }
 
+function normalizeFeedbackBucket(rawValue) {
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+  const normalized = rawValue.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === 'spam') {
+    return 'spam';
+  }
+  if (normalized === 'low_signal' || normalized === 'low signal' || normalized === 'uninformative') {
+    return 'low_signal';
+  }
+  if (normalized === 'valid') {
+    return 'valid';
+  }
+  return null;
+}
+
 function normalizeAiClassification(classification) {
   if (!classification || typeof classification !== 'object') {
     return {
       label: null,
+      feedbackBucket: null,
       reasons: [],
       sentimentLabel: null,
       incidentLabel: null,
@@ -192,10 +213,12 @@ function normalizeAiClassification(classification) {
       semanticLabels: [],
       issueTags: [],
       confidence: null,
+      textQuality: null,
     };
   }
 
   const label = normalizeSpamLabel(classification.label);
+  const feedbackBucket = normalizeFeedbackBucket(classification.feedbackBucket);
   const reasons = Array.isArray(classification.reasons)
     ? classification.reasons
         .map((reason) => String(reason ?? '').trim())
@@ -229,6 +252,30 @@ function normalizeAiClassification(classification) {
           semantic: Number(classification.confidence.semantic ?? 0),
         }
       : null;
+  const textQuality =
+    classification?.textQuality && typeof classification.textQuality === 'object'
+      ? {
+          isLowSignal: Boolean(classification.textQuality.isLowSignal),
+          label: String(classification.textQuality.label ?? '').trim() || 'informative',
+          reasons: Array.isArray(classification.textQuality.reasons)
+            ? classification.textQuality.reasons
+                .map((reason) => String(reason ?? '').trim())
+                .filter((reason) => reason.length > 0)
+                .slice(0, 6)
+            : [],
+          metrics:
+            classification.textQuality.metrics && typeof classification.textQuality.metrics === 'object'
+              ? {
+                  tokenCount: Number(classification.textQuality.metrics.tokenCount ?? 0),
+                  meaningfulWordCount: Number(classification.textQuality.metrics.meaningfulWordCount ?? 0),
+                  alphabeticRatio: Number(classification.textQuality.metrics.alphabeticRatio ?? 0),
+                  numericRatio: Number(classification.textQuality.metrics.numericRatio ?? 0),
+                  longestRepeatedCharRun: Number(classification.textQuality.metrics.longestRepeatedCharRun ?? 0),
+                  maxTokenFrequency: Number(classification.textQuality.metrics.maxTokenFrequency ?? 0),
+                }
+              : null,
+        }
+      : null;
 
   const sentimentRaw = String(classification.sentimentLabel ?? '').trim().toLowerCase();
   const incidentRaw = String(classification.incidentLabel ?? '').trim().toLowerCase();
@@ -237,12 +284,17 @@ function normalizeAiClassification(classification) {
   const sentimentLabel = ['positive', 'negative', 'neutral'].includes(sentimentRaw) ? sentimentRaw : null;
   const incidentLabel = incidentRaw === 'incident' ? 'incident' : incidentRaw === 'none' ? 'none' : null;
   const semanticLabel =
-    semanticRaw === 'incident' || semanticRaw === 'positive' || semanticRaw === 'negative' || semanticRaw === 'neutral'
+    semanticRaw === 'incident' ||
+    semanticRaw === 'positive' ||
+    semanticRaw === 'negative' ||
+    semanticRaw === 'neutral' ||
+    semanticRaw === 'low_signal'
       ? semanticRaw
       : null;
 
   return {
     label,
+    feedbackBucket,
     reasons: Array.from(new Set(reasons)).slice(0, 4),
     sentimentLabel,
     incidentLabel,
@@ -252,7 +304,29 @@ function normalizeAiClassification(classification) {
     semanticLabels: Array.from(new Set(semanticLabels)).slice(0, 6),
     issueTags: Array.from(new Set(issueTags)).slice(0, 8),
     confidence,
+    textQuality,
   };
+}
+
+function resolveFeedbackBucket({ aiLabel, semanticLabel, textQuality, issueTags, persistedBucket }) {
+  const normalizedPersistedBucket = normalizeFeedbackBucket(persistedBucket);
+  if (normalizedPersistedBucket) {
+    return normalizedPersistedBucket;
+  }
+  if (aiLabel === 'spam') {
+    return 'spam';
+  }
+  const normalizedSemanticLabel = String(semanticLabel ?? '').trim().toLowerCase();
+  if (textQuality?.isLowSignal === true || normalizedSemanticLabel === 'low_signal') {
+    return 'low_signal';
+  }
+  const normalizedIssueTags = Array.isArray(issueTags)
+    ? issueTags.map((tag) => String(tag ?? '').trim().toLowerCase())
+    : [];
+  if (normalizedIssueTags.some((tag) => tag === 'low_signal' || tag === 'needs_review' || tag === 'uninformative')) {
+    return 'low_signal';
+  }
+  return 'valid';
 }
 
 function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_label, classification = null) {
@@ -261,6 +335,7 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
   const semanticFromComment = classifyFeedbackSemantics({
     comment: feedback?.comment ?? '',
     rating: feedback?.rating ?? null,
+    isSpam: String(spamFromComment?.label ?? '').trim().toLowerCase() === 'spam',
   });
 
   const persistedLabel = normalizeSpamLabel(persistedAiLabelRaw);
@@ -298,13 +373,36 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
       : semanticFromComment?.confidence && typeof semanticFromComment.confidence === 'object'
         ? semanticFromComment.confidence
         : null;
+  const textQuality =
+    normalizedClassification.textQuality && typeof normalizedClassification.textQuality === 'object'
+      ? normalizedClassification.textQuality
+      : semanticFromComment?.textQuality && typeof semanticFromComment.textQuality === 'object'
+        ? semanticFromComment.textQuality
+        : null;
   const normalizedModerationLabels = Array.from(
     new Set([
       ...moderationLabels,
       aiLabel === 'spam' ? 'spam' : null,
       incidentLabel === 'incident' ? 'incident' : null,
+      textQuality?.isLowSignal ? 'needs_review' : null,
+      textQuality?.isLowSignal ? 'low_signal' : null,
     ].filter(Boolean))
   ).slice(0, 6);
+  const normalizedIssueTags = Array.from(
+    new Set([
+      ...issueTags,
+      textQuality?.isLowSignal ? 'low_signal' : null,
+      textQuality?.isLowSignal ? 'needs_review' : null,
+      textQuality?.label === 'uninformative' ? 'uninformative' : null,
+    ].filter(Boolean))
+  ).slice(0, 8);
+  const feedbackBucket = resolveFeedbackBucket({
+    aiLabel,
+    semanticLabel,
+    textQuality,
+    issueTags: normalizedIssueTags,
+    persistedBucket: normalizedClassification.feedbackBucket ?? feedback?.ai_feedback_bucket ?? null,
+  });
 
   return {
     ...feedback,
@@ -317,8 +415,17 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
     ai_semantic_reasons: semanticReasons,
     ai_moderation_labels: normalizedModerationLabels,
     ai_semantic_labels: Array.from(new Set(semanticLabels)).slice(0, 6),
-    ai_issue_tags: Array.from(new Set(issueTags)).slice(0, 8),
+    ai_issue_tags: normalizedIssueTags,
+    ai_feedback_bucket: feedbackBucket,
     ai_confidence: confidence,
+    ai_text_quality_is_low_signal: Boolean(textQuality?.isLowSignal),
+    ai_text_quality_label: String(textQuality?.label ?? '').trim() || 'informative',
+    ai_text_quality_reasons: Array.isArray(textQuality?.reasons)
+      ? textQuality.reasons
+          .map((reason) => String(reason ?? '').trim())
+          .filter((reason) => reason.length > 0)
+          .slice(0, 6)
+      : [],
   };
 }
 
@@ -417,27 +524,75 @@ function normalizeFeedbackIssueTags(feedback) {
   }
 
   const fallbackTags = [];
+  const textQualityLabel = String(feedback?.ai_text_quality_label ?? '').trim().toLowerCase();
+  const textQualityLowSignal = feedback?.ai_text_quality_is_low_signal === true;
   const semanticLabel = String(feedback?.ai_semantic_label ?? '').trim().toLowerCase();
   const incidentLabel = String(feedback?.ai_incident_label ?? '').trim().toLowerCase();
   if (incidentLabel === 'incident') {
     fallbackTags.push('incident', 'safety');
   }
-  if (semanticLabel === 'positive' || semanticLabel === 'negative' || semanticLabel === 'neutral') {
-    fallbackTags.push(semanticLabel);
+  if (semanticLabel === 'negative') {
+    fallbackTags.push('negative');
+  }
+  if (textQualityLowSignal || semanticLabel === 'low_signal') {
+    fallbackTags.push('low_signal', 'needs_review');
+    if (textQualityLabel === 'uninformative') {
+      fallbackTags.push('uninformative');
+    }
   }
   return Array.from(new Set(fallbackTags));
+}
+
+function isLowSignalFeedback(feedback) {
+  if (!feedback || typeof feedback !== 'object') {
+    return false;
+  }
+  const bucket = normalizeFeedbackBucket(feedback.ai_feedback_bucket);
+  if (bucket === 'low_signal') {
+    return true;
+  }
+  if (bucket === 'spam') {
+    return false;
+  }
+  if (feedback.ai_text_quality_is_low_signal === true) {
+    return true;
+  }
+  const semanticLabel = String(feedback.ai_semantic_label ?? '').trim().toLowerCase();
+  if (semanticLabel === 'low_signal') {
+    return true;
+  }
+  const issueTags = normalizeFeedbackIssueTags(feedback);
+  return issueTags.some((tag) => tag === 'low_signal' || tag === 'needs_review' || tag === 'uninformative');
+}
+
+function isValidInsightFeedback(feedback) {
+  const bucket = normalizeFeedbackBucket(feedback?.ai_feedback_bucket);
+  if (bucket === 'spam') {
+    return false;
+  }
+  if (bucket === 'low_signal') {
+    return false;
+  }
+  const isSpam = feedback?.is_spam === true;
+  if (isSpam) {
+    return false;
+  }
+  return !isLowSignalFeedback(feedback);
 }
 
 function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
   const safeFeedbacks = Array.isArray(feedbacks) ? feedbacks : [];
   const activityContext =
     activityContextByParticipationId instanceof Map ? activityContextByParticipationId : new Map();
+  const minValidFeedbackForInsights = 3;
 
   if (safeFeedbacks.length === 0) {
     return {
       totals: {
         feedback_count: 0,
         spam_count: 0,
+        low_signal_count: 0,
+        valid_feedback_count: 0,
         average_rating: 0,
         sentiment: { positive: 0, neutral: 0, negative: 0 },
       },
@@ -447,24 +602,53 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
       prominentIssues: [],
       byActivity: [],
       scope: 'filtered_result',
+      reliability: {
+        reliable: false,
+        min_valid_feedback_count: minValidFeedbackForInsights,
+        message: 'Not enough high-quality feedback to generate reliable insights yet.',
+      },
     };
   }
 
-  let ratingSum = 0;
-  let ratingCount = 0;
+  let allRatingSum = 0;
+  let allRatingCount = 0;
+  let validRatingSum = 0;
+  let validRatingCount = 0;
   let spamCount = 0;
+  let lowSignalCount = 0;
   let positiveCount = 0;
   let neutralCount = 0;
   let negativeCount = 0;
 
   const repeatedIssueCounts = new Map();
   const byActivity = new Map();
+  const validFeedbacks = [];
 
   for (const feedback of safeFeedbacks) {
     const rating = Number(feedback?.rating ?? 0);
     if (Number.isFinite(rating) && rating > 0) {
-      ratingSum += rating;
-      ratingCount += 1;
+      allRatingSum += rating;
+      allRatingCount += 1;
+    }
+
+    const feedbackBucket = normalizeFeedbackBucket(feedback?.ai_feedback_bucket);
+    const isSpam = feedbackBucket === 'spam' || feedback?.is_spam === true;
+    const isLowSignal = feedbackBucket === 'low_signal' || isLowSignalFeedback(feedback);
+    if (isSpam) {
+      spamCount += 1;
+    }
+    if (isLowSignal) {
+      lowSignalCount += 1;
+    }
+
+    if (!isValidInsightFeedback(feedback)) {
+      continue;
+    }
+
+    validFeedbacks.push(feedback);
+    if (Number.isFinite(rating) && rating > 0) {
+      validRatingSum += rating;
+      validRatingCount += 1;
       if (rating >= 4) {
         positiveCount += 1;
       } else if (rating <= 2) {
@@ -474,14 +658,16 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
       }
     }
 
-    if (feedback?.is_spam === true) {
-      spamCount += 1;
-      repeatedIssueCounts.set('spam', (repeatedIssueCounts.get('spam') ?? 0) + 1);
-    }
-
     const tags = normalizeFeedbackIssueTags(feedback);
     for (const tag of tags) {
-      if (tag === 'positive' || tag === 'neutral') {
+      if (
+        tag === 'positive' ||
+        tag === 'neutral' ||
+        tag === 'low_signal' ||
+        tag === 'needs_review' ||
+        tag === 'uninformative' ||
+        tag === 'spam'
+      ) {
         continue;
       }
       repeatedIssueCounts.set(tag, (repeatedIssueCounts.get(tag) ?? 0) + 1);
@@ -516,7 +702,39 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
     byActivity.set(activityKey, current);
   }
 
-  const averageRating = ratingCount > 0 ? Number((ratingSum / ratingCount).toFixed(2)) : 0;
+  const averageRatingAll = allRatingCount > 0 ? Number((allRatingSum / allRatingCount).toFixed(2)) : 0;
+  const averageRatingValid = validRatingCount > 0 ? Number((validRatingSum / validRatingCount).toFixed(2)) : 0;
+  const hasReliableSample = validFeedbacks.length >= minValidFeedbackForInsights;
+
+  if (!hasReliableSample) {
+    return {
+      totals: {
+        feedback_count: safeFeedbacks.length,
+        spam_count: spamCount,
+        low_signal_count: lowSignalCount,
+        valid_feedback_count: validFeedbacks.length,
+        average_rating: averageRatingValid,
+        average_rating_all: averageRatingAll,
+        sentiment: {
+          positive: positiveCount,
+          neutral: neutralCount,
+          negative: negativeCount,
+        },
+      },
+      repeatedIssues: [],
+      strengths: [],
+      weaknesses: [],
+      prominentIssues: [],
+      byActivity: [],
+      scope: 'filtered_result',
+      reliability: {
+        reliable: false,
+        min_valid_feedback_count: minValidFeedbackForInsights,
+        message: 'Not enough high-quality feedback to generate reliable insights yet.',
+      },
+    };
+  }
+
   const repeatedIssues = Array.from(repeatedIssueCounts.entries())
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .slice(0, 6)
@@ -529,24 +747,24 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
 
   const strengths = [];
   if (positiveCount > 0) {
-    strengths.push(`${positiveCount} feedback entries are positive.`);
+    strengths.push(`${positiveCount} valid feedback entries are positive.`);
   }
-  if (averageRating >= 4 && ratingCount > 0) {
-    strengths.push(`Average rating is ${averageRating.toFixed(1)}/5.`);
+  if (averageRatingValid >= 4 && validRatingCount > 0) {
+    strengths.push(`Average rating across valid feedback is ${averageRatingValid.toFixed(1)}/5.`);
   }
   if (repeatedIssues.length === 0) {
-    strengths.push('No repeated operational issues detected in current filtered results.');
+    strengths.push('No repeated operational issues detected across valid feedback.');
   }
 
   const weaknesses = [];
   if (negativeCount > 0) {
-    weaknesses.push(`${negativeCount} feedback entries are negative.`);
+    weaknesses.push(`${negativeCount} valid feedback entries are negative.`);
   }
   if (repeatedIssues.length > 0) {
     weaknesses.push(...repeatedIssues.slice(0, 3).map((item) => `${item.label} reported ${item.count} times.`));
   }
-  if (spamCount > 0) {
-    weaknesses.push(`${spamCount} feedback entries are marked as spam.`);
+  if (lowSignalCount > 0) {
+    weaknesses.push(`${lowSignalCount} feedback entries are low-signal and excluded from insight scoring.`);
   }
 
   const byActivityRows = Array.from(byActivity.values())
@@ -565,7 +783,7 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
         activityId: item.activityId,
         activityTitle: item.activityTitle,
         feedbackCount: item.feedbackCount,
-        averageRating: item.ratingCount > 0 ? Number((item.ratingSum / item.ratingCount).toFixed(2)) : 0,
+        averageRating: item.ratingCount > 0 ? Number((item.ratingSum / item.ratingCount).toFixed(2)) : averageRatingValid,
         repeatedIssues: issueRows,
       };
     })
@@ -576,7 +794,10 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
     totals: {
       feedback_count: safeFeedbacks.length,
       spam_count: spamCount,
-      average_rating: averageRating,
+      low_signal_count: lowSignalCount,
+      valid_feedback_count: validFeedbacks.length,
+      average_rating: averageRatingValid,
+      average_rating_all: averageRatingAll,
       sentiment: {
         positive: positiveCount,
         neutral: neutralCount,
@@ -589,6 +810,11 @@ function toFeedbackInsights({ feedbacks, activityContextByParticipationId }) {
     prominentIssues: repeatedIssues.slice(0, 3),
     byActivity: byActivityRows,
     scope: 'filtered_result',
+    reliability: {
+      reliable: true,
+      min_valid_feedback_count: minValidFeedbackForInsights,
+      message: '',
+    },
   };
 }
 
@@ -976,6 +1202,8 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
     totals: {
       feedback_count: 0,
       spam_count: 0,
+      low_signal_count: 0,
+      valid_feedback_count: 0,
       average_rating: 0,
       sentiment: { positive: 0, neutral: 0, negative: 0 },
     },
@@ -985,6 +1213,11 @@ router.get('/feedback/review', requireAuth, async (req, res) => {
     prominentIssues: [],
     byActivity: [],
     scope: 'filtered_result',
+    reliability: {
+      reliable: false,
+      min_valid_feedback_count: 3,
+      message: 'Not enough high-quality feedback to generate reliable insights yet.',
+    },
   };
   try {
     const contextByParticipationId = await buildActivityContextByParticipationIds(filteredFeedbacks);

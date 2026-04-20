@@ -1,16 +1,16 @@
 import { Download, Share2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { EmptyLoadingErrorState } from '../components/feedback';
-import { Badge, Button, Card } from '../components/ui';
+import { Badge, Button, Card, Select } from '../components/ui';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
 import { IssueHighlightsCard } from '../components/reports/IssueHighlightsCard';
 import { ParticipationCountCard } from '../components/reports/ParticipationCountCard';
 import { ReportSummaryHeroCard } from '../components/reports/ReportSummaryHeroCard';
 import { OrganizerShell } from '../layouts/OrganizerShell';
-import { getOrganizerReportSummary } from '../lib/reports';
+import { getOrganizerReportSummary, type ActivitySummaryOption } from '../lib/reports';
 import type { OrganizerReportSummaryData } from '../lib/organizerReportSummary';
 import './OrganizerReportSummaryPage.css';
 
@@ -20,34 +20,44 @@ function matchesSearch(searchTerm: string, value: string) {
 
 export function OrganizerReportSummaryPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<OrganizerReportSummaryData | null>(null);
+  const [availableActivities, setAvailableActivities] = useState<ActivitySummaryOption[]>([]);
+  const [selectedActivityId, setSelectedActivityId] = useState(() => searchParams.get('activityId')?.trim() ?? '');
 
-  const loadReport = useCallback(async () => {
-    if (!session?.access_token) {
-      setLoading(false);
-      setReport(null);
-      setError('No active session token.');
-      return;
+  const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
+
+  const loadReport = useCallback(
+    async (activityId?: string) => {
+      if (!session?.access_token) {
+        setLoading(false);
+        setReport(null);
+        setError('No active session token.');
+        return;
     }
 
     setLoading(true);
     setError(null);
 
-    try {
-      const response = await getOrganizerReportSummary(session.access_token);
-      setReport(response.report);
-    } catch (loadError) {
-      setReport(null);
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load report analytics.');
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.access_token]);
+      try {
+        const response = await getOrganizerReportSummary(session.access_token, activityId);
+        setReport(response.report);
+        setAvailableActivities(response.meta.availableActivities ?? []);
+        setSelectedActivityId(response.meta.activityId ?? activityId ?? '');
+      } catch (loadError) {
+        setReport(null);
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load report analytics.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [session?.access_token]
+  );
 
   useEffect(() => {
     const handleAfterPrint = () => {
@@ -62,8 +72,8 @@ export function OrganizerReportSummaryPage() {
   }, []);
 
   useEffect(() => {
-    void loadReport();
-  }, [loadReport]);
+    void loadReport(requestedActivityId || undefined);
+  }, [loadReport, requestedActivityId]);
 
   const filteredIssues = useMemo(() => {
     if (!report) {
@@ -119,6 +129,20 @@ export function OrganizerReportSummaryPage() {
     }
   };
 
+  const handleActivityChange = (nextActivityId: string) => {
+    setMessage(null);
+    setError(null);
+    setSelectedActivityId(nextActivityId);
+
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextActivityId) {
+      nextParams.set('activityId', nextActivityId);
+    } else {
+      nextParams.delete('activityId');
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
   return (
     <OrganizerShell
       activeNav="reports"
@@ -141,10 +165,10 @@ export function OrganizerReportSummaryPage() {
           <span>/</span>
           <span>Activity Reports</span>
           <span>/</span>
-          <span>Current</span>
+          <span>{report?.activityTitle ?? 'Summary'}</span>
         </div>
       }
-      pageSubtitle="Current activity performance snapshot for organizers."
+      pageSubtitle="Select an activity to review participation and feedback summary."
       pageTitle="Report Summary"
       searchPlaceholder="Search report issues..."
       searchValue={searchTerm}
@@ -164,10 +188,33 @@ export function OrganizerReportSummaryPage() {
         {message && <p className="form-success">{message}</p>}
         {report && error && <p className="form-error">{error}</p>}
 
+        <Card as="section" className="org-report-activity-picker">
+          <div className="org-report-activity-picker-copy">
+            <p className="org-report-eyebrow">Select activity</p>
+            <Select
+              className="org-report-activity-select"
+              disabled={loading || availableActivities.length === 0}
+              onChange={(event) => handleActivityChange(event.target.value)}
+              value={selectedActivityId}
+            >
+              {availableActivities.length === 0 ? (
+                <option value="">No activities available</option>
+              ) : (
+                availableActivities.map((activity) => (
+                  <option key={activity.id} value={activity.id}>
+                    {activity.title}
+                  </option>
+                ))
+              )}
+            </Select>
+            <p className="muted">{report?.durationValue ?? 'Pick an activity to load report summary.'}</p>
+          </div>
+        </Card>
+
         {loading ? (
           <section className="card org-report-lower-card org-report-empty-card">
             <EmptyLoadingErrorState
-              description="Pulling the latest participation and feedback insights for this activity report."
+              description="Pulling the latest participation and feedback insights for the selected activity report."
               state="loading"
               title="Loading report analytics"
             />
@@ -223,7 +270,10 @@ export function OrganizerReportSummaryPage() {
 
               <FeedbackOverviewCard
                 ariaLabel="Open feedback review"
-                onClick={() => navigate('/feedback')}
+                onClick={() => {
+                  const nextActivityId = selectedActivityId || requestedActivityId;
+                  navigate(nextActivityId ? `/feedback?activityId=${encodeURIComponent(nextActivityId)}` : '/feedback');
+                }}
                 quote={report.feedbackQuote}
                 rating={report.feedbackRating}
                 sentiments={report.sentimentChips}
@@ -282,7 +332,7 @@ export function OrganizerReportSummaryPage() {
             <EmptyLoadingErrorState
               action={
                 error ? (
-                  <Button onClick={() => void loadReport()} type="button" variant="secondary">
+                  <Button onClick={() => void loadReport(selectedActivityId || undefined)} type="button" variant="secondary">
                     Retry
                   </Button>
                 ) : undefined

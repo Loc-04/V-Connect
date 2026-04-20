@@ -162,7 +162,10 @@ export async function listFeedbackReview(options: ReviewFeedbackOptions): Promis
     totals: {
       feedback_count: 0,
       spam_count: 0,
+      low_signal_count: 0,
+      valid_feedback_count: 0,
       average_rating: 0,
+      average_rating_all: 0,
       sentiment: {
         positive: 0,
         neutral: 0,
@@ -175,6 +178,11 @@ export async function listFeedbackReview(options: ReviewFeedbackOptions): Promis
     prominentIssues: [],
     byActivity: [],
     scope: 'filtered_result',
+    reliability: {
+      reliable: false,
+      min_valid_feedback_count: 3,
+      message: 'Not enough high-quality feedback to generate reliable insights yet.',
+    },
   };
 
   return {

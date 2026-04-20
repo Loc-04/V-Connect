@@ -347,7 +347,7 @@ function buildInsights(
       title: `${pendingApprovals} pending approvals need attention`,
       description: 'Volunteer requests are waiting for review. Clear the queue before new events go live.',
       actionLabel: 'Inspect status',
-      anchorId: DASHBOARD_ANCHORS.participations,
+      route: '/admin/participations',
     });
   }
 
@@ -359,7 +359,7 @@ function buildInsights(
       title: 'Participation dropped in the selected window',
       description: `${participationTrend.current} participations landed in the current range versus ${participationTrend.previous} in the previous one.`,
       actionLabel: 'Review activity mix',
-      anchorId: DASHBOARD_ANCHORS.activities,
+      route: '/admin/participations',
     });
   }
 
@@ -381,8 +381,8 @@ function buildInsights(
       tone: 'info',
       title: `${volunteerGaps} published activities have no volunteers yet`,
       description: 'Those activities may need promotion, scheduling changes, or staff follow-up to avoid last-minute gaps.',
-      actionLabel: 'Open browse view',
-      route: '/browse',
+      actionLabel: 'Open activities',
+      route: '/admin/activities',
     });
   }
 
@@ -852,7 +852,7 @@ export function AdminDashboardPage() {
         currentLabel: `${trends.totalActivities.current} created in ${timeWindow.shortLabel}`,
         icon: CalendarDays,
         tone: 'activity',
-        anchorId: DASHBOARD_ANCHORS.activities,
+        route: '/admin/activities',
       },
       {
         key: 'participations',
@@ -862,7 +862,7 @@ export function AdminDashboardPage() {
         currentLabel: `${trends.totalParticipations.current} in ${timeWindow.shortLabel}`,
         icon: ClipboardList,
         tone: 'participation',
-        anchorId: DASHBOARD_ANCHORS.participations,
+        route: '/admin/participations',
       },
       {
         key: 'checked-in',
@@ -872,7 +872,7 @@ export function AdminDashboardPage() {
         currentLabel: `${trends.checkedIn.current} check-ins in ${timeWindow.shortLabel}`,
         icon: CheckCircle2,
         tone: 'participation',
-        anchorId: DASHBOARD_ANCHORS.participations,
+        route: '/admin/participations',
       },
       {
         key: 'reports',
@@ -938,7 +938,7 @@ export function AdminDashboardPage() {
               <PlusCircle size={16} />
               Create Activity
             </Button>
-            <Button className="dashboard-action-btn" onClick={() => handleNavigate(undefined, DASHBOARD_ANCHORS.participations)} type="button" variant="secondary">
+            <Button className="dashboard-action-btn" onClick={() => navigate('/admin/participations')} type="button" variant="secondary">
               <Sparkles size={16} />
               View Approvals
             </Button>
