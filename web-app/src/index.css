@@ -379,29 +379,37 @@ p {
 }
 
 .admin-shell {
+  --admin-shell-pad: 0.75rem;
+  --admin-shell-gap: 0.65rem;
+  --admin-sidebar-width: 200px;
+  height: 100vh;
   min-height: 100vh;
   background: var(--bg-soft);
-  padding: 0.75rem;
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: 0.65rem;
+  padding: var(--admin-shell-pad);
+  overflow: hidden;
 }
 
 .admin-sidebar {
+  position: fixed;
+  left: var(--admin-shell-pad);
+  top: var(--admin-shell-pad);
+  bottom: var(--admin-shell-pad);
+  width: var(--admin-sidebar-width);
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.8rem 0.65rem;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 1.5rem);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-sidebar-profile {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  margin-bottom: 0.95rem;
+  margin-bottom: 0;
 }
 
 .admin-profile-avatar {
@@ -430,7 +438,19 @@ p {
 
 .admin-sidebar-nav {
   display: grid;
+  align-content: start;
   gap: 0.2rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.1rem;
+}
+
+.admin-sidebar-bottom {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
 }
 
 .sidebar-link {
@@ -478,7 +498,7 @@ p {
 }
 
 .admin-sidebar-help {
-  margin-top: auto;
+  flex: 0 0 auto;
   background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
   border-radius: 14px;
   padding: 0.7rem;
@@ -498,6 +518,7 @@ p {
 }
 
 .sidebar-signout {
+  flex: 0 0 auto;
   margin-top: 0.5rem;
   border: 0;
   background: transparent;
@@ -510,10 +531,15 @@ p {
 }
 
 .admin-content {
+  height: calc(100vh - (var(--admin-shell-pad) * 2));
+  margin-left: calc(var(--admin-sidebar-width) + var(--admin-shell-gap));
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.8rem;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .admin-dashboard-page {
@@ -1899,7 +1925,7 @@ p {
 
 @media (max-width: 1024px) {
   .admin-shell {
-    grid-template-columns: 170px minmax(0, 1fr);
+    --admin-sidebar-width: 170px;
   }
 
   .users-stat-grid {
@@ -1942,12 +1968,32 @@ p {
   }
 
   .admin-shell {
-    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
     padding: 0.6rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
   }
 
   .admin-sidebar {
+    position: static;
+    width: auto;
     min-height: auto;
+    overflow: visible;
+  }
+
+  .admin-sidebar-nav {
+    flex: initial;
+    overflow: visible;
+  }
+
+  .admin-content {
+    height: auto;
+    min-height: 0;
+    margin-left: 0;
+    overflow: visible;
   }
 
   .users-page-head h2 {

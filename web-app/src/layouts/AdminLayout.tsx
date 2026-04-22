@@ -15,14 +15,6 @@ export function AdminLayout() {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-sidebar-profile">
-          <span className="admin-profile-avatar">{(profile?.full_name ?? 'A').slice(0, 1).toUpperCase()}</span>
-          <div>
-            <p className="admin-profile-name">V-Connect Admin</p>
-            <small>SUPER ADMIN</small>
-          </div>
-        </div>
-
         <nav className="admin-sidebar-nav">
           <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/dashboard">
             <LayoutDashboard className="sidebar-link-icon" />
@@ -58,15 +50,25 @@ export function AdminLayout() {
           </button>
         </nav>
 
-        <div className="admin-sidebar-help">
-          <p>Need Help?</p>
-          <small>Check docs or contact support.</small>
-        </div>
+        <div className="admin-sidebar-bottom">
+          <div className="admin-sidebar-help">
+            <p>Need Help?</p>
+            <small>Check docs or contact support.</small>
+          </div>
 
-        <button className="sidebar-signout" onClick={handleSignOut} type="button">
-          <LogOut className="sidebar-link-icon" />
-          Sign Out
-        </button>
+          <div className="admin-sidebar-profile">
+            <span className="admin-profile-avatar">{(profile?.full_name ?? 'A').slice(0, 1).toUpperCase()}</span>
+            <div>
+              <p className="admin-profile-name">V-Connect Admin</p>
+              <small>SUPER ADMIN</small>
+            </div>
+          </div>
+
+          <button className="sidebar-signout" onClick={handleSignOut} type="button">
+            <LogOut className="sidebar-link-icon" />
+            Sign Out
+          </button>
+        </div>
       </aside>
 
       <section className="admin-content">
