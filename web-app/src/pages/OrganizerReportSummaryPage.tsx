@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { EmptyLoadingErrorState } from '../components/feedback';
+import { EventTimelineReadOnly } from '../components/timeline';
 import { Badge, Button, Card, Select } from '../components/ui';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
 import { IssueHighlightsCard } from '../components/reports/IssueHighlightsCard';
@@ -11,7 +12,9 @@ import { ParticipationCountCard } from '../components/reports/ParticipationCount
 import { ReportSummaryHeroCard } from '../components/reports/ReportSummaryHeroCard';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { getOrganizerReportSummary, type ActivitySummaryOption } from '../lib/reports';
+import { listActivityTimeline } from '../lib/timeline';
 import type { OrganizerReportSummaryData } from '../lib/organizerReportSummary';
+import type { TimelineMilestone } from '../types/timeline';
 import './OrganizerReportSummaryPage.css';
 
 function matchesSearch(searchTerm: string, value: string) {
@@ -29,6 +32,10 @@ export function OrganizerReportSummaryPage() {
   const [report, setReport] = useState<OrganizerReportSummaryData | null>(null);
   const [availableActivities, setAvailableActivities] = useState<ActivitySummaryOption[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState(() => searchParams.get('activityId')?.trim() ?? '');
+  const [timelineMilestones, setTimelineMilestones] = useState<TimelineMilestone[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [timelineIntegrationMessage, setTimelineIntegrationMessage] = useState<string | null>(null);
 
   const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
 
@@ -75,6 +82,50 @@ export function OrganizerReportSummaryPage() {
     void loadReport(requestedActivityId || undefined);
   }, [loadReport, requestedActivityId]);
 
+  const timelineActivityId = selectedActivityId || requestedActivityId;
+
+  useEffect(() => {
+    if (!timelineActivityId) {
+      setTimelineMilestones([]);
+      setTimelineError(null);
+      setTimelineIntegrationMessage(null);
+      setTimelineLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTimelineLoading(true);
+    setTimelineError(null);
+
+    void listActivityTimeline(timelineActivityId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setTimelineMilestones(response.milestones);
+        setTimelineIntegrationMessage(
+          response.integration.pendingServerIntegration ? response.integration.message : null
+        );
+      })
+      .catch((timelineLoadError) => {
+        if (!cancelled) {
+          setTimelineMilestones([]);
+          setTimelineError(
+            timelineLoadError instanceof Error ? timelineLoadError.message : 'Unable to load timeline summary.'
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTimelineLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [timelineActivityId]);
+
   const filteredIssues = useMemo(() => {
     if (!report) {
       return [];
@@ -94,6 +145,25 @@ export function OrganizerReportSummaryPage() {
   const strengths = report?.strengths ?? [];
   const weaknesses = report?.weaknesses ?? [];
   const issueHighlights = report?.issueHighlights ?? [];
+  const timelineStatusSummary = useMemo(() => {
+    const summary = {
+      completed: 0,
+      delayed: 0,
+      cancelled: 0,
+    };
+
+    timelineMilestones.forEach((milestone) => {
+      if (milestone.status === 'completed') {
+        summary.completed += 1;
+      } else if (milestone.status === 'delayed') {
+        summary.delayed += 1;
+      } else if (milestone.status === 'cancelled') {
+        summary.cancelled += 1;
+      }
+    });
+
+    return summary;
+  }, [timelineMilestones]);
 
   const handleExportPdf = () => {
     setError(null);
@@ -309,6 +379,26 @@ export function OrganizerReportSummaryPage() {
                     )}
                   </div>
                 </div>
+              </Card>
+
+              <Card as="section" className="org-report-lower-card org-report-timeline-summary-card">
+                <div className="org-report-card-head">
+                  <h3>Timeline Summary</h3>
+                  <Badge tone="info">Post Event</Badge>
+                </div>
+                {timelineIntegrationMessage ? <p className="org-report-timeline-note">{timelineIntegrationMessage}</p> : null}
+                <div className="org-report-inline-tags">
+                  <Badge tone="success">Completed: {timelineStatusSummary.completed}</Badge>
+                  <Badge tone="danger">Delayed: {timelineStatusSummary.delayed}</Badge>
+                  <Badge tone="danger">Cancelled: {timelineStatusSummary.cancelled}</Badge>
+                </div>
+                <EventTimelineReadOnly
+                  compact
+                  emptyDescription="No organizer-managed milestones are linked to this activity yet."
+                  milestones={timelineMilestones}
+                  loading={timelineLoading}
+                  error={timelineError}
+                />
               </Card>
 
               {filteredIssues.length > 0 ? (

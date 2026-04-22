@@ -7,10 +7,11 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
+import { EventTimelineEditor } from '../components/timeline';
 import { Badge, Button, Card, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
@@ -68,9 +69,16 @@ interface AttendanceNoticeState {
   description?: string;
 }
 
+type OrganizerManagementPanel = 'attendance' | 'timeline';
+
 export function OrganizerActivityManagementPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
+  const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
+  const requestedPanelParam = searchParams.get('tab')?.trim().toLowerCase();
+  const initialPanel: OrganizerManagementPanel =
+    requestedPanelParam === 'timeline' ? 'timeline' : 'attendance';
 
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [participations, setParticipations] = useState<ParticipationRecord[]>([]);
@@ -85,6 +93,8 @@ export function OrganizerActivityManagementPage() {
   const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
   const [savingActivityId, setSavingActivityId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<OrganizerManagementPanel>(initialPanel);
+  const [attendanceLoadedForActivityId, setAttendanceLoadedForActivityId] = useState<string | null>(null);
   const [checkingInParticipationId, setCheckingInParticipationId] = useState<string | null>(null);
   const [attendanceNotice, setAttendanceNotice] = useState<AttendanceNoticeState | null>(null);
 
@@ -125,6 +135,44 @@ export function OrganizerActivityManagementPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (requestedPanelParam === 'timeline') {
+      setActivePanel('timeline');
+      return;
+    }
+
+    if (requestedPanelParam === 'attendance') {
+      setActivePanel('attendance');
+    }
+  }, [requestedPanelParam]);
+
+  useEffect(() => {
+    if (!requestedActivityId) {
+      return;
+    }
+
+    const matched = activities.find((activity) => activity.id === requestedActivityId);
+    if (!matched) {
+      return;
+    }
+
+    setSelectedActivityId((current) => (current === matched.id ? current : matched.id));
+  }, [activities, requestedActivityId]);
+
+  useEffect(() => {
+    if (!selectedActivityId) {
+      return;
+    }
+
+    const stillExists = activities.some((activity) => activity.id === selectedActivityId);
+    if (!stillExists) {
+      setSelectedActivityId(null);
+      setAttendanceRows([]);
+      setAttendanceNotice(null);
+      setAttendanceLoadedForActivityId(null);
+    }
+  }, [activities, selectedActivityId]);
 
   useEffect(() => {
     const handleWindowClick = (event: MouseEvent) => {
@@ -213,8 +261,18 @@ export function OrganizerActivityManagementPage() {
     [activities, selectedActivityId]
   );
 
+  const syncPanelQuery = useCallback(
+    (activityId: string, panel: OrganizerManagementPanel) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('activityId', activityId);
+      nextParams.set('tab', panel);
+      setSearchParams(nextParams, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
   const loadAttendanceForActivity = useCallback(
-    async (activityId: string) => {
+    async (activityId: string, options?: { syncQuery?: boolean }) => {
       if (!session?.access_token) {
         setError('No active session token.');
         return;
@@ -222,7 +280,11 @@ export function OrganizerActivityManagementPage() {
 
       setAttendanceLoading(true);
       setAttendanceNotice(null);
+      setActivePanel('attendance');
       setSelectedActivityId(activityId);
+      if (options?.syncQuery !== false) {
+        syncPanelQuery(activityId, 'attendance');
+      }
 
       try {
         const rows = await listParticipations({
@@ -232,7 +294,9 @@ export function OrganizerActivityManagementPage() {
           limit: 300,
         });
         setAttendanceRows(rows);
+        setAttendanceLoadedForActivityId(activityId);
       } catch (loadError) {
+        setAttendanceLoadedForActivityId(activityId);
         setAttendanceNotice({
           tone: 'error',
           title: 'Unable to load attendance list',
@@ -242,7 +306,7 @@ export function OrganizerActivityManagementPage() {
         setAttendanceLoading(false);
       }
     },
-    [session?.access_token]
+    [session?.access_token, syncPanelQuery]
   );
 
   const handleCheckIn = async (participationId: string) => {
@@ -295,6 +359,39 @@ export function OrganizerActivityManagementPage() {
       setCheckingInParticipationId(null);
     }
   };
+
+  const handleOpenTimelineForActivity = (activityId: string) => {
+    setSelectedActivityId(activityId);
+    setActivePanel('timeline');
+    setAttendanceNotice(null);
+    syncPanelQuery(activityId, 'timeline');
+  };
+
+  const handleSwitchPanel = (panel: OrganizerManagementPanel) => {
+    if (!selectedActivity) {
+      return;
+    }
+
+    if (panel === 'attendance') {
+      void loadAttendanceForActivity(selectedActivity.id);
+      return;
+    }
+
+    setActivePanel('timeline');
+    syncPanelQuery(selectedActivity.id, 'timeline');
+  };
+
+  useEffect(() => {
+    if (!selectedActivityId || activePanel !== 'attendance') {
+      return;
+    }
+
+    if (attendanceLoadedForActivityId === selectedActivityId) {
+      return;
+    }
+
+    void loadAttendanceForActivity(selectedActivityId, { syncQuery: false });
+  }, [activePanel, attendanceLoadedForActivityId, loadAttendanceForActivity, selectedActivityId]);
 
   const handleChangeStatus = async (activityId: string, status: ActivityStatus) => {
     if (!session?.access_token) {
@@ -350,6 +447,7 @@ export function OrganizerActivityManagementPage() {
       if (selectedActivityId === activityId) {
         setSelectedActivityId(null);
         setAttendanceRows([]);
+        setAttendanceLoadedForActivityId(null);
       }
       setMessage('Activity deleted.');
       setOpenMenuActivityId(null);
@@ -536,6 +634,18 @@ export function OrganizerActivityManagementPage() {
                               <button
                                 className="row-action-item"
                                 onClick={() => {
+                                  handleOpenTimelineForActivity(activity.id);
+                                  setOpenMenuActivityId(null);
+                                  setOpenStatusPickerActivityId(null);
+                                }}
+                                type="button"
+                              >
+                                Manage Timeline
+                              </button>
+
+                              <button
+                                className="row-action-item"
+                                onClick={() => {
                                   navigate(`/activities/${activity.id}/edit`);
                                   setOpenMenuActivityId(null);
                                   setOpenStatusPickerActivityId(null);
@@ -625,109 +735,149 @@ export function OrganizerActivityManagementPage() {
         </Card>
 
         {selectedActivity && (
-          <Card as="section" className="org-attendance-shell">
-            <div className="org-attendance-head">
-              <div>
-                <h2>Attendance for {selectedActivity.title}</h2>
-                <p className="muted">Track check-ins and volunteer participation statuses.</p>
+          <>
+            <Card as="section" className="org-activity-workspace-shell">
+              <div className="org-activity-workspace-head">
+                <div>
+                  <h2>{selectedActivity.title}</h2>
+                  <p className="muted">Manage attendance and organizer timeline for this activity.</p>
+                </div>
+                <div className="org-activity-workspace-tabs" role="tablist" aria-label="Activity workspace tabs">
+                  <button
+                    aria-selected={activePanel === 'attendance'}
+                    className={activePanel === 'attendance' ? 'org-workspace-tab is-active' : 'org-workspace-tab'}
+                    onClick={() => handleSwitchPanel('attendance')}
+                    role="tab"
+                    type="button"
+                  >
+                    Attendance
+                  </button>
+                  <button
+                    aria-selected={activePanel === 'timeline'}
+                    className={activePanel === 'timeline' ? 'org-workspace-tab is-active' : 'org-workspace-tab'}
+                    onClick={() => handleSwitchPanel('timeline')}
+                    role="tab"
+                    type="button"
+                  >
+                    Timeline
+                  </button>
+                </div>
               </div>
-              <Button
-                disabled={attendanceLoading}
-                onClick={() => void loadAttendanceForActivity(selectedActivity.id)}
-                type="button"
-                variant="secondary"
-              >
-                {attendanceLoading ? 'Refreshing...' : 'Refresh Attendance'}
-              </Button>
-            </div>
+            </Card>
 
-            {attendanceNotice ? (
-              <CheckInResultState
-                className="org-attendance-result"
-                description={attendanceNotice.description}
-                title={attendanceNotice.title}
-                tone={attendanceNotice.tone}
-              />
-            ) : null}
+            {activePanel === 'attendance' ? (
+              <Card as="section" className="org-attendance-shell">
+                <div className="org-attendance-head">
+                  <div>
+                    <h2>Attendance for {selectedActivity.title}</h2>
+                    <p className="muted">Track check-ins and volunteer participation statuses.</p>
+                  </div>
+                  <Button
+                    disabled={attendanceLoading}
+                    onClick={() => void loadAttendanceForActivity(selectedActivity.id)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    {attendanceLoading ? 'Refreshing...' : 'Refresh Attendance'}
+                  </Button>
+                </div>
 
-            {attendanceLoading ? (
-              <p className="muted">Loading attendance records...</p>
-            ) : (
-              <Table className="org-attendance-table" wrapperClassName="org-attendance-table-wrap">
-                <thead>
-                  <tr>
-                    <th>Volunteer</th>
-                    <th>Status</th>
-                    <th>Match Score</th>
-                    <th>Checked In At</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendanceRows.map((participation) => {
-                    const status = String(participation.status ?? '').toLowerCase();
-                    const score =
-                      typeof participation.ai_match_score === 'number'
-                        ? Math.round(
-                            participation.ai_match_score <= 1
-                              ? participation.ai_match_score * 100
-                              : participation.ai_match_score
-                          )
-                        : null;
+                {attendanceNotice ? (
+                  <CheckInResultState
+                    className="org-attendance-result"
+                    description={attendanceNotice.description}
+                    title={attendanceNotice.title}
+                    tone={attendanceNotice.tone}
+                  />
+                ) : null}
 
-                    return (
-                      <tr key={participation.id}>
-                        <td>{participation.volunteer?.full_name ?? participation.volunteer_id ?? 'Unknown volunteer'}</td>
-                        <td>
-                          <AttendanceStatusBadge status={status} />
-                        </td>
-                        <td>{score !== null ? `${score}%` : '--'}</td>
-                        <td>
-                          <div className="org-attendance-time-cell">
-                            <span>
-                              {participation.checked_in_at
-                                ? new Date(participation.checked_in_at).toLocaleString()
-                                : 'Not checked in'}
-                            </span>
-                            <AttendanceStatusBadge
-                              className="org-attendance-time-badge"
-                              status={participation.checked_in_at ? 'checked_in' : 'not_checked_in'}
-                            />
-                          </div>
-                        </td>
-                        <td>
-                          <Button
-                            disabled={
-                              checkingInParticipationId === participation.id ||
-                              status === 'checked_in' ||
-                              status === 'rejected'
-                            }
-                            onClick={() => void handleCheckIn(participation.id)}
-                            type="button"
-                            variant="secondary"
-                          >
-                            {checkingInParticipationId === participation.id
-                              ? 'Checking...'
-                              : status === 'checked_in'
-                                ? 'Checked In'
-                                : 'Check In'}
-                          </Button>
-                        </td>
+                {attendanceLoading ? (
+                  <p className="muted">Loading attendance records...</p>
+                ) : (
+                  <Table className="org-attendance-table" wrapperClassName="org-attendance-table-wrap">
+                    <thead>
+                      <tr>
+                        <th>Volunteer</th>
+                        <th>Status</th>
+                        <th>Match Score</th>
+                        <th>Checked In At</th>
+                        <th>Action</th>
                       </tr>
-                    );
-                  })}
+                    </thead>
+                    <tbody>
+                      {attendanceRows.map((participation) => {
+                        const status = String(participation.status ?? '').toLowerCase();
+                        const score =
+                          typeof participation.ai_match_score === 'number'
+                            ? Math.round(
+                                participation.ai_match_score <= 1
+                                  ? participation.ai_match_score * 100
+                                  : participation.ai_match_score
+                              )
+                            : null;
 
-                  {attendanceRows.length === 0 && (
-                    <tr>
-                      <td className="org-activities-empty" colSpan={5}>
-                        No participation records for this activity yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </Table>
+                        return (
+                          <tr key={participation.id}>
+                            <td>{participation.volunteer?.full_name ?? participation.volunteer_id ?? 'Unknown volunteer'}</td>
+                            <td>
+                              <AttendanceStatusBadge status={status} />
+                            </td>
+                            <td>{score !== null ? `${score}%` : '--'}</td>
+                            <td>
+                              <div className="org-attendance-time-cell">
+                                <span>
+                                  {participation.checked_in_at
+                                    ? new Date(participation.checked_in_at).toLocaleString()
+                                    : 'Not checked in'}
+                                </span>
+                                <AttendanceStatusBadge
+                                  className="org-attendance-time-badge"
+                                  status={participation.checked_in_at ? 'checked_in' : 'not_checked_in'}
+                                />
+                              </div>
+                            </td>
+                            <td>
+                              <Button
+                                disabled={
+                                  checkingInParticipationId === participation.id ||
+                                  status === 'checked_in' ||
+                                  status === 'rejected'
+                                }
+                                onClick={() => void handleCheckIn(participation.id)}
+                                type="button"
+                                variant="secondary"
+                              >
+                                {checkingInParticipationId === participation.id
+                                  ? 'Checking...'
+                                  : status === 'checked_in'
+                                    ? 'Checked In'
+                                    : 'Check In'}
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {attendanceRows.length === 0 && (
+                        <tr>
+                          <td className="org-activities-empty" colSpan={5}>
+                            No participation records for this activity yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </Table>
+                )}
+              </Card>
+            ) : (
+              <EventTimelineEditor
+                activityEndTime={selectedActivity.end_time}
+                activityId={selectedActivity.id}
+                activityStartTime={selectedActivity.start_time}
+                activityTitle={selectedActivity.title}
+              />
             )}
-          </Card>
+          </>
         )}
       </section>
     </OrganizerShell>

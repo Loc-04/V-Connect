@@ -186,6 +186,49 @@
   padding: 1rem 0.6rem;
 }
 
+.org-activity-workspace-shell.card {
+  padding: 0.72rem 0.8rem;
+}
+
+.org-activity-workspace-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.org-activity-workspace-head h2 {
+  color: #0f172a;
+  font-size: 1.02rem;
+}
+
+.org-activity-workspace-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem;
+  background: #ffffff;
+}
+
+.org-workspace-tab {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.34rem 0.7rem;
+  cursor: pointer;
+}
+
+.org-workspace-tab.is-active {
+  background: rgba(79, 70, 229, 0.1);
+  color: #312e81;
+}
+
 .org-attendance-shell {
   display: grid;
   gap: 0.68rem;
@@ -227,5 +270,13 @@
 @media (max-width: 760px) {
   .org-activities-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .org-activity-workspace-tabs {
+    width: 100%;
+  }
+
+  .org-workspace-tab {
+    flex: 1;
   }
 }
