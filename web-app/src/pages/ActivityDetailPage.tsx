@@ -49,13 +49,6 @@ interface ActivityDetailViewModel {
   mapUrl: string | null;
 }
 
-const FALLBACK_HERO_IMAGES = [
-  'https://images.pexels.com/photos/7656740/pexels-photo-7656740.jpeg?auto=compress&cs=tinysrgb&w=1400',
-  'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1400',
-  'https://images.pexels.com/photos/6647043/pexels-photo-6647043.jpeg?auto=compress&cs=tinysrgb&w=1400',
-  'https://images.pexels.com/photos/5731866/pexels-photo-5731866.jpeg?auto=compress&cs=tinysrgb&w=1400',
-];
-
 const PARTICIPANT_AVATARS = [
   'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&cs=tinysrgb&w=150',
   'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
@@ -124,15 +117,6 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
-function hashString(input: string) {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash << 5) - hash + input.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
 function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
   const { dateLabel, timeLabel } = formatDateAndTime(mock.startTime, mock.endTime);
   return {
@@ -185,10 +169,7 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
     level: fallback?.level || 'Open to all levels',
     categories,
     requirements,
-    heroImageUrl:
-      (typeof activity.cover_image_url === 'string' && activity.cover_image_url.trim()) ||
-      fallback?.heroImageUrl ||
-      FALLBACK_HERO_IMAGES[hashString(activity.id) % FALLBACK_HERO_IMAGES.length],
+    heroImageUrl: String(activity.cover_image_url ?? '').trim(),
     locationCoordinates: getActivityCoordinates(activity.location),
     mapUrl: buildActivityMapUrl(activity.location),
   };

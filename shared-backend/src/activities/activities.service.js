@@ -1,5 +1,6 @@
 import { activityColumns, activityWriteRoles } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
+import { withResolvedActivityCoverImage } from './activities.cover.js';
 
 async function getActivityById(activityId) {
   const { data, error } = await supabaseAdmin
@@ -13,7 +14,11 @@ async function getActivityById(activityId) {
     throw new Error(error.message);
   }
 
-  return data ?? null;
+  if (!data) {
+    return null;
+  }
+
+  return withResolvedActivityCoverImage(data);
 }
 
 function computeDurationHours(startTime, endTime) {

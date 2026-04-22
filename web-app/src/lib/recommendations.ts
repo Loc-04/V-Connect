@@ -1,4 +1,5 @@
 import { apiRequest } from './api';
+import { resolveActivityCoverImageUrl } from './activityCover';
 import { normalizeParticipationRecord } from './participations';
 import type { ParticipationRecord } from '../types/participation';
 import type {
@@ -12,6 +13,13 @@ interface RecommendationAssignmentResponse {
   assignment: ParticipationRecord;
   created?: boolean;
   message?: string;
+}
+
+function normalizeRecommendedActivityRecord(record: RecommendedActivityRecord): RecommendedActivityRecord {
+  return {
+    ...record,
+    coverImageUrl: resolveActivityCoverImageUrl(record.coverImageUrl),
+  };
 }
 
 async function normalizeAssignmentResponse<T extends RecommendationAssignmentResponse>(promise: Promise<T>): Promise<T> {
@@ -38,7 +46,9 @@ export async function getRecommendedActivitiesForVolunteer(
   limit = 10
 ): Promise<RecommendedActivityRecord[]> {
   const response = await getRecommendationsForUser(userId, accessToken, limit);
-  return response.activities ?? [];
+  return Array.isArray(response.activities)
+    ? response.activities.map((item) => normalizeRecommendedActivityRecord(item))
+    : [];
 }
 
 export async function getRecommendedVolunteersForOrganizer(
