@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Activity, BarChart3, Bell, CalendarDays, ClipboardList, LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { BrandIcon } from '../components/brand';
 
 export function AdminLayout() {
   const navigate = useNavigate();
@@ -15,6 +16,16 @@ export function AdminLayout() {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
+        <div className="admin-sidebar-brand">
+          <span className="admin-brand-mark" aria-hidden="true">
+            <BrandIcon />
+          </span>
+          <div>
+            <strong>V-Connect</strong>
+            <small>Admin</small>
+          </div>
+        </div>
+
         <nav className="admin-sidebar-nav">
           <NavLink className={({ isActive }) => (isActive ? 'sidebar-link active' : 'sidebar-link')} to="/admin/dashboard">
             <LayoutDashboard className="sidebar-link-icon" />

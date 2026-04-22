@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
+import { BrandIcon } from '../components/brand';
 import { getPasswordResetRedirectUrl } from '../lib/authRedirects';
 import { supabase } from '../lib/supabase';
 
@@ -53,7 +53,7 @@ export function ForgotPasswordPage() {
           <div className="password-hero-copy">
             <div className="hero-brand password-brand">
               <span className="brand-icon">
-                <Activity size={16} />
+                <BrandIcon />
               </span>
               <span>V-Connect</span>
             </div>

@@ -405,6 +405,48 @@ p {
   overflow: hidden;
 }
 
+.admin-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.72rem;
+}
+
+.admin-brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--grad-start), var(--grad-end));
+  box-shadow: 0 8px 18px rgba(139, 92, 246, 0.24);
+}
+
+.admin-sidebar-brand strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.admin-sidebar-brand small {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-logo-img {
+  display: block;
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+}
+
 .admin-sidebar-profile {
   display: flex;
   align-items: center;
