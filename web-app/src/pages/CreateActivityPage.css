@@ -150,6 +150,13 @@
   gap: 1.1rem;
 }
 
+.activity-success-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .activity-card {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -477,6 +484,84 @@
   line-height: 1.5;
 }
 
+.activity-timeline-integration-note {
+  border: 1px solid #f3d8a8;
+  background: #fff7e6;
+  color: #92400e;
+  border-radius: 14px;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.activity-timeline-warning {
+  color: #92400e;
+  background: #fffaf0;
+  border: 1px solid #f6e05e;
+  border-radius: 12px;
+  padding: 0.52rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.activity-timeline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.activity-timeline-empty {
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: #fcfdff;
+  padding: 0.85rem 0.92rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+}
+
+.activity-timeline-empty p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.activity-timeline-empty small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.activity-timeline-list {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.activity-timeline-item {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.8rem;
+  background: #ffffff;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.activity-timeline-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.activity-timeline-item-head strong {
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.activity-timeline-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .activity-action-bar {
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--border);
@@ -559,6 +644,13 @@
   .activity-map-preview-card__actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .activity-timeline-actions,
+  .activity-success-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .action-btn {

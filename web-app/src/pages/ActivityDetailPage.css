@@ -122,11 +122,30 @@
   font-size: 1.05rem;
 }
 
+.activity-detail-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .activity-detail-section p {
   margin: 0;
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.68;
+}
+
+.activity-detail-timeline {
+  margin-top: 0.95rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.activity-detail-timeline-note {
+  color: #92400e;
+  font-size: 0.72rem;
 }
 
 .activity-detail-requirements {

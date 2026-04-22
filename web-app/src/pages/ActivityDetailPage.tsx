@@ -5,6 +5,7 @@ import { CalendarClock, Heart, MapPin, Share2, Users } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { ActivityLocationMap } from '../components/maps/ActivityLocationMap';
+import { EventTimelineReadOnly } from '../components/timeline';
 import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import {
@@ -18,9 +19,11 @@ import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { cancelParticipation, listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
+import { listActivityTimeline } from '../lib/timeline';
 import type { ActivityDetailMock } from '../lib/participationMocks';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
+import type { TimelineMilestone } from '../types/timeline';
 import './ActivityDetailPage.css';
 
 type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published' | 'expired';
@@ -240,6 +243,10 @@ export function ActivityDetailPage() {
   const [activity, setActivity] = useState<ActivityDetailViewModel | null>(null);
   const [usingMockFallback, setUsingMockFallback] = useState(false);
   const [participation, setParticipation] = useState<ParticipationRecord | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [timelineMilestones, setTimelineMilestones] = useState<TimelineMilestone[]>([]);
+  const [timelineIntegrationMessage, setTimelineIntegrationMessage] = useState<string | null>(null);
   const registrationPanelRef = useRef<HTMLDivElement | null>(null);
   const canRegister = profile?.role === 'volunteer';
   const guestIntent = useMemo(
@@ -328,6 +335,48 @@ export function ActivityDetailPage() {
       cancelled = true;
     };
   }, [canRegister, id, session?.access_token]);
+
+  useEffect(() => {
+    if (!activity?.id) {
+      setTimelineMilestones([]);
+      setTimelineError(null);
+      setTimelineIntegrationMessage(null);
+      setTimelineLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTimelineLoading(true);
+    setTimelineError(null);
+
+    void listActivityTimeline(activity.id)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        setTimelineMilestones(response.milestones);
+        setTimelineIntegrationMessage(
+          response.integration.pendingServerIntegration ? response.integration.message : null
+        );
+      })
+      .catch((timelineLoadError) => {
+        if (!cancelled) {
+          setTimelineMilestones([]);
+          setTimelineError(
+            timelineLoadError instanceof Error ? timelineLoadError.message : 'Unable to load event timeline.'
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setTimelineLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activity?.id]);
 
   useEffect(() => {
     if (!guestIntent) {
@@ -544,6 +593,22 @@ export function ActivityDetailPage() {
                 <section className="activity-detail-section">
                   <h2>About this activity</h2>
                   <p>{activity.description}</p>
+                </section>
+
+                <section className="activity-detail-timeline">
+                  <div className="activity-detail-section-head">
+                    <h2>Event Timeline</h2>
+                    <Badge tone="info">Read Only</Badge>
+                  </div>
+                  {timelineIntegrationMessage ? (
+                    <small className="activity-detail-timeline-note">{timelineIntegrationMessage}</small>
+                  ) : null}
+                  <EventTimelineReadOnly
+                    emptyDescription="Timeline milestones will appear here when the organizer adds them."
+                    milestones={timelineMilestones}
+                    loading={timelineLoading}
+                    error={timelineError}
+                  />
                 </section>
 
                 <section className="activity-detail-requirements">

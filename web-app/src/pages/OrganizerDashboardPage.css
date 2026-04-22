@@ -1,0 +1,150 @@
+.org-dashboard-page {
+  display: grid;
+  gap: 0.82rem;
+  align-content: start;
+}
+
+.org-dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.org-dashboard-metric-card.card {
+  padding: 0.86rem 0.9rem;
+  display: grid;
+  gap: 0.34rem;
+}
+
+.org-dashboard-metric-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(79, 70, 229, 0.12);
+  color: #4338ca;
+}
+
+.org-dashboard-metric-icon.is-accent {
+  background: rgba(59, 130, 246, 0.15);
+  color: #1d4ed8;
+}
+
+.org-dashboard-metric-icon.is-success {
+  background: #d1fadf;
+  color: #13795b;
+}
+
+.org-dashboard-metric-card p {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.org-dashboard-metric-card strong {
+  font-size: 1.9rem;
+  line-height: 1;
+  color: #111827;
+}
+
+.org-dashboard-card.card,
+.org-dashboard-note-card.card {
+  padding: 0.85rem 0.9rem;
+}
+
+.org-dashboard-note-card p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #92400e;
+}
+
+.org-dashboard-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.org-dashboard-card-head h2 {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.org-dashboard-overview-grid {
+  margin-top: 0.72rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.org-dashboard-overview-grid h3 {
+  margin: 0 0 0.4rem;
+  color: #334155;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.org-dashboard-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.org-dashboard-list li {
+  border: 1px solid #e8edf6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0.55rem 0.62rem;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.org-dashboard-list strong {
+  color: #0f172a;
+  font-size: 0.82rem;
+}
+
+.org-dashboard-list span {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.org-dashboard-activity-switch {
+  margin: 0.72rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.org-dashboard-activity-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+.org-dashboard-activity-chip.is-active {
+  border-color: rgba(79, 70, 229, 0.32);
+  color: #312e81;
+  background: rgba(79, 70, 229, 0.08);
+}
+
+@media (max-width: 1080px) {
+  .org-dashboard-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .org-dashboard-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
