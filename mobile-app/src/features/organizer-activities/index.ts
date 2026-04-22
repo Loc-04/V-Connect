@@ -28,3 +28,19 @@ export type {
 } from './services/activity-options-service';
 
 export { updateActivityCoverImageUrl } from './services/activity-cover-service';
+
+export {
+  buildFallbackTimeline,
+  clearTimelinePlaceholder,
+  createTimelineEntryId,
+  loadTimelinePlaceholder,
+  mergeDisplayTimeline,
+  saveTimelinePlaceholder,
+  sortTimelineEntries,
+  validateActivityTimeline,
+} from './activity-timeline-placeholder';
+
+export type { ActivityTimelineEntry } from './activity-timeline-placeholder';
+
+export { ActivityTimelineEditor } from './components/ActivityTimelineEditor';
+export { ActivityTimelineList } from './components/ActivityTimelineList';

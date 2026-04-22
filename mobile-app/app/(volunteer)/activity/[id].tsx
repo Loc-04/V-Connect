@@ -13,8 +13,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 import { useAuth, type UserRole } from '@/src/features/auth';
-import { getActivity } from '@/src/features/organizer-activities';
-import type { ActivityRecord } from '@/src/features/organizer-activities';
+import {
+  ActivityTimelineList,
+  getActivity,
+  loadTimelinePlaceholder,
+  mergeDisplayTimeline,
+} from '@/src/features/organizer-activities';
+import type { ActivityRecord, ActivityTimelineEntry } from '@/src/features/organizer-activities';
 import {
   cancelActivityRegistration,
   fetchMyParticipationForActivity,
@@ -67,6 +72,7 @@ export default function VolunteerActivityDetailScreen() {
   const { user, role } = useAuth();
 
   const [activity, setActivity] = useState<ActivityRecord | null>(null);
+  const [storedTimeline, setStoredTimeline] = useState<ActivityTimelineEntry[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [organizerName, setOrganizerName] = useState<string | null>(null);
@@ -91,6 +97,14 @@ export default function VolunteerActivityDetailScreen() {
     try {
       const data = await getActivity(activityId);
       setActivity(data);
+
+      // TODO(backend): fetch timeline with activity response instead of placeholder storage.
+      try {
+        const tl = await loadTimelinePlaceholder(activityId);
+        setStoredTimeline(tl);
+      } catch {
+        setStoredTimeline([]);
+      }
 
       if (user?.id) {
         try {
@@ -343,6 +357,18 @@ export default function VolunteerActivityDetailScreen() {
                 <ThemedText style={styles.matchBody}>{matchExplanation}</ThemedText>
               </View>
             ) : null}
+
+            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+              Schedule
+            </ThemedText>
+            <ActivityTimelineList
+              entries={mergeDisplayTimeline(storedTimeline, activity)}
+              multiDay={
+                new Date(activity.start_time).toDateString() !==
+                new Date(activity.end_time).toDateString()
+              }
+              accentColor={PRIMARY}
+            />
 
             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
               About the event
