@@ -15,13 +15,17 @@ import {
 } from 'react-native';
 
 import {
+  ActivityTimelineEditor,
   createActivity,
+  saveTimelinePlaceholder,
   updateActivityCoverImageUrl,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
+  validateActivityTimeline,
   type ActivityPayload,
   type ActivityStatus,
+  type ActivityTimelineEntry,
   type SkillOption,
   type ProvinceOption,
   type WardOption,
@@ -59,6 +63,7 @@ export default function CreateActivityScreen() {
   const [status, setStatus] = useState<ActivityStatus>('draft');
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [timelineEntries, setTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>([]);
@@ -143,8 +148,13 @@ export default function CreateActivityScreen() {
     const cap = Number(capacity);
     if (!Number.isInteger(cap) || cap <= 0) return 'Capacity must be a positive integer.';
 
+    if (timelineEntries.length > 0) {
+      const tlError = validateActivityTimeline(timelineEntries, startDateTime!, endDateTime!);
+      if (tlError) return tlError;
+    }
+
     return null;
-  }, [title, location, startDateTime, endDateTime, capacity]);
+  }, [title, location, startDateTime, endDateTime, capacity, timelineEntries]);
 
   const handleSubmit = useCallback(async () => {
     const error = validate();
@@ -164,11 +174,19 @@ export default function CreateActivityScreen() {
       status,
       provinceCode: provinceCode ?? undefined,
       wardCode: wardCode ?? undefined,
+      // timeline: not sent — TODO(backend) wire organizer timeline into API payload
     };
 
     setSubmitting(true);
     try {
       const activity = await createActivity(payload);
+
+      // TODO(backend): remove placeholder persistence once timeline lives on the API.
+      try {
+        await saveTimelinePlaceholder(activity.id, timelineEntries);
+      } catch {
+        // Ignored: placeholder persistence is best-effort.
+      }
 
       if (pendingCoverUri) {
         try {
@@ -190,7 +208,7 @@ export default function CreateActivityScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [validate, title, description, location, startDateTime, endDateTime, capacity, selectedSkills, status, provinceCode, wardCode, pendingCoverUri]);
+  }, [validate, title, description, location, startDateTime, endDateTime, capacity, selectedSkills, status, provinceCode, wardCode, pendingCoverUri, timelineEntries]);
 
   const selectedProvinceName = provinceOptions.find((p) => p.code === provinceCode)?.name;
   const selectedWardName = wardOptions.find((w) => w.code === wardCode)?.name;
@@ -374,6 +392,14 @@ export default function CreateActivityScreen() {
             onChange={handlePickerChange(activePicker)}
           />
         )}
+
+        <FieldLabel label="Timeline" />
+        <ActivityTimelineEditor
+          entries={timelineEntries}
+          onChange={setTimelineEntries}
+          activityStart={startDateTime}
+          activityEnd={endDateTime}
+        />
 
         <FieldLabel label="Capacity" required />
         <TextInput

@@ -16,15 +16,20 @@ import {
 } from 'react-native';
 
 import {
+  ActivityTimelineEditor,
   deleteActivity,
   getActivity,
+  loadTimelinePlaceholder,
+  saveTimelinePlaceholder,
   updateActivity,
   updateActivityCoverImageUrl,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
+  validateActivityTimeline,
   type ActivityRecord,
   type ActivityStatus,
+  type ActivityTimelineEntry,
   type SkillOption,
   type ProvinceOption,
   type WardOption,
@@ -74,6 +79,8 @@ export default function EditActivityScreen() {
   const [status, setStatus] = useState<ActivityStatus>('draft');
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [timelineEntries, setTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
+  const [initialTimelineJson, setInitialTimelineJson] = useState<string>('[]');
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>([]);
@@ -175,6 +182,17 @@ export default function EditActivityScreen() {
       setProvinceCode(data.province_code ?? null);
       setWardCode(data.ward_code ?? null);
       setStatus(data.status);
+
+      // TODO(backend): fetch timeline with activity response instead of placeholder storage.
+      try {
+        const tl = await loadTimelinePlaceholder(id);
+        setTimelineEntries(tl);
+        setInitialTimelineJson(JSON.stringify(tl));
+      } catch {
+        setTimelineEntries([]);
+        setInitialTimelineJson('[]');
+      }
+
       setState('ready');
     } catch (err) {
       setState('error');
@@ -227,7 +245,10 @@ export default function EditActivityScreen() {
   const handleSave = useCallback(async () => {
     if (!id) return;
     const patch = buildPatch();
-    if (Object.keys(patch).length === 0 && !pendingCoverUri) {
+
+    const timelineChanged = JSON.stringify(timelineEntries) !== initialTimelineJson;
+
+    if (Object.keys(patch).length === 0 && !pendingCoverUri && !timelineChanged) {
       Alert.alert('No changes', 'Nothing to update.');
       return;
     }
@@ -235,6 +256,14 @@ export default function EditActivityScreen() {
     if (patch.startTime && patch.endTime) {
       if (new Date(patch.endTime as string) <= new Date(patch.startTime as string)) {
         Alert.alert('Validation', 'End time must be later than start time.');
+        return;
+      }
+    }
+
+    if (timelineEntries.length > 0) {
+      const tlError = validateActivityTimeline(timelineEntries, startDateTime, endDateTime);
+      if (tlError) {
+        Alert.alert('Timeline invalid', tlError);
         return;
       }
     }
@@ -257,6 +286,13 @@ export default function EditActivityScreen() {
         }
       }
 
+      // TODO(backend): remove placeholder persistence once timeline lives on the API.
+      try {
+        await saveTimelinePlaceholder(id, timelineEntries);
+      } catch {
+        // Ignored: placeholder persistence is best-effort.
+      }
+
       Alert.alert('Saved', 'Activity updated successfully.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -265,7 +301,7 @@ export default function EditActivityScreen() {
     } finally {
       setSaving(false);
     }
-  }, [id, buildPatch, pendingCoverUri]);
+  }, [id, buildPatch, pendingCoverUri, timelineEntries, initialTimelineJson, startDateTime, endDateTime]);
 
   const handleDelete = useCallback(() => {
     if (!id || !original) return;
@@ -502,6 +538,15 @@ export default function EditActivityScreen() {
             onChange={handlePickerChange(activePicker)}
           />
         )}
+
+        <FieldLabel label="Timeline" />
+        <ActivityTimelineEditor
+          entries={timelineEntries}
+          onChange={setTimelineEntries}
+          activityStart={startDateTime}
+          activityEnd={endDateTime}
+          disabled={!isDraft}
+        />
 
         <FieldLabel label="Capacity" required />
         <TextInput
