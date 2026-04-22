@@ -138,26 +138,29 @@ export function OrganizerDashboardPage() {
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [dashboardNow, setDashboardNow] = useState(() => new Date());
 
   useEffect(() => {
-    if (!session?.access_token) {
-      setLoading(false);
-      setError('No active session token.');
-      setActivities([]);
-      setParticipations([]);
-      setFeedbackReview(null);
-      setBundles([]);
-      setSelectedActivityId(null);
-      return;
-    }
-
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setParticipationError(null);
-    setFeedbackError(null);
 
     void (async () => {
+      if (!session?.access_token) {
+        setLoading(false);
+        setError('No active session token.');
+        setActivities([]);
+        setParticipations([]);
+        setFeedbackReview(null);
+        setBundles([]);
+        setSelectedActivityId(null);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      setParticipationError(null);
+      setFeedbackError(null);
+      const loadStartedAt = new Date();
+
       const [activityResult, participationResult, feedbackResult] = await Promise.allSettled([
         listActivities({ accessToken: session.access_token, mine: true, status: 'all', limit: 100 }),
         listParticipations({ accessToken: session.access_token, mine: true, status: 'all', limit: 300 }),
@@ -214,6 +217,7 @@ export function OrganizerDashboardPage() {
       setTimelineIntegrationMessage(timelineRows.find((item) => item.integrationMessage)?.integrationMessage ?? null);
       const firstTimelineActivity = timelineRows.find((item) => item.milestones.length > 0)?.activity.id ?? null;
       setSelectedActivityId((current) => current ?? firstTimelineActivity ?? activityRows[0]?.id ?? null);
+      setDashboardNow(loadStartedAt);
       setLastUpdated(new Date());
       setLoading(false);
     })();
@@ -225,6 +229,7 @@ export function OrganizerDashboardPage() {
 
   const activityById = useMemo(() => new Map(activities.map((activity) => [activity.id, activity])), [activities]);
   const todayKey = useMemo(() => toDateKey(new Date()), []);
+  const dashboardNowTime = dashboardNow.getTime();
 
   const participationCountsByActivity = useMemo(() => {
     const counts = new Map<string, number>();
@@ -252,11 +257,13 @@ export function OrganizerDashboardPage() {
   }, [activities, feedbackReview, participations, todayKey]);
 
   const upcomingActivities = useMemo(() => {
-    const now = Date.now();
     return activities
-      .filter((activity) => !CLOSED_ACTIVITY_STATUSES.has(normalizeStatus(activity.status)) && getActivityStartTime(activity) >= now)
+      .filter(
+        (activity) =>
+          !CLOSED_ACTIVITY_STATUSES.has(normalizeStatus(activity.status)) && getActivityStartTime(activity) >= dashboardNowTime
+      )
       .sort((left, right) => getActivityStartTime(left) - getActivityStartTime(right));
-  }, [activities]);
+  }, [activities, dashboardNowTime]);
 
   const todaysActivities = useMemo(() => activities.filter((activity) => toDateKey(activity.start_time) === todayKey), [activities, todayKey]);
   const nearestActivity = upcomingActivities[0] ?? todaysActivities[0] ?? null;
@@ -285,10 +292,10 @@ export function OrganizerDashboardPage() {
   const upcomingMilestones = useMemo(
     () =>
       flattenedMilestones
-        .filter((milestone) => milestone.status === 'upcoming' && new Date(milestone.startTime).getTime() >= Date.now())
+        .filter((milestone) => milestone.status === 'upcoming' && new Date(milestone.startTime).getTime() >= dashboardNowTime)
         .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime())
         .slice(0, 4),
-    [flattenedMilestones]
+    [dashboardNowTime, flattenedMilestones]
   );
   const completedMilestones = useMemo(() => flattenedMilestones.filter((milestone) => milestone.status === 'completed').length, [flattenedMilestones]);
   const activitiesWithTimeline = useMemo(() => bundles.filter((bundle) => bundle.milestones.length > 0), [bundles]);
@@ -308,7 +315,7 @@ export function OrganizerDashboardPage() {
       });
     }
 
-    const soonActivity = upcomingActivities.find((activity) => getActivityStartTime(activity) <= Date.now() + 72 * 60 * 60 * 1000);
+    const soonActivity = upcomingActivities.find((activity) => getActivityStartTime(activity) <= dashboardNowTime + 72 * 60 * 60 * 1000);
     if (soonActivity) {
       items.push({
         key: 'activity-soon',
@@ -351,7 +358,7 @@ export function OrganizerDashboardPage() {
     }
 
     return items.slice(0, 4);
-  }, [dashboardStats.pendingRegistrations, feedbackReview, navigate, participationCountsByActivity, upcomingActivities]);
+  }, [dashboardNowTime, dashboardStats.pendingRegistrations, feedbackReview, navigate, participationCountsByActivity, upcomingActivities]);
 
   const lastUpdatedLabel = lastUpdated ? lastUpdated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : 'Not synced yet';
   const feedbackReliabilityMessage = feedbackReview?.insights.reliability?.message?.trim() || null;
