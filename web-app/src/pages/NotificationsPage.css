@@ -1,8 +1,11 @@
 ﻿.notifications-head-actions {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.52rem;
   flex-wrap: wrap;
+  width: min(1020px, 100%);
+  margin: 0 auto;
 }
 
 .notifications-action-btn {
@@ -275,9 +278,25 @@ button.notification-card {
 }
 
 @media (max-width: 1024px) {
+  .notifications-head-actions {
+    max-width: none;
+    padding-inline: 1.2rem;
+  }
+
   .notifications-page-card {
     max-width: none;
     padding: 1.2rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .notifications-head-actions {
+    justify-content: stretch;
+  }
+
+  .notifications-action-btn {
+    flex: 1 1 100%;
+    justify-content: center;
   }
 }
 

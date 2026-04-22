@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
+import { BrandIcon } from '../brand';
+
 export type VolunteerNavKey =
   | 'dashboard'
   | 'activities'
@@ -64,7 +66,7 @@ export function VolunteerSidebar({ activeKey, fullName, roleLabel, onSignOut }: 
     <aside className="vol-shell-sidebar" aria-label="Volunteer navigation">
       <div className="vol-shell-brand">
         <span className="vol-shell-brand-mark" aria-hidden="true">
-          <Activity size={16} />
+          <BrandIcon />
         </span>
         <span>V-Connect</span>
       </div>
