@@ -26,7 +26,7 @@ export interface RecommendedActivityRecord {
   reasons: string[];
   explanation: string;
   location: ActivityLocation | string | null;
-  coverImageUrl: string | null;
+  coverImageUrl: string;
   startTime: string;
   endTime: string;
   hours: number | null;

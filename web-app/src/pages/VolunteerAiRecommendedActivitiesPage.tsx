@@ -40,22 +40,6 @@ interface RecommendationViewModel {
   startTime: string;
 }
 
-const FALLBACK_IMAGES = [
-  'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1400',
-  'https://images.pexels.com/photos/6647043/pexels-photo-6647043.jpeg?auto=compress&cs=tinysrgb&w=1400',
-  'https://images.pexels.com/photos/5731866/pexels-photo-5731866.jpeg?auto=compress&cs=tinysrgb&w=1400',
-  'https://images.pexels.com/photos/7656740/pexels-photo-7656740.jpeg?auto=compress&cs=tinysrgb&w=1400',
-];
-
-function hashString(input: string) {
-  let hash = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = (hash << 5) - hash + input.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
 function formatLocation(location: ActivityLocation | string | null): string {
   return formatActivityLocation(location);
 }
@@ -185,9 +169,7 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     timeLabel,
     hoursLabel: toHoursLabel(record.hours),
     categories: toCategoryList(record),
-    heroImageUrl:
-      (typeof record.coverImageUrl === 'string' && record.coverImageUrl.trim()) ||
-      FALLBACK_IMAGES[hashString(record.activityId || record.title) % FALLBACK_IMAGES.length],
+    heroImageUrl: String(record.coverImageUrl ?? '').trim(),
     startTime: record.startTime,
   };
 }

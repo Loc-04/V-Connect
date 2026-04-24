@@ -75,7 +75,7 @@ export function RequireRoleRoute({
   const normalizedRole = normalizeRole(profile?.role);
   const normalizedAllowedRoles = normalizeRoleList(allowedRoles);
   if (!normalizedRole || !normalizedAllowedRoles.includes(normalizedRole)) {
-    return <Navigate to="/unauthorized" replace />;
+    return <Navigate to={getRoleHomePath(normalizedRole)} replace />;
   }
 
   return <>{children}</>;

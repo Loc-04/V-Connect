@@ -126,7 +126,7 @@ function App() {
           <Route
             path="/browse"
             element={
-              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+              <RequireRoleRoute allowedRoles={['volunteer']}>
                 <BrowseOpportunitiesPage />
               </RequireRoleRoute>
             }
@@ -150,7 +150,7 @@ function App() {
           <Route
             path="/volunteer/activity/:id"
             element={
-              <RequireRoleRoute allowedRoles={['volunteer', 'organizer', 'admin']}>
+              <RequireRoleRoute allowedRoles={['volunteer']}>
                 <ActivityDetailPage />
               </RequireRoleRoute>
             }

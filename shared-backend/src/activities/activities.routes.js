@@ -5,11 +5,17 @@ import { requireAuth } from '../auth/auth.middleware.js';
 import { buildFormattedAddress, resolveProvinceAndWard } from '../locations/locations.service.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
 import { normalizeActivityPayload } from './activities.validation.js';
+import {
+  mapActivitiesWithResolvedCoverImage,
+  resolveActivityCoverImageUrl,
+  withResolvedActivityCoverImage,
+} from './activities.cover.js';
 import { canWriteActivities, getActivityById } from './activities.service.js';
 
 const router = Router();
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+const timelineColumns = 'id, activity_id, title, description, timeline_choice, created_at';
 
 function parseDateBoundary(rawValue, boundary) {
   if (typeof rawValue !== 'string' || rawValue.trim().length === 0) {
@@ -304,6 +310,97 @@ async function resolveStoredLocation(payload, existingActivity = null) {
   };
 }
 
+function normalizeTimelineChoice(body, { partial = false } = {}) {
+  const candidate =
+    typeof body.timelineChoice === 'string'
+      ? body.timelineChoice
+      : typeof body.timeline_choice === 'string'
+        ? body.timeline_choice
+        : typeof body.startTime === 'string'
+          ? body.startTime
+          : typeof body.start_time === 'string'
+            ? body.start_time
+            : null;
+
+  if (!candidate) {
+    if (partial) {
+      return null;
+    }
+    throw new Error('timelineChoice is required.');
+  }
+
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('timelineChoice must be a valid date-time.');
+  }
+
+  return parsed.toISOString();
+}
+
+function normalizeTimelinePayload(body, { partial = false } = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('Body must be a JSON object.');
+  }
+
+  const payload = {};
+  if (Object.hasOwn(body, 'title')) {
+    if (typeof body.title !== 'string') {
+      throw new Error('title must be a string.');
+    }
+    const title = body.title.trim();
+    if (!title) {
+      throw new Error('title cannot be empty.');
+    }
+    payload.title = title;
+  } else if (!partial) {
+    throw new Error('title is required.');
+  }
+
+  if (Object.hasOwn(body, 'description')) {
+    if (typeof body.description !== 'string') {
+      throw new Error('description must be a string.');
+    }
+    payload.description = body.description.trim();
+  } else if (!partial) {
+    payload.description = '';
+  }
+
+  const timelineChoice = normalizeTimelineChoice(body, { partial });
+  if (timelineChoice) {
+    payload.timeline_choice = timelineChoice;
+  }
+
+  if (partial && Object.keys(payload).length === 0) {
+    throw new Error('No valid timeline fields provided.');
+  }
+
+  return payload;
+}
+
+async function getTimelineActivity(activityId) {
+  return getActivityById(activityId);
+}
+
+function canReadTimeline(activity, role, userId) {
+  if (role === 'admin') {
+    return true;
+  }
+  if (activity.organizer_id === userId) {
+    return true;
+  }
+  return String(activity.status ?? '').toLowerCase() === 'published';
+}
+
+function canEditTimeline(activity, role, userId) {
+  if (role === 'admin') {
+    return true;
+  }
+  if (!canWriteActivities(role)) {
+    return false;
+  }
+  return activity.organizer_id === userId;
+}
+
 async function handleActivityDetail(req, res) {
   const activityId = req.params.id;
 
@@ -329,8 +426,202 @@ async function handleActivityDetail(req, res) {
     return;
   }
 
-  res.json({ activity: data });
+  res.json({ activity: withResolvedActivityCoverImage(data) });
 }
+
+router.get('/activities/:id/timeline', requireAuth, async (req, res) => {
+  const activityId = req.params.id;
+  let activity;
+  try {
+    activity = await getTimelineActivity(activityId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load activity.';
+    res.status(500).json({ message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const userId = req.auth.user.id;
+  if (!canReadTimeline(activity, role, userId)) {
+    res.status(403).json({ message: 'You do not have permission to access this timeline.' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('activities_timeline')
+    .select(timelineColumns)
+    .eq('activity_id', activityId)
+    .order('timeline_choice', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.json({ timeline: data ?? [] });
+});
+
+router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
+  const activityId = req.params.id;
+  let activity;
+  try {
+    activity = await getTimelineActivity(activityId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load activity.';
+    res.status(500).json({ message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const userId = req.auth.user.id;
+  if (!canEditTimeline(activity, role, userId)) {
+    res.status(403).json({ message: 'Only organizer/admin can update this timeline.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeTimelinePayload(req.body, { partial: false });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('activities_timeline')
+    .insert({
+      activity_id: activityId,
+      ...payload,
+    })
+    .select(timelineColumns)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  res.status(201).json({ milestone: data });
+});
+
+router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, res) => {
+  const activityId = req.params.id;
+  const timelineId = req.params.timelineId;
+
+  let activity;
+  try {
+    activity = await getTimelineActivity(activityId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load activity.';
+    res.status(500).json({ message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const userId = req.auth.user.id;
+  if (!canEditTimeline(activity, role, userId)) {
+    res.status(403).json({ message: 'Only organizer/admin can update this timeline.' });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = normalizeTimelinePayload(req.body, { partial: true });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('activities_timeline')
+    .update(payload)
+    .eq('id', timelineId)
+    .eq('activity_id', activityId)
+    .select(timelineColumns)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23514' || error.code === '22P02' || error.code === '23502') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Timeline milestone not found.' });
+    return;
+  }
+
+  res.json({ milestone: data });
+});
+
+router.delete('/activities/:id/timeline/:timelineId', requireAuth, async (req, res) => {
+  const activityId = req.params.id;
+  const timelineId = req.params.timelineId;
+
+  let activity;
+  try {
+    activity = await getTimelineActivity(activityId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load activity.';
+    res.status(500).json({ message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const userId = req.auth.user.id;
+  if (!canEditTimeline(activity, role, userId)) {
+    res.status(403).json({ message: 'Only organizer/admin can update this timeline.' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('activities_timeline')
+    .delete()
+    .eq('id', timelineId)
+    .eq('activity_id', activityId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    res.status(500).json({ message: error.message });
+    return;
+  }
+
+  if (!data) {
+    res.status(404).json({ message: 'Timeline milestone not found.' });
+    return;
+  }
+
+  res.json({ success: true });
+});
 
 router.get('/activities', requireAuth, async (req, res) => {
   const role = String(req.auth?.profile?.role ?? '');
@@ -384,7 +675,7 @@ router.get('/activities', requireAuth, async (req, res) => {
     return;
   }
 
-  res.json({ activities: data ?? [] });
+  res.json({ activities: mapActivitiesWithResolvedCoverImage(data) });
 });
 
 router.get('/activities/search', requireAuth, async (req, res) => {
@@ -501,7 +792,7 @@ router.get('/activities/search', requireAuth, async (req, res) => {
     .filter((activity) => matchesLocationFilter(activity, locationFilter))
     .filter((activity) => matchesSkillFilter(activity, skillFilters));
 
-  res.json({ activities: filteredActivities });
+  res.json({ activities: mapActivitiesWithResolvedCoverImage(filteredActivities) });
 });
 
 router.get('/activities/:id', requireAuth, handleActivityDetail);
@@ -521,6 +812,12 @@ router.post('/activities', requireAuth, async (req, res) => {
   } catch (error) {
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
     res.status(statusCode).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
+    return;
+  }
+
+  const activityStartTime = new Date(payload.start_time);
+  if (activityStartTime < new Date()) {
+    res.status(400).json({ message: 'startTime cannot be in the past for new activities.' });
     return;
   }
 
@@ -547,7 +844,7 @@ router.post('/activities', requireAuth, async (req, res) => {
     return;
   }
 
-  res.status(201).json({ activity: data });
+  res.status(201).json({ activity: withResolvedActivityCoverImage(data) });
 });
 
 router.patch('/activities/:id', requireAuth, async (req, res) => {
@@ -586,6 +883,10 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
     return;
+  }
+
+  if (!Object.hasOwn(payload, 'cover_image_url') && !existingActivity.cover_image_url) {
+    payload.cover_image_url = resolveActivityCoverImageUrl(null);
   }
 
   try {
@@ -628,7 +929,7 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
     return;
   }
 
-  res.json({ activity: data });
+  res.json({ activity: withResolvedActivityCoverImage(data) });
 });
 
 router.delete('/activities/:id', requireAuth, async (req, res) => {

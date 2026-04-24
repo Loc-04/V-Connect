@@ -1,4 +1,10 @@
 export type ActivityStatus = 'draft' | 'published' | 'completed' | 'cancelled';
+export type ActivityPriorityLevel = 'low' | 'normal' | 'urgent';
+
+export interface SkillRequirement {
+  skill: string;
+  priority: ActivityPriorityLevel;
+}
 
 export interface ActivityLocation {
   address: string;
@@ -17,7 +23,7 @@ export interface ActivityRecord {
   id: string;
   title: string;
   description: string | null;
-  cover_image_url?: string | null;
+  cover_image_url?: string;
   location: ActivityLocation | string | null;
   start_time: string;
   end_time: string;
@@ -30,6 +36,7 @@ export interface ActivityRecord {
   created_at: string | null;
   updated_at: string | null;
   deleted_at: string | null;
+  priority_level?: ActivityPriorityLevel | string | null;
 }
 
 export interface ActivityPayload {
@@ -42,6 +49,6 @@ export interface ActivityPayload {
   startTime: string;
   endTime: string;
   capacity: number;
-  requiredSkills: string[];
+  skillRequirements: SkillRequirement[];
   status: ActivityStatus;
 }

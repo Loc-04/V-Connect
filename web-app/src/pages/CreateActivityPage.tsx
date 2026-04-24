@@ -13,7 +13,7 @@ import { createActivity, getActivityById, updateActivity } from '../lib/activiti
 import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
 import { getTimelineIntegrationMeta, replaceActivityTimeline } from '../lib/timeline';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../lib/timelineValidation';
-import type { ActivityRecord, ActivityStatus } from '../types/activity';
+import type { ActivityPriorityLevel, ActivityRecord, ActivityStatus, SkillRequirement } from '../types/activity';
 import type { GeocodedLocationRecord, ProvinceRecord, WardRecord } from '../types/location';
 import type { TimelineMilestoneDraft, TimelineMilestoneType } from '../types/timeline';
 import './CreateActivityPage.css';
@@ -66,9 +66,23 @@ function toIsoFromDateTimeLocal(value: string) {
   return parsed.toISOString();
 }
 
+function getCurrentLocalDateTimeParts() {
+  const now = new Date();
+  const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString();
+  return {
+    date: localIso.slice(0, 10),
+    time: localIso.slice(11, 16),
+  };
+}
+
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
-const maxCoverImageBytes = 10 * 1024 * 1024;
+const maxCoverImageBytes = 700 * 1024;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['check_in', 'opening', 'session', 'break', 'closing', 'wrap_up', 'custom'];
+const priorityLevelOptions: ActivityPriorityLevel[] = ['low', 'normal', 'urgent'];
+
+interface SkillRequirementRow extends SkillRequirement {
+  id: string;
+}
 
 function formatTimelineTypeLabel(type: TimelineMilestoneType) {
   return type
@@ -81,6 +95,14 @@ function createLocalDraftId() {
     return globalThis.crypto.randomUUID();
   }
   return `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createSkillRequirementRow(skill = '', priority: ActivityPriorityLevel = 'normal'): SkillRequirementRow {
+  return {
+    id: createLocalDraftId(),
+    skill,
+    priority,
+  };
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -167,8 +189,8 @@ export function CreateActivityPage() {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [capacity, setCapacity] = useState('10');
-  const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
-  const [skillDraft, setSkillDraft] = useState('');
+  const [skillRequirements, setSkillRequirements] = useState<SkillRequirementRow[]>(() => [createSkillRequirementRow()]);
+  const [skillRequirementsError, setSkillRequirementsError] = useState<string | null>(null);
   const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
   const [wards, setWards] = useState<WardRecord[]>([]);
   const [mapLocation, setMapLocation] = useState<GeocodedLocationRecord | null>(null);
@@ -232,6 +254,25 @@ export function CreateActivityPage() {
     [provinceCode, provinces]
   );
   const selectedWard = useMemo(() => wards.find((ward) => ward.code === wardCode) ?? null, [wardCode, wards]);
+  const currentDateTime = getCurrentLocalDateTimeParts();
+  const duplicateSkillRowIds = useMemo(() => {
+    const seenRows = new Map<string, string>();
+    const duplicates = new Set<string>();
+    skillRequirements.forEach((item) => {
+      const key = item.skill.trim().toLowerCase();
+      if (!key) {
+        return;
+      }
+      const firstRowId = seenRows.get(key);
+      if (firstRowId) {
+        duplicates.add(firstRowId);
+        duplicates.add(item.id);
+        return;
+      }
+      seenRows.set(key, item.id);
+    });
+    return duplicates;
+  }, [skillRequirements]);
   const currentLocationKey = useMemo(
     () => buildLocationRequestKey(streetAddress, provinceCode, wardCode),
     [provinceCode, streetAddress, wardCode]
@@ -388,7 +429,12 @@ export function CreateActivityPage() {
         setStartTime(start.time);
         setEndTime(end.time);
         setCapacity(String(activity.capacity ?? 10));
-        setRequiredSkills(Array.isArray(activity.required_skills) ? activity.required_skills : []);
+        const requirementsFromActivity = (Array.isArray(activity.required_skills) ? activity.required_skills : [])
+          .map((skill) => String(skill).trim())
+          .filter(Boolean)
+          .map((skill) => createSkillRequirementRow(skill, 'normal'));
+        setSkillRequirements(requirementsFromActivity.length > 0 ? requirementsFromActivity : [createSkillRequirementRow()]);
+        setSkillRequirementsError(null);
       })
       .catch((loadError) => {
         if (!isMounted) {
@@ -629,16 +675,35 @@ export function CreateActivityPage() {
     setGeocodeError(null);
   };
 
-  const addSkill = () => {
-    const nextSkill = skillDraft.trim();
-    if (!nextSkill) {
-      return;
-    }
+  const handleAddSkillRequirement = () => {
+    setSkillRequirements((current) => [...current, createSkillRequirementRow('', 'normal')]);
+    setSkillRequirementsError(null);
+  };
 
-    if (!requiredSkills.some((skill) => skill.toLowerCase() === nextSkill.toLowerCase())) {
-      setRequiredSkills((current) => [...current, nextSkill]);
-    }
-    setSkillDraft('');
+  const handleUpdateSkillRequirement = (
+    rowId: string,
+    field: 'skill' | 'priority',
+    value: string | ActivityPriorityLevel
+  ) => {
+    setSkillRequirements((current) =>
+      current.map((item) =>
+        item.id === rowId
+          ? {
+              ...item,
+              [field]: field === 'skill' ? String(value) : (value as ActivityPriorityLevel),
+            }
+          : item
+      )
+    );
+    setSkillRequirementsError(null);
+  };
+
+  const handleRemoveSkillRequirement = (rowId: string) => {
+    setSkillRequirements((current) => {
+      const nextRows = current.filter((item) => item.id !== rowId);
+      return nextRows.length > 0 ? nextRows : [createSkillRequirementRow('', 'normal')];
+    });
+    setSkillRequirementsError(null);
   };
 
   const handleCoverImageSelection = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -653,7 +718,7 @@ export function CreateActivityPage() {
       }
 
       if (file.size > maxCoverImageBytes) {
-        throw new Error('Cover image must be 10MB or less.');
+        throw new Error('Cover image must be smaller than 700KB.');
       }
 
       const encodedImage = await readFileAsDataUrl(file);
@@ -664,10 +729,6 @@ export function CreateActivityPage() {
     } finally {
       event.target.value = '';
     }
-  };
-
-  const removeSkill = (skillToRemove: string) => {
-    setRequiredSkills((current) => current.filter((skill) => skill !== skillToRemove));
   };
 
   const handleAddQuickMilestone = () => {
@@ -776,6 +837,7 @@ export function CreateActivityPage() {
     setSaving(true);
     setError(null);
     setSuccess(null);
+    setSkillRequirementsError(null);
 
     try {
       if (!title.trim()) {
@@ -803,6 +865,9 @@ export function CreateActivityPage() {
       if (new Date(endIso) <= new Date(startIso)) {
         throw new Error('End time must be later than start time.');
       }
+      if (!isEditing && new Date(startIso) < new Date()) {
+        throw new Error('Start time cannot be in the past for a new activity.');
+      }
 
       const validatedQuickTimeline = validateQuickTimeline();
       if (validatedQuickTimeline === null) {
@@ -812,6 +877,26 @@ export function CreateActivityPage() {
       const capacityValue = Number(capacity);
       if (!Number.isInteger(capacityValue) || capacityValue <= 0) {
         throw new Error('Volunteer capacity must be a positive integer.');
+      }
+
+      const normalizedSkillRequirements = skillRequirements.map((item) => ({
+        skill: item.skill.trim(),
+        priority: item.priority ?? 'normal',
+      }));
+
+      if (normalizedSkillRequirements.some((item) => !item.skill)) {
+        setSkillRequirementsError('Skill name is required for each requirement row.');
+        throw new Error('Please complete all skill requirement rows before saving.');
+      }
+
+      const normalizedSkillSet = new Set<string>();
+      for (const item of normalizedSkillRequirements) {
+        const key = item.skill.toLowerCase();
+        if (normalizedSkillSet.has(key)) {
+          setSkillRequirementsError('Duplicate skill names are not allowed.');
+          throw new Error('Please remove duplicate skill requirements before saving.');
+        }
+        normalizedSkillSet.add(key);
       }
 
       const payload = {
@@ -835,7 +920,7 @@ export function CreateActivityPage() {
         startTime: startIso,
         endTime: endIso,
         capacity: capacityValue,
-        requiredSkills,
+        skillRequirements: normalizedSkillRequirements,
         status,
       };
 
@@ -965,7 +1050,7 @@ export function CreateActivityPage() {
                     </div>
                     <strong>Upload a file</strong>
                     <p>or drag and drop (click to browse)</p>
-                    <small>PNG, JPG, GIF up to 10MB</small>
+                    <small>PNG, JPG, GIF up to 700KB</small>
                     <input
                       accept="image/png,image/jpeg,image/gif"
                       hidden
@@ -986,34 +1071,57 @@ export function CreateActivityPage() {
                 <h2>Requirements</h2>
               </div>
 
-              <div className="activity-grid two-cols">
-                <div className="activity-field">
-                  <span>Required Skills</span>
-                  <div className="activity-tag-input">
-                    {requiredSkills.map((skill) => (
+              <div className="skill-requirements-list">
+                {skillRequirements.map((requirement, index) => (
+                  <div className="skill-requirement-row" key={requirement.id}>
+                    <label className="activity-field">
+                      <span>Skill</span>
+                      <input
+                        onChange={(event) => handleUpdateSkillRequirement(requirement.id, 'skill', event.target.value)}
+                        placeholder="e.g., Leadership"
+                        type="text"
+                        value={requirement.skill}
+                      />
+                      {duplicateSkillRowIds.has(requirement.id) ? (
+                        <small className="form-error">This skill is duplicated in another row.</small>
+                      ) : null}
+                    </label>
+
+                    <div className="activity-field skill-requirement-priority">
+                      <span>Priority</span>
+                      <div className="priority-toggle" role="radiogroup" aria-label={`Priority level for skill row ${index + 1}`}>
+                        {priorityLevelOptions.map((option) => (
+                          <button
+                            aria-checked={requirement.priority === option}
+                            className={requirement.priority === option ? 'is-selected' : undefined}
+                            key={option}
+                            onClick={() => handleUpdateSkillRequirement(requirement.id, 'priority', option)}
+                            role="radio"
+                            type="button"
+                          >
+                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="skill-requirement-actions">
                       <button
-                        key={skill}
-                        className="activity-tag"
-                        onClick={() => removeSkill(skill)}
+                        className="action-btn is-ghost skill-requirement-remove"
+                        onClick={() => handleRemoveSkillRequirement(requirement.id)}
                         type="button"
                       >
-                        {skill} <span aria-hidden="true">x</span>
+                        Remove
                       </button>
-                    ))}
-                    <input
-                      onChange={(event) => setSkillDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ',') {
-                          event.preventDefault();
-                          addSkill();
-                        }
-                      }}
-                      placeholder="Add skill and press Enter"
-                      type="text"
-                      value={skillDraft}
-                    />
+                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
+              {skillRequirementsError ? <p className="form-error">{skillRequirementsError}</p> : null}
+              <div className="skill-requirement-footer">
+                <button className="action-btn is-secondary skill-requirement-add" onClick={handleAddSkillRequirement} type="button">
+                  Add Skill Requirement
+                </button>
               </div>
             </Card>
 
@@ -1028,11 +1136,21 @@ export function CreateActivityPage() {
               <div className="activity-grid three-cols">
                 <label className="activity-field">
                   <span>Date</span>
-                  <input onChange={(event) => setDate(event.target.value)} type="date" value={date} />
+                  <input
+                    min={currentDateTime.date}
+                    onChange={(event) => setDate(event.target.value)}
+                    type="date"
+                    value={date}
+                  />
                 </label>
                 <label className="activity-field">
                   <span>Start Time</span>
-                  <input onChange={(event) => setStartTime(event.target.value)} type="time" value={startTime} />
+                  <input
+                    min={date === currentDateTime.date ? currentDateTime.time : undefined}
+                    onChange={(event) => setStartTime(event.target.value)}
+                    type="time"
+                    value={startTime}
+                  />
                 </label>
                 <label className="activity-field">
                   <span>End Time</span>
