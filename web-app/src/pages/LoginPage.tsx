@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Activity } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
 import { canRoleAccessPath, getRoleHomePath } from '../auth/rolePaths';
 import { useAuth } from '../auth/useAuth';
+import { BrandIcon } from '../components/brand';
 
 const heroSlides = [
   {
@@ -150,7 +150,7 @@ export function LoginPage() {
         <div className="login-hero-overlay" key={`hero-content-${slideIndex}`}>
           <div className="hero-brand">
             <span className="brand-icon">
-              <Activity size={16} />
+              <BrandIcon />
             </span>
             <span>V-Connect</span>
           </div>

@@ -1,13 +1,15 @@
 import { validActivityStatuses } from '../config/constants.js';
 import { isPlainObject, normalizeStringArray, toIsoDateString } from '../common/utils/validators.js';
 import { normalizeActivityMapLocation } from '../locations/locations.validation.js';
+import { resolveActivityCoverImageUrl } from './activities.cover.js';
 
 const allowedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
-const maxCoverImageBytes = 10 * 1024 * 1024;
+const maxCoverImageBytes = 700 * 1024;
+const validSkillRequirementPriorities = new Set(['low', 'normal', 'urgent']);
 
 function normalizeCoverImageUrl(value) {
   if (value == null) {
-    return null;
+    return resolveActivityCoverImageUrl(null);
   }
 
   if (typeof value !== 'string') {
@@ -16,7 +18,7 @@ function normalizeCoverImageUrl(value) {
 
   const normalized = value.trim();
   if (!normalized) {
-    return null;
+    return resolveActivityCoverImageUrl(null);
   }
 
   if (/^https?:\/\//i.test(normalized)) {
@@ -37,7 +39,7 @@ function normalizeCoverImageUrl(value) {
   const paddingBytes = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
   const fileSizeBytes = Math.floor((base64Payload.length * 3) / 4) - paddingBytes;
   if (fileSizeBytes > maxCoverImageBytes) {
-    throw new Error('coverImageUrl is too large. Maximum size is 10MB.');
+    throw new Error('Cover image must be smaller than 700KB.');
   }
 
   return normalized;
@@ -88,6 +90,44 @@ function normalizeActivityLocation(value) {
   };
 }
 
+function normalizeSkillRequirements(value) {
+  if (!Array.isArray(value)) {
+    throw new Error('skillRequirements must be an array.');
+  }
+
+  const normalized = [];
+  const seenSkills = new Set();
+
+  value.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`skillRequirements[${index}] must be an object.`);
+    }
+
+    const skill = typeof item.skill === 'string' ? item.skill.trim() : '';
+    if (!skill) {
+      throw new Error(`skillRequirements[${index}].skill is required.`);
+    }
+
+    const key = skill.toLowerCase();
+    if (seenSkills.has(key)) {
+      throw new Error(`Duplicate skill in skillRequirements: "${skill}".`);
+    }
+    seenSkills.add(key);
+
+    const priorityRaw = typeof item.priority === 'string' ? item.priority.trim().toLowerCase() : 'normal';
+    if (!validSkillRequirementPriorities.has(priorityRaw)) {
+      throw new Error(`skillRequirements[${index}].priority must be one of: low, normal, urgent.`);
+    }
+
+    normalized.push({
+      skill,
+      priority: priorityRaw,
+    });
+  });
+
+  return normalized;
+}
+
 function normalizeActivityPayload(body, { partial = false } = {}) {
   if (!isPlainObject(body)) {
     throw new Error('Body must be a JSON object.');
@@ -120,7 +160,7 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
   if (Object.hasOwn(body, 'coverImageUrl')) {
     payload.cover_image_url = normalizeCoverImageUrl(body.coverImageUrl);
   } else if (!partial) {
-    payload.cover_image_url = null;
+    payload.cover_image_url = resolveActivityCoverImageUrl(null);
   }
 
   if (Object.hasOwn(body, 'location')) {
@@ -151,7 +191,10 @@ function normalizeActivityPayload(body, { partial = false } = {}) {
     throw new Error('capacity is required.');
   }
 
-  if (Object.hasOwn(body, 'requiredSkills')) {
+  if (Object.hasOwn(body, 'skillRequirements')) {
+    const normalizedSkillRequirements = normalizeSkillRequirements(body.skillRequirements);
+    payload.required_skills = normalizedSkillRequirements.map((item) => item.skill);
+  } else if (Object.hasOwn(body, 'requiredSkills')) {
     payload.required_skills = normalizeStringArray(body.requiredSkills, 'requiredSkills');
   } else if (!partial) {
     payload.required_skills = [];

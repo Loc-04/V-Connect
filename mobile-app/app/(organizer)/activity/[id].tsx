@@ -16,15 +16,24 @@ import {
 } from 'react-native';
 
 import {
+  ActivityTimelineEditor,
+  createActivityTimelineItem,
   deleteActivity,
+  deleteActivityTimelineItem,
   getActivity,
+  listActivityTimeline,
+  mapServerRowsToEntries,
+  sortTimelineEntries,
   updateActivity,
   updateActivityCoverImageUrl,
+  updateActivityTimelineItem,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
+  validateActivityTimeline,
   type ActivityRecord,
   type ActivityStatus,
+  type ActivityTimelineEntry,
   type SkillOption,
   type ProvinceOption,
   type WardOption,
@@ -74,6 +83,8 @@ export default function EditActivityScreen() {
   const [status, setStatus] = useState<ActivityStatus>('draft');
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [timelineEntries, setTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
+  const [originalTimelineEntries, setOriginalTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>([]);
@@ -175,6 +186,17 @@ export default function EditActivityScreen() {
       setProvinceCode(data.province_code ?? null);
       setWardCode(data.ward_code ?? null);
       setStatus(data.status);
+
+      try {
+        const rows = await listActivityTimeline(id);
+        const mapped = mapServerRowsToEntries(rows);
+        setTimelineEntries(mapped);
+        setOriginalTimelineEntries(mapped);
+      } catch {
+        setTimelineEntries([]);
+        setOriginalTimelineEntries([]);
+      }
+
       setState('ready');
     } catch (err) {
       setState('error');
@@ -227,7 +249,33 @@ export default function EditActivityScreen() {
   const handleSave = useCallback(async () => {
     if (!id) return;
     const patch = buildPatch();
-    if (Object.keys(patch).length === 0 && !pendingCoverUri) {
+
+    const edited = sortTimelineEntries(timelineEntries);
+    const originalTl = sortTimelineEntries(originalTimelineEntries);
+    const originalById = new Map(
+      originalTl.filter((e) => e.serverId).map((e) => [e.serverId as string, e] as const),
+    );
+    const editedServerIds = new Set(
+      edited.filter((e) => e.serverId).map((e) => e.serverId as string),
+    );
+    const toDelete = originalTl.filter(
+      (e) => e.serverId && !editedServerIds.has(e.serverId),
+    );
+    const toCreate = edited.filter((e) => !e.serverId);
+    const toUpdate = edited.filter((e) => {
+      if (!e.serverId) return false;
+      const prev = originalById.get(e.serverId);
+      if (!prev) return false;
+      return (
+        prev.title !== e.title ||
+        prev.at !== e.at ||
+        (prev.description ?? '') !== (e.description ?? '')
+      );
+    });
+    const timelineChanged =
+      toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0;
+
+    if (Object.keys(patch).length === 0 && !pendingCoverUri && !timelineChanged) {
       Alert.alert('No changes', 'Nothing to update.');
       return;
     }
@@ -235,6 +283,14 @@ export default function EditActivityScreen() {
     if (patch.startTime && patch.endTime) {
       if (new Date(patch.endTime as string) <= new Date(patch.startTime as string)) {
         Alert.alert('Validation', 'End time must be later than start time.');
+        return;
+      }
+    }
+
+    if (timelineEntries.length > 0) {
+      const tlError = validateActivityTimeline(timelineEntries, startDateTime, endDateTime);
+      if (tlError) {
+        Alert.alert('Timeline invalid', tlError);
         return;
       }
     }
@@ -257,15 +313,68 @@ export default function EditActivityScreen() {
         }
       }
 
-      Alert.alert('Saved', 'Activity updated successfully.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      let timelineSyncFailed = false;
+
+      for (const entry of toDelete) {
+        try {
+          await deleteActivityTimelineItem(id, entry.serverId as string);
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      for (const entry of toUpdate) {
+        try {
+          await updateActivityTimelineItem(id, entry.serverId as string, {
+            title: entry.title.trim(),
+            description: entry.description ?? '',
+            timelineChoice: entry.at,
+          });
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      for (const entry of toCreate) {
+        try {
+          await createActivityTimelineItem(id, {
+            title: entry.title.trim(),
+            description: entry.description ?? '',
+            timelineChoice: entry.at,
+          });
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      if (timelineChanged) {
+        try {
+          const refreshed = await listActivityTimeline(id);
+          const mapped = mapServerRowsToEntries(refreshed);
+          setTimelineEntries(mapped);
+          setOriginalTimelineEntries(mapped);
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      if (timelineSyncFailed) {
+        Alert.alert(
+          'Timeline partially saved',
+          'Some timeline changes could not be saved. Please reopen the activity and try again.',
+          [{ text: 'OK' }],
+        );
+      } else {
+        Alert.alert('Saved', 'Activity updated successfully.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Update failed.');
     } finally {
       setSaving(false);
     }
-  }, [id, buildPatch, pendingCoverUri]);
+  }, [id, buildPatch, pendingCoverUri, timelineEntries, originalTimelineEntries, startDateTime, endDateTime]);
 
   const handleDelete = useCallback(() => {
     if (!id || !original) return;
@@ -502,6 +611,15 @@ export default function EditActivityScreen() {
             onChange={handlePickerChange(activePicker)}
           />
         )}
+
+        <FieldLabel label="Timeline" />
+        <ActivityTimelineEditor
+          entries={timelineEntries}
+          onChange={setTimelineEntries}
+          activityStart={startDateTime}
+          activityEnd={endDateTime}
+          disabled={!isDraft}
+        />
 
         <FieldLabel label="Capacity" required />
         <TextInput

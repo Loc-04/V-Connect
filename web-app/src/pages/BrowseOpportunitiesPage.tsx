@@ -28,14 +28,6 @@ interface OpportunityViewModel {
   spotsLeft: number;
 }
 
-const fallbackImages = [
-  'https://images.pexels.com/photos/6646918/pexels-photo-6646918.jpeg?auto=compress&cs=tinysrgb&w=1200',
-  'https://images.pexels.com/photos/6646955/pexels-photo-6646955.jpeg?auto=compress&cs=tinysrgb&w=1200',
-  'https://images.pexels.com/photos/6646866/pexels-photo-6646866.jpeg?auto=compress&cs=tinysrgb&w=1200',
-  'https://images.pexels.com/photos/6995268/pexels-photo-6995268.jpeg?auto=compress&cs=tinysrgb&w=1200',
-  'https://images.pexels.com/photos/6646907/pexels-photo-6646907.jpeg?auto=compress&cs=tinysrgb&w=1200',
-];
-
 const statusFilters: Array<{ label: string; value: ActivityStatus | 'all' }> = [
   { label: 'Published', value: 'published' },
   { label: 'All', value: 'all' },
@@ -82,7 +74,7 @@ function isActivityExpired(activity: ActivityRecord) {
   return !Number.isNaN(end.getTime()) && end.getTime() <= Date.now();
 }
 
-function toOpportunity(activity: ActivityRecord, index: number): OpportunityViewModel {
+function toOpportunity(activity: ActivityRecord): OpportunityViewModel {
   const baseStatus = String(activity.status ?? '').toLowerCase();
   const isExpired = baseStatus === 'published' && isActivityExpired(activity);
   const status = isExpired ? 'expired' : baseStatus;
@@ -93,9 +85,7 @@ function toOpportunity(activity: ActivityRecord, index: number): OpportunityView
     category: status || 'opportunity',
     categoryTone: mapStatusToTone(status),
     isExpired,
-    imageUrl:
-      (typeof activity.cover_image_url === 'string' && activity.cover_image_url.trim()) ||
-      fallbackImages[index % fallbackImages.length],
+    imageUrl: String(activity.cover_image_url ?? '').trim(),
     date: formatDateLabel(activity.start_time),
     title: activity.title ?? 'Untitled activity',
     location: getLocationLabel(activity.location),
@@ -207,10 +197,7 @@ export function BrowseOpportunitiesPage() {
     return activities.filter((activity) => !isActivityExpired(activity));
   }, [activities, statusFilter]);
 
-  const opportunities = useMemo(
-    () => visibleActivities.map((activity, index) => toOpportunity(activity, index)),
-    [visibleActivities]
-  );
+  const opportunities = useMemo(() => visibleActivities.map((activity) => toOpportunity(activity)), [visibleActivities]);
 
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {

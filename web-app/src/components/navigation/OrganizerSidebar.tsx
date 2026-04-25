@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
+import { BrandIcon } from '../brand';
+
 export type OrganizerNavKey =
   | 'dashboard'
   | 'activities'
@@ -88,7 +90,7 @@ export function OrganizerSidebar({
     <aside className="org-shell-sidebar" aria-label="Organizer navigation">
       <div className="org-shell-brand">
         <span className="org-shell-brand-mark" aria-hidden="true">
-          <CalendarCheck2 size={16} />
+          <BrandIcon />
         </span>
         <div className="org-shell-brand-copy">
           <strong>V-Connect</strong>

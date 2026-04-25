@@ -26,15 +26,16 @@ export function canRoleAccessPath(role: string | null | undefined, path: string 
     return false;
   }
 
-  if (
-    normalizedPath === '/' ||
-    normalizedPath === '/browse' ||
-    normalizedPath === '/feedback' ||
-    normalizedPath.startsWith('/guest/') ||
-    normalizedPath === '/about' ||
-    /^\/volunteer\/activity\/[^/]+$/.test(normalizedPath)
-  ) {
+  if (normalizedPath === '/' || normalizedPath.startsWith('/guest/') || normalizedPath === '/about') {
     return true;
+  }
+
+  if (normalizedPath === '/feedback') {
+    return normalizedRole === 'volunteer' || normalizedRole === 'organizer' || normalizedRole === 'admin';
+  }
+
+  if (normalizedPath === '/browse' || /^\/volunteer\/activity\/[^/]+$/.test(normalizedPath)) {
+    return normalizedRole === 'volunteer';
   }
 
   if (normalizedPath === '/activities/create' || /^\/activities\/[^/]+\/edit$/.test(normalizedPath)) {

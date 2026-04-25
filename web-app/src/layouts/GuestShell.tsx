@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Activity } from 'lucide-react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 
+import { BrandIcon } from '../components/brand';
 import './GuestShell.css';
 
 type GuestNavKey = 'home' | 'browse' | 'about';
@@ -30,7 +30,7 @@ export function GuestShell({ activeNav, children, headerActions, pageTitle, page
       <header className="guest-shell-header">
         <Link className="guest-shell-brand" to="/">
           <span className="guest-shell-brand-icon" aria-hidden="true">
-            <Activity size={16} />
+            <BrandIcon />
           </span>
           <strong>V-Connect</strong>
         </Link>

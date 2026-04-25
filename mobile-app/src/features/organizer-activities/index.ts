@@ -28,3 +28,29 @@ export type {
 } from './services/activity-options-service';
 
 export { updateActivityCoverImageUrl } from './services/activity-cover-service';
+
+export {
+  listActivityTimeline,
+  createActivityTimelineItem,
+  updateActivityTimelineItem,
+  deleteActivityTimelineItem,
+} from './services/activity-timeline-service';
+
+export type {
+  TimelineMilestoneRow,
+  TimelineCreatePayload,
+  TimelineUpdatePayload,
+} from './services/activity-timeline-service';
+
+export {
+  createTimelineEntryId,
+  mapServerRowToEntry,
+  mapServerRowsToEntries,
+  sortTimelineEntries,
+  validateActivityTimeline,
+} from './activity-timeline';
+
+export type { ActivityTimelineEntry } from './activity-timeline';
+
+export { ActivityTimelineEditor } from './components/ActivityTimelineEditor';
+export { ActivityTimelineList } from './components/ActivityTimelineList';

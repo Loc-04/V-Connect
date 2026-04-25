@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Activity, BarChart3, Bell, CalendarDays, ClipboardList, LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { BrandIcon } from '../components/brand';
 
 export function AdminLayout() {
   const navigate = useNavigate();
@@ -15,11 +16,13 @@ export function AdminLayout() {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-sidebar-profile">
-          <span className="admin-profile-avatar">{(profile?.full_name ?? 'A').slice(0, 1).toUpperCase()}</span>
+        <div className="admin-sidebar-brand">
+          <span className="admin-brand-mark" aria-hidden="true">
+            <BrandIcon />
+          </span>
           <div>
-            <p className="admin-profile-name">V-Connect Admin</p>
-            <small>SUPER ADMIN</small>
+            <strong>V-Connect</strong>
+            <small>Admin</small>
           </div>
         </div>
 
@@ -58,15 +61,25 @@ export function AdminLayout() {
           </button>
         </nav>
 
-        <div className="admin-sidebar-help">
-          <p>Need Help?</p>
-          <small>Check docs or contact support.</small>
-        </div>
+        <div className="admin-sidebar-bottom">
+          <div className="admin-sidebar-help">
+            <p>Need Help?</p>
+            <small>Check docs or contact support.</small>
+          </div>
 
-        <button className="sidebar-signout" onClick={handleSignOut} type="button">
-          <LogOut className="sidebar-link-icon" />
-          Sign Out
-        </button>
+          <div className="admin-sidebar-profile">
+            <span className="admin-profile-avatar">{(profile?.full_name ?? 'A').slice(0, 1).toUpperCase()}</span>
+            <div>
+              <p className="admin-profile-name">V-Connect Admin</p>
+              <small>SUPER ADMIN</small>
+            </div>
+          </div>
+
+          <button className="sidebar-signout" onClick={handleSignOut} type="button">
+            <LogOut className="sidebar-link-icon" />
+            Sign Out
+          </button>
+        </div>
       </aside>
 
       <section className="admin-content">

@@ -13,8 +13,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 import { useAuth, type UserRole } from '@/src/features/auth';
-import { getActivity } from '@/src/features/organizer-activities';
-import type { ActivityRecord } from '@/src/features/organizer-activities';
+import {
+  ActivityTimelineList,
+  getActivity,
+  listActivityTimeline,
+  mapServerRowsToEntries,
+} from '@/src/features/organizer-activities';
+import type { ActivityRecord, ActivityTimelineEntry } from '@/src/features/organizer-activities';
 import {
   cancelActivityRegistration,
   fetchMyParticipationForActivity,
@@ -67,6 +72,7 @@ export default function VolunteerActivityDetailScreen() {
   const { user, role } = useAuth();
 
   const [activity, setActivity] = useState<ActivityRecord | null>(null);
+  const [timeline, setTimeline] = useState<ActivityTimelineEntry[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [organizerName, setOrganizerName] = useState<string | null>(null);
@@ -91,6 +97,13 @@ export default function VolunteerActivityDetailScreen() {
     try {
       const data = await getActivity(activityId);
       setActivity(data);
+
+      try {
+        const rows = await listActivityTimeline(activityId);
+        setTimeline(mapServerRowsToEntries(rows));
+      } catch {
+        setTimeline([]);
+      }
 
       if (user?.id) {
         try {
@@ -342,6 +355,22 @@ export default function VolunteerActivityDetailScreen() {
                 </View>
                 <ThemedText style={styles.matchBody}>{matchExplanation}</ThemedText>
               </View>
+            ) : null}
+
+            {timeline.length > 0 ? (
+              <>
+                <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+                  Schedule
+                </ThemedText>
+                <ActivityTimelineList
+                  entries={timeline}
+                  multiDay={
+                    new Date(activity.start_time).toDateString() !==
+                    new Date(activity.end_time).toDateString()
+                  }
+                  accentColor={PRIMARY}
+                />
+              </>
             ) : null}
 
             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>

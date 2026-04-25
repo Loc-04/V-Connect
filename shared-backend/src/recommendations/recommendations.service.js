@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../database/supabase.js';
 import { computeDurationHours, getActivityById } from '../activities/activities.service.js';
+import { resolveActivityCoverImageUrl } from '../activities/activities.cover.js';
 import { getProfileByUserId } from '../users/users.service.js';
 import { isPlainObject } from '../common/utils/validators.js';
 import {
@@ -445,6 +446,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
 
   const recommendations = filteredActivities
     .map((activity) => {
+      const coverImageUrl = resolveActivityCoverImageUrl(activity.cover_image_url);
       const score = scoreActivityForVolunteerProfile({
         activity,
         profile,
@@ -461,13 +463,13 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
         reasons: score.reasons,
         explanation: score.explanation,
         location: activity.location,
-        coverImageUrl: activity.cover_image_url || null,
+        coverImageUrl,
         startTime: activity.start_time,
         endTime: activity.end_time,
         hours: computeDurationHours(activity.start_time, activity.end_time),
         requiredSkills: Array.isArray(activity.required_skills) ? activity.required_skills : [],
         status: activity.status,
-        cover_image_url: activity.cover_image_url ?? null,
+        cover_image_url: coverImageUrl,
         ...toStructuredRecommendationFields(score),
       };
     })

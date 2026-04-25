@@ -1,4 +1,5 @@
 import { apiRequest } from './api';
+import { resolveActivityCoverImageUrl } from './activityCover';
 import type { ActivityPayload, ActivityRecord, ActivityStatus } from '../types/activity';
 
 interface ActivitiesResponse {
@@ -12,6 +13,13 @@ interface ActivityResponse {
 interface DeleteActivityResponse {
   success: boolean;
   message: string;
+}
+
+function normalizeActivityRecord(activity: ActivityRecord): ActivityRecord {
+  return {
+    ...activity,
+    cover_image_url: resolveActivityCoverImageUrl(activity.cover_image_url),
+  };
 }
 
 export interface ListActivitiesOptions {
@@ -90,7 +98,7 @@ export async function listActivities(options: ListActivitiesOptions): Promise<Ac
     accessToken: options.accessToken,
   });
 
-  return response.activities;
+  return Array.isArray(response.activities) ? response.activities.map((activity) => normalizeActivityRecord(activity)) : [];
 }
 
 export async function searchActivities(options: SearchActivitiesOptions): Promise<ActivityRecord[]> {
@@ -111,7 +119,7 @@ export async function searchActivities(options: SearchActivitiesOptions): Promis
     accessToken: options.accessToken,
   });
 
-  return response.activities;
+  return Array.isArray(response.activities) ? response.activities.map((activity) => normalizeActivityRecord(activity)) : [];
 }
 
 export async function getActivityById(activityId: string, accessToken: string): Promise<ActivityRecord> {
@@ -119,7 +127,7 @@ export async function getActivityById(activityId: string, accessToken: string): 
     accessToken,
   });
 
-  return response.activity;
+  return normalizeActivityRecord(response.activity);
 }
 
 export async function createActivity(
@@ -132,7 +140,7 @@ export async function createActivity(
     body: payload,
   });
 
-  return response.activity;
+  return normalizeActivityRecord(response.activity);
 }
 
 export async function updateActivity(
@@ -146,7 +154,7 @@ export async function updateActivity(
     body: payload,
   });
 
-  return response.activity;
+  return normalizeActivityRecord(response.activity);
 }
 
 export async function deleteActivity(activityId: string, accessToken: string): Promise<DeleteActivityResponse> {
