@@ -17,11 +17,12 @@ import {
 import {
   ActivityTimelineEditor,
   createActivity,
-  saveTimelinePlaceholder,
+  createActivityTimelineItem,
   updateActivityCoverImageUrl,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
+  sortTimelineEntries,
   validateActivityTimeline,
   type ActivityPayload,
   type ActivityStatus,
@@ -174,18 +175,26 @@ export default function CreateActivityScreen() {
       status,
       provinceCode: provinceCode ?? undefined,
       wardCode: wardCode ?? undefined,
-      // timeline: not sent — TODO(backend) wire organizer timeline into API payload
     };
 
     setSubmitting(true);
+    let timelineSyncFailed = false;
     try {
       const activity = await createActivity(payload);
 
-      // TODO(backend): remove placeholder persistence once timeline lives on the API.
-      try {
-        await saveTimelinePlaceholder(activity.id, timelineEntries);
-      } catch {
-        // Ignored: placeholder persistence is best-effort.
+      if (timelineEntries.length > 0) {
+        const ordered = sortTimelineEntries(timelineEntries);
+        for (const entry of ordered) {
+          try {
+            await createActivityTimelineItem(activity.id, {
+              title: entry.title.trim(),
+              description: entry.description ?? '',
+              timelineChoice: entry.at,
+            });
+          } catch {
+            timelineSyncFailed = true;
+          }
+        }
       }
 
       if (pendingCoverUri) {
@@ -200,9 +209,17 @@ export default function CreateActivityScreen() {
         }
       }
 
-      Alert.alert('Success', 'Activity created successfully.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      if (timelineSyncFailed) {
+        Alert.alert(
+          'Timeline sync incomplete',
+          'Activity was created, but one or more timeline entries could not be saved. You can add them again from the activity edit screen.',
+          [{ text: 'OK', onPress: () => router.back() }],
+        );
+      } else {
+        Alert.alert('Success', 'Activity created successfully.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create activity.');
     } finally {

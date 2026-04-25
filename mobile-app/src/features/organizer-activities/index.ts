@@ -30,17 +30,27 @@ export type {
 export { updateActivityCoverImageUrl } from './services/activity-cover-service';
 
 export {
-  buildFallbackTimeline,
-  clearTimelinePlaceholder,
+  listActivityTimeline,
+  createActivityTimelineItem,
+  updateActivityTimelineItem,
+  deleteActivityTimelineItem,
+} from './services/activity-timeline-service';
+
+export type {
+  TimelineMilestoneRow,
+  TimelineCreatePayload,
+  TimelineUpdatePayload,
+} from './services/activity-timeline-service';
+
+export {
   createTimelineEntryId,
-  loadTimelinePlaceholder,
-  mergeDisplayTimeline,
-  saveTimelinePlaceholder,
+  mapServerRowToEntry,
+  mapServerRowsToEntries,
   sortTimelineEntries,
   validateActivityTimeline,
-} from './activity-timeline-placeholder';
+} from './activity-timeline';
 
-export type { ActivityTimelineEntry } from './activity-timeline-placeholder';
+export type { ActivityTimelineEntry } from './activity-timeline';
 
 export { ActivityTimelineEditor } from './components/ActivityTimelineEditor';
 export { ActivityTimelineList } from './components/ActivityTimelineList';

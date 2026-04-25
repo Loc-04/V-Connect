@@ -6,7 +6,7 @@ import { ThemedText } from '@/src/shared/ui/themed-text';
 import {
   sortTimelineEntries,
   type ActivityTimelineEntry,
-} from '../activity-timeline-placeholder';
+} from '../activity-timeline';
 
 export interface ActivityTimelineListProps {
   entries: ActivityTimelineEntry[];
