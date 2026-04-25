@@ -16,8 +16,8 @@ import { useAuth, type UserRole } from '@/src/features/auth';
 import {
   ActivityTimelineList,
   getActivity,
-  loadTimelinePlaceholder,
-  mergeDisplayTimeline,
+  listActivityTimeline,
+  mapServerRowsToEntries,
 } from '@/src/features/organizer-activities';
 import type { ActivityRecord, ActivityTimelineEntry } from '@/src/features/organizer-activities';
 import {
@@ -72,7 +72,7 @@ export default function VolunteerActivityDetailScreen() {
   const { user, role } = useAuth();
 
   const [activity, setActivity] = useState<ActivityRecord | null>(null);
-  const [storedTimeline, setStoredTimeline] = useState<ActivityTimelineEntry[]>([]);
+  const [timeline, setTimeline] = useState<ActivityTimelineEntry[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [organizerName, setOrganizerName] = useState<string | null>(null);
@@ -98,12 +98,11 @@ export default function VolunteerActivityDetailScreen() {
       const data = await getActivity(activityId);
       setActivity(data);
 
-      // TODO(backend): fetch timeline with activity response instead of placeholder storage.
       try {
-        const tl = await loadTimelinePlaceholder(activityId);
-        setStoredTimeline(tl);
+        const rows = await listActivityTimeline(activityId);
+        setTimeline(mapServerRowsToEntries(rows));
       } catch {
-        setStoredTimeline([]);
+        setTimeline([]);
       }
 
       if (user?.id) {
@@ -358,17 +357,21 @@ export default function VolunteerActivityDetailScreen() {
               </View>
             ) : null}
 
-            <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-              Schedule
-            </ThemedText>
-            <ActivityTimelineList
-              entries={mergeDisplayTimeline(storedTimeline, activity)}
-              multiDay={
-                new Date(activity.start_time).toDateString() !==
-                new Date(activity.end_time).toDateString()
-              }
-              accentColor={PRIMARY}
-            />
+            {timeline.length > 0 ? (
+              <>
+                <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+                  Schedule
+                </ThemedText>
+                <ActivityTimelineList
+                  entries={timeline}
+                  multiDay={
+                    new Date(activity.start_time).toDateString() !==
+                    new Date(activity.end_time).toDateString()
+                  }
+                  accentColor={PRIMARY}
+                />
+              </>
+            ) : null}
 
             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
               About the event

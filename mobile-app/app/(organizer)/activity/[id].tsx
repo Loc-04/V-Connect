@@ -17,12 +17,16 @@ import {
 
 import {
   ActivityTimelineEditor,
+  createActivityTimelineItem,
   deleteActivity,
+  deleteActivityTimelineItem,
   getActivity,
-  loadTimelinePlaceholder,
-  saveTimelinePlaceholder,
+  listActivityTimeline,
+  mapServerRowsToEntries,
+  sortTimelineEntries,
   updateActivity,
   updateActivityCoverImageUrl,
+  updateActivityTimelineItem,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
@@ -80,7 +84,7 @@ export default function EditActivityScreen() {
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [timelineEntries, setTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
-  const [initialTimelineJson, setInitialTimelineJson] = useState<string>('[]');
+  const [originalTimelineEntries, setOriginalTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>([]);
@@ -183,14 +187,14 @@ export default function EditActivityScreen() {
       setWardCode(data.ward_code ?? null);
       setStatus(data.status);
 
-      // TODO(backend): fetch timeline with activity response instead of placeholder storage.
       try {
-        const tl = await loadTimelinePlaceholder(id);
-        setTimelineEntries(tl);
-        setInitialTimelineJson(JSON.stringify(tl));
+        const rows = await listActivityTimeline(id);
+        const mapped = mapServerRowsToEntries(rows);
+        setTimelineEntries(mapped);
+        setOriginalTimelineEntries(mapped);
       } catch {
         setTimelineEntries([]);
-        setInitialTimelineJson('[]');
+        setOriginalTimelineEntries([]);
       }
 
       setState('ready');
@@ -246,7 +250,30 @@ export default function EditActivityScreen() {
     if (!id) return;
     const patch = buildPatch();
 
-    const timelineChanged = JSON.stringify(timelineEntries) !== initialTimelineJson;
+    const edited = sortTimelineEntries(timelineEntries);
+    const originalTl = sortTimelineEntries(originalTimelineEntries);
+    const originalById = new Map(
+      originalTl.filter((e) => e.serverId).map((e) => [e.serverId as string, e] as const),
+    );
+    const editedServerIds = new Set(
+      edited.filter((e) => e.serverId).map((e) => e.serverId as string),
+    );
+    const toDelete = originalTl.filter(
+      (e) => e.serverId && !editedServerIds.has(e.serverId),
+    );
+    const toCreate = edited.filter((e) => !e.serverId);
+    const toUpdate = edited.filter((e) => {
+      if (!e.serverId) return false;
+      const prev = originalById.get(e.serverId);
+      if (!prev) return false;
+      return (
+        prev.title !== e.title ||
+        prev.at !== e.at ||
+        (prev.description ?? '') !== (e.description ?? '')
+      );
+    });
+    const timelineChanged =
+      toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0;
 
     if (Object.keys(patch).length === 0 && !pendingCoverUri && !timelineChanged) {
       Alert.alert('No changes', 'Nothing to update.');
@@ -286,22 +313,68 @@ export default function EditActivityScreen() {
         }
       }
 
-      // TODO(backend): remove placeholder persistence once timeline lives on the API.
-      try {
-        await saveTimelinePlaceholder(id, timelineEntries);
-      } catch {
-        // Ignored: placeholder persistence is best-effort.
+      let timelineSyncFailed = false;
+
+      for (const entry of toDelete) {
+        try {
+          await deleteActivityTimelineItem(id, entry.serverId as string);
+        } catch {
+          timelineSyncFailed = true;
+        }
       }
 
-      Alert.alert('Saved', 'Activity updated successfully.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      for (const entry of toUpdate) {
+        try {
+          await updateActivityTimelineItem(id, entry.serverId as string, {
+            title: entry.title.trim(),
+            description: entry.description ?? '',
+            timelineChoice: entry.at,
+          });
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      for (const entry of toCreate) {
+        try {
+          await createActivityTimelineItem(id, {
+            title: entry.title.trim(),
+            description: entry.description ?? '',
+            timelineChoice: entry.at,
+          });
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      if (timelineChanged) {
+        try {
+          const refreshed = await listActivityTimeline(id);
+          const mapped = mapServerRowsToEntries(refreshed);
+          setTimelineEntries(mapped);
+          setOriginalTimelineEntries(mapped);
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      if (timelineSyncFailed) {
+        Alert.alert(
+          'Timeline partially saved',
+          'Some timeline changes could not be saved. Please reopen the activity and try again.',
+          [{ text: 'OK' }],
+        );
+      } else {
+        Alert.alert('Saved', 'Activity updated successfully.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Update failed.');
     } finally {
       setSaving(false);
     }
-  }, [id, buildPatch, pendingCoverUri, timelineEntries, initialTimelineJson, startDateTime, endDateTime]);
+  }, [id, buildPatch, pendingCoverUri, timelineEntries, originalTimelineEntries, startDateTime, endDateTime]);
 
   const handleDelete = useCallback(() => {
     if (!id || !original) return;

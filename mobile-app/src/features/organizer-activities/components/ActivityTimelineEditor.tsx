@@ -8,7 +8,7 @@ import { ThemedText } from '@/src/shared/ui/themed-text';
 import {
   createTimelineEntryId,
   type ActivityTimelineEntry,
-} from '../activity-timeline-placeholder';
+} from '../activity-timeline';
 
 type PickerMode = 'date' | 'time';
 
