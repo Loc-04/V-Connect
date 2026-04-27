@@ -13,10 +13,11 @@ export const ROUTES = {
     MY_REGISTRATIONS: '/(volunteer)/my-registrations',
     ACTIVITY_DETAIL: '/(volunteer)/activity',
     ACTIVITY_CHECK_IN: '/(volunteer)/activity/check-in',
+    ORGANIZER_PROFILE: '/(volunteer)/organizer',
   },
   ORGANIZER: {
     HOME: '/(organizer)/(tabs)/home',
-    EVENTS: '/(organizer)/(tabs)/events',
+    ACTIVITIES: '/(organizer)/(tabs)/activities',
     PROFILE: '/(organizer)/(tabs)/profile',
     ACTIVITY_MANAGEMENT: '/(organizer)/activity-management',
     REGISTER_MANAGEMENT: '/(organizer)/register-management',

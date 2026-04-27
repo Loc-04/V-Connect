@@ -229,7 +229,7 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <ThemedText style={styles.statValue}>{topStats.totalEvents}</ThemedText>
-            <ThemedText style={styles.statLabel}>TOTAL EVENTS</ThemedText>
+            <ThemedText style={styles.statLabel}>TOTAL ACTIVITIES</ThemedText>
           </View>
           <View style={styles.statCard}>
             <ThemedText style={styles.statValue}>{topStats.volunteers}</ThemedText>

@@ -94,7 +94,7 @@ export function ExploreActivityCard({
             <MaterialIcons name="eco" size={20} color="#0f766e" />
           </View>
           <ThemedText style={styles.hostText} numberOfLines={1}>
-            Hosted by <ThemedText type="defaultSemiBold">{organizerName}</ThemedText>
+            Organizer: <ThemedText type="defaultSemiBold">{organizerName}</ThemedText>
           </ThemedText>
         </View>
 
