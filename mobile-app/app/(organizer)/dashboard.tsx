@@ -9,6 +9,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/src/features/auth';
 import {
@@ -20,7 +21,6 @@ import {
   type OrganizerTopStats,
 } from '@/src/features/profile';
 import { AvatarWithUploadOverlay } from '@/src/features/profile/components/avatar-with-upload-overlay';
-import { UserQrCodeModal } from '@/src/features/profile/components/user-qr-code-modal';
 import { ROUTES } from '@/src/shared/constants/route-constants';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 import { ThemedView } from '@/src/shared/ui/themed-view';
@@ -48,7 +48,6 @@ export default function DashboardScreen() {
   const [recommendedVolunteers, setRecommendedVolunteers] = useState<
     OrganizerRecommendedVolunteerItem[]
   >([]);
-  const [qrVisible, setQrVisible] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const initials = useMemo(
@@ -137,63 +136,84 @@ export default function DashboardScreen() {
 
   if (authStatus === 'loading') {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Organizer Profile</ThemedText>
-        <ThemedText style={styles.statusText}>Loading session...</ThemedText>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Organizer Profile</ThemedText>
+            <ThemedText style={styles.statusText}>Loading session...</ThemedText>
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   if (authStatus !== 'authenticated' || !user) {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText style={styles.statusText}>
-          {isSigningOut ? 'Signing out...' : 'You are signed out.'}
-        </ThemedText>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText style={styles.statusText}>
+              {isSigningOut ? 'Signing out...' : 'You are signed out.'}
+            </ThemedText>
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   if (state === 'loading') {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Organizer Profile</ThemedText>
-        <ThemedText style={styles.statusText}>Loading organizer profile...</ThemedText>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Organizer Profile</ThemedText>
+            <ThemedText style={styles.statusText}>Loading organizer profile...</ThemedText>
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   if (state === 'error') {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Organizer Profile</ThemedText>
-        <ThemedText style={styles.errorText}>
-          {errorMessage ?? 'Unable to load organizer profile.'}
-        </ThemedText>
-        <Pressable style={styles.retryButton} onPress={() => void loadOrganizerProfile()}>
-          <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
-        </Pressable>
-        {renderSignOutButton()}
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Organizer Profile</ThemedText>
+            <ThemedText style={styles.errorText}>
+              {errorMessage ?? 'Unable to load organizer profile.'}
+            </ThemedText>
+            <Pressable style={styles.retryButton} onPress={() => void loadOrganizerProfile()}>
+              <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+            </Pressable>
+            {renderSignOutButton()}
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   if (state === 'empty' || !profile) {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Organizer Profile</ThemedText>
-        <ThemedText style={styles.statusText}>No organizer profile found for this account.</ThemedText>
-        <Pressable style={styles.retryButton} onPress={() => void loadOrganizerProfile()}>
-          <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
-        </Pressable>
-        {renderSignOutButton()}
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Organizer Profile</ThemedText>
+            <ThemedText style={styles.statusText}>No organizer profile found for this account.</ThemedText>
+            <Pressable style={styles.retryButton} onPress={() => void loadOrganizerProfile()}>
+              <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
+            </Pressable>
+            {renderSignOutButton()}
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={styles.safeTop} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <View style={styles.topBarLeft}>
             <MaterialIcons name="arrow-back" size={22} color="#1f2937" />
@@ -243,9 +263,9 @@ export default function DashboardScreen() {
 
         <Pressable
           style={styles.editButton}
-          onPress={() => router.push(ROUTES.ORGANIZER.ACTIVITY_MANAGEMENT)}
+          onPress={() => router.push(ROUTES.ORGANIZER.ACTIVITIES)}
         >
-          <ThemedText style={styles.editButtonText}>Activity Management</ThemedText>
+          <ThemedText style={styles.editButtonText}>My activities</ThemedText>
         </Pressable>
 
         <Pressable
@@ -254,20 +274,6 @@ export default function DashboardScreen() {
         >
           <ThemedText style={styles.editButtonText}>Register Management</ThemedText>
         </Pressable>
-
-        <Pressable
-          style={styles.editButton}
-          onPress={() => setQrVisible(true)}
-        >
-          <ThemedText style={styles.editButtonText}>My QR Code</ThemedText>
-        </Pressable>
-
-        <UserQrCodeModal
-          visible={qrVisible}
-          onClose={() => setQrVisible(false)}
-          userId={user.id}
-          fullName={profile.fullName}
-        />
 
         <View style={styles.aiHeaderRow}>
           <MaterialIcons name="auto-awesome" size={18} color="#0f766e" />
@@ -330,7 +336,7 @@ export default function DashboardScreen() {
 
         {renderSignOutButton()}
       </ScrollView>
-
+      </SafeAreaView>
     </ThemedView>
   );
 }
@@ -339,6 +345,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#ffffff',
+  },
+  safeTop: {
+    flex: 1,
   },
   centeredContainer: {
     flex: 1,

@@ -275,12 +275,17 @@ export default function EditActivityScreen() {
     const timelineChanged =
       toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0;
 
-    if (Object.keys(patch).length === 0 && !pendingCoverUri && !timelineChanged) {
+    const isPublished = original?.status === 'published';
+    const hasDraftFieldOrCover =
+      original?.status === 'draft' &&
+      (Object.keys(patch).length > 0 || Boolean(pendingCoverUri));
+
+    if (!hasDraftFieldOrCover && !timelineChanged) {
       Alert.alert('No changes', 'Nothing to update.');
       return;
     }
 
-    if (patch.startTime && patch.endTime) {
+    if (original?.status === 'draft' && patch.startTime && patch.endTime) {
       if (new Date(patch.endTime as string) <= new Date(patch.startTime as string)) {
         Alert.alert('Validation', 'End time must be later than start time.');
         return;
@@ -297,11 +302,13 @@ export default function EditActivityScreen() {
 
     setSaving(true);
     try {
-      if (Object.keys(patch).length > 0) {
+      const isPublishedTimelineOnly = isPublished;
+      if (original?.status === 'draft' && Object.keys(patch).length > 0) {
         await updateActivity(id, patch);
       }
+      // Published: only timeline is sent; ignore spurious buildPatch() drift (e.g. date ISO strings).
 
-      if (pendingCoverUri) {
+      if (original?.status === 'draft' && pendingCoverUri) {
         try {
           const compressed = await compressImage(pendingCoverUri);
           await assertUnderMaxBytes(compressed);
@@ -365,16 +372,17 @@ export default function EditActivityScreen() {
           [{ text: 'OK' }],
         );
       } else {
-        Alert.alert('Saved', 'Activity updated successfully.', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
+        const successMessage = isPublishedTimelineOnly
+          ? 'Timeline updated successfully.'
+          : 'Activity updated successfully.';
+        Alert.alert('Saved', successMessage, [{ text: 'OK', onPress: () => router.back() }]);
       }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Update failed.');
     } finally {
       setSaving(false);
     }
-  }, [id, buildPatch, pendingCoverUri, timelineEntries, originalTimelineEntries, startDateTime, endDateTime]);
+  }, [id, buildPatch, pendingCoverUri, timelineEntries, originalTimelineEntries, startDateTime, endDateTime, original]);
 
   const handleDelete = useCallback(() => {
     if (!id || !original) return;
@@ -419,9 +427,12 @@ export default function EditActivityScreen() {
 
   const isReadOnlyView = readOnly === '1';
   const isDraft = !isReadOnlyView && original?.status === 'draft';
+  const canEditTimeline =
+    !isReadOnlyView && (original?.status === 'draft' || original?.status === 'published');
   const shouldDimReadOnly = !isDraft && !isReadOnlyView;
   const selectedProvinceName = provinceOptions.find((p) => p.code === provinceCode)?.name;
   const selectedWardName = wardOptions.find((w) => w.code === wardCode)?.name;
+  const showSaveButton = isDraft || (original?.status === 'published' && !isReadOnlyView);
 
   return (
     <KeyboardAvoidingView
@@ -433,11 +444,20 @@ export default function EditActivityScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {!isDraft && !isReadOnlyView && (
+        {!isReadOnlyView && original?.status === 'published' && (
+          <View style={styles.publishedTimelineInfoBanner}>
+            <MaterialIcons name="event-note" size={16} color="#0f766e" />
+            <ThemedText style={styles.publishedTimelineInfoText}>
+              Published: you can update the schedule timeline below. Other details are read-only.
+            </ThemedText>
+          </View>
+        )}
+
+        {!isDraft && !isReadOnlyView && original?.status !== 'published' && (
           <View style={styles.readOnlyBanner}>
             <MaterialIcons name="lock-outline" size={16} color="#b45309" />
             <ThemedText style={styles.readOnlyBannerText}>
-              {`This activity is ${original?.status}. Only draft activities can be edited.`}
+              {`This activity is ${original?.status}. Only draft activities can be fully edited.`}
             </ThemedText>
           </View>
         )}
@@ -618,7 +638,7 @@ export default function EditActivityScreen() {
           onChange={setTimelineEntries}
           activityStart={startDateTime}
           activityEnd={endDateTime}
-          disabled={!isDraft}
+          disabled={!canEditTimeline}
         />
 
         <FieldLabel label="Capacity" required />
@@ -681,7 +701,7 @@ export default function EditActivityScreen() {
           })}
         </ScrollView>
 
-        {isDraft && (
+        {showSaveButton && (
           <Pressable
             style={[styles.saveButton, saving && styles.buttonDisabled]}
             onPress={() => void handleSave()}
@@ -694,7 +714,7 @@ export default function EditActivityScreen() {
           </Pressable>
         )}
 
-        {!isReadOnlyView && (
+        {isDraft && (
           <Pressable style={styles.deleteButton} onPress={handleDelete}>
             <MaterialIcons name="delete-outline" size={18} color="#dc2626" />
             <ThemedText style={styles.deleteButtonText}>Delete Activity</ThemedText>
@@ -792,6 +812,23 @@ const styles = StyleSheet.create({
   readOnlyBannerText: {
     fontSize: 13,
     color: '#92400e',
+    flex: 1,
+  },
+  publishedTimelineInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#dff3ef',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 4,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#a7d7cf',
+  },
+  publishedTimelineInfoText: {
+    fontSize: 13,
+    color: '#115e59',
     flex: 1,
   },
   row: {
