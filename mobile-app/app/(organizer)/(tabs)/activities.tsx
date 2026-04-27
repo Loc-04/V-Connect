@@ -67,7 +67,7 @@ function statusBadgeStyle(status: ActivityStatus) {
   }
 }
 
-export default function OrganizerEventsScreen() {
+export default function OrganizerActivitiesScreen() {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<LoadState>('loading');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
