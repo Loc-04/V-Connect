@@ -19,10 +19,10 @@ export const ROUTES = {
     HOME: '/(organizer)/(tabs)/home',
     ACTIVITIES: '/(organizer)/(tabs)/activities',
     PROFILE: '/(organizer)/(tabs)/profile',
-    ACTIVITY_MANAGEMENT: '/(organizer)/activity-management',
     REGISTER_MANAGEMENT: '/(organizer)/register-management',
     ACTIVITY_NEW: '/(organizer)/activity/new',
     ACTIVITY_DETAIL: '/(organizer)/activity/[id]',
+    ACTIVITY_CHECK_IN: '/(organizer)/activity/check-in/[id]',
   },
 } as const;
 

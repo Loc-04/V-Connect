@@ -113,12 +113,16 @@ export default function OrganizerActivitiesScreen() {
       return (
         <Pressable
           style={styles.activityCard}
-          onPress={() =>
-            router.push({
-              pathname: ROUTES.ORGANIZER.ACTIVITY_DETAIL,
-              params: { id: item.id, readOnly: '1' },
-            })
-          }
+          onPress={() => {
+            if (item.status === 'draft' || item.status === 'published') {
+              router.push({ pathname: ROUTES.ORGANIZER.ACTIVITY_DETAIL, params: { id: item.id } });
+            } else {
+              router.push({
+                pathname: ROUTES.ORGANIZER.ACTIVITY_DETAIL,
+                params: { id: item.id, readOnly: '1' },
+              });
+            }
+          }}
         >
           {item.cover_image_url ? (
             <Image source={{ uri: item.cover_image_url }} style={styles.coverImage} />
@@ -132,10 +136,28 @@ export default function OrganizerActivitiesScreen() {
               <ThemedText type="defaultSemiBold" style={styles.activityTitle} numberOfLines={1}>
                 {item.title}
               </ThemedText>
-              <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-                <ThemedText style={[styles.badgeText, { color: badge.text }]}>
-                  {item.status.toUpperCase()}
-                </ThemedText>
+              <View style={styles.cardTopRight}>
+                <Pressable
+                  hitSlop={8}
+                  style={styles.checkInButton}
+                  onPress={() =>
+                    router.push({
+                      pathname: ROUTES.ORGANIZER.ACTIVITY_CHECK_IN,
+                      params: { id: item.id },
+                    })
+                  }
+                  accessibilityLabel="Check-in"
+                  accessibilityRole="button"
+                >
+                  <ThemedText type="defaultSemiBold" style={styles.checkInButtonText}>
+                    Check-in
+                  </ThemedText>
+                </Pressable>
+                <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                  <ThemedText style={[styles.badgeText, { color: badge.text }]}>
+                    {item.status.toUpperCase()}
+                  </ThemedText>
+                </View>
               </View>
             </View>
             <View style={styles.metaRow}>
@@ -390,8 +412,26 @@ const styles = StyleSheet.create({
   },
   activityTitle: {
     flex: 1,
+    minWidth: 0,
     fontSize: 17,
     color: '#1f2937',
+  },
+  cardTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
+  checkInButton: {
+    borderWidth: 1,
+    borderColor: '#0f8a8a',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  checkInButtonText: {
+    fontSize: 12,
+    color: '#0f766e',
   },
   badge: {
     borderRadius: 999,
