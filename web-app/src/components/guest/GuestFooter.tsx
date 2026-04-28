@@ -1,6 +1,5 @@
-﻿import { Link } from 'react-router-dom';
-import { Activity } from 'lucide-react';
-
+import { Link } from 'react-router-dom';
+import { BrandIcon } from '../brand';
 import './GuestShared.css';
 
 export function GuestFooter() {
@@ -11,7 +10,7 @@ export function GuestFooter() {
       <div className="guest-footer-main">
         <div className="guest-footer-brand">
           <span className="guest-footer-brand-icon" aria-hidden="true">
-            <Activity size={16} />
+            <BrandIcon />
           </span>
           <div>
             <strong>V-Connect</strong>
@@ -51,8 +50,9 @@ export function GuestFooter() {
         </div>
       </div>
       <div className="guest-footer-meta" id="footer">
-        <span>© {currentYear} V-Connect Smart Volunteer Management System. The Digital Curator Editorial.</span>
+        <span>� {currentYear} V-Connect Smart Volunteer Management System. The Digital Curator Editorial.</span>
       </div>
     </footer>
   );
 }
+

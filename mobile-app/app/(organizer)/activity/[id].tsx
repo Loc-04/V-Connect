@@ -16,15 +16,24 @@ import {
 } from 'react-native';
 
 import {
+  ActivityTimelineEditor,
+  createActivityTimelineItem,
   deleteActivity,
+  deleteActivityTimelineItem,
   getActivity,
+  listActivityTimeline,
+  mapServerRowsToEntries,
+  sortTimelineEntries,
   updateActivity,
   updateActivityCoverImageUrl,
+  updateActivityTimelineItem,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
+  validateActivityTimeline,
   type ActivityRecord,
   type ActivityStatus,
+  type ActivityTimelineEntry,
   type SkillOption,
   type ProvinceOption,
   type WardOption,
@@ -74,6 +83,8 @@ export default function EditActivityScreen() {
   const [status, setStatus] = useState<ActivityStatus>('draft');
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [timelineEntries, setTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
+  const [originalTimelineEntries, setOriginalTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>([]);
@@ -175,6 +186,17 @@ export default function EditActivityScreen() {
       setProvinceCode(data.province_code ?? null);
       setWardCode(data.ward_code ?? null);
       setStatus(data.status);
+
+      try {
+        const rows = await listActivityTimeline(id);
+        const mapped = mapServerRowsToEntries(rows);
+        setTimelineEntries(mapped);
+        setOriginalTimelineEntries(mapped);
+      } catch {
+        setTimelineEntries([]);
+        setOriginalTimelineEntries([]);
+      }
+
       setState('ready');
     } catch (err) {
       setState('error');
@@ -227,25 +249,66 @@ export default function EditActivityScreen() {
   const handleSave = useCallback(async () => {
     if (!id) return;
     const patch = buildPatch();
-    if (Object.keys(patch).length === 0 && !pendingCoverUri) {
+
+    const edited = sortTimelineEntries(timelineEntries);
+    const originalTl = sortTimelineEntries(originalTimelineEntries);
+    const originalById = new Map(
+      originalTl.filter((e) => e.serverId).map((e) => [e.serverId as string, e] as const),
+    );
+    const editedServerIds = new Set(
+      edited.filter((e) => e.serverId).map((e) => e.serverId as string),
+    );
+    const toDelete = originalTl.filter(
+      (e) => e.serverId && !editedServerIds.has(e.serverId),
+    );
+    const toCreate = edited.filter((e) => !e.serverId);
+    const toUpdate = edited.filter((e) => {
+      if (!e.serverId) return false;
+      const prev = originalById.get(e.serverId);
+      if (!prev) return false;
+      return (
+        prev.title !== e.title ||
+        prev.at !== e.at ||
+        (prev.description ?? '') !== (e.description ?? '')
+      );
+    });
+    const timelineChanged =
+      toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0;
+
+    const isPublished = original?.status === 'published';
+    const hasDraftFieldOrCover =
+      original?.status === 'draft' &&
+      (Object.keys(patch).length > 0 || Boolean(pendingCoverUri));
+
+    if (!hasDraftFieldOrCover && !timelineChanged) {
       Alert.alert('No changes', 'Nothing to update.');
       return;
     }
 
-    if (patch.startTime && patch.endTime) {
+    if (original?.status === 'draft' && patch.startTime && patch.endTime) {
       if (new Date(patch.endTime as string) <= new Date(patch.startTime as string)) {
         Alert.alert('Validation', 'End time must be later than start time.');
         return;
       }
     }
 
+    if (timelineEntries.length > 0) {
+      const tlError = validateActivityTimeline(timelineEntries, startDateTime, endDateTime);
+      if (tlError) {
+        Alert.alert('Timeline invalid', tlError);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      if (Object.keys(patch).length > 0) {
+      const isPublishedTimelineOnly = isPublished;
+      if (original?.status === 'draft' && Object.keys(patch).length > 0) {
         await updateActivity(id, patch);
       }
+      // Published: only timeline is sent; ignore spurious buildPatch() drift (e.g. date ISO strings).
 
-      if (pendingCoverUri) {
+      if (original?.status === 'draft' && pendingCoverUri) {
         try {
           const compressed = await compressImage(pendingCoverUri);
           await assertUnderMaxBytes(compressed);
@@ -257,15 +320,69 @@ export default function EditActivityScreen() {
         }
       }
 
-      Alert.alert('Saved', 'Activity updated successfully.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      let timelineSyncFailed = false;
+
+      for (const entry of toDelete) {
+        try {
+          await deleteActivityTimelineItem(id, entry.serverId as string);
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      for (const entry of toUpdate) {
+        try {
+          await updateActivityTimelineItem(id, entry.serverId as string, {
+            title: entry.title.trim(),
+            description: entry.description ?? '',
+            timelineChoice: entry.at,
+          });
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      for (const entry of toCreate) {
+        try {
+          await createActivityTimelineItem(id, {
+            title: entry.title.trim(),
+            description: entry.description ?? '',
+            timelineChoice: entry.at,
+          });
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      if (timelineChanged) {
+        try {
+          const refreshed = await listActivityTimeline(id);
+          const mapped = mapServerRowsToEntries(refreshed);
+          setTimelineEntries(mapped);
+          setOriginalTimelineEntries(mapped);
+        } catch {
+          timelineSyncFailed = true;
+        }
+      }
+
+      if (timelineSyncFailed) {
+        Alert.alert(
+          'Timeline partially saved',
+          'Some timeline changes could not be saved. Please reopen the activity and try again.',
+          [{ text: 'OK' }],
+        );
+      } else {
+        const successMessage = isPublishedTimelineOnly
+          ? 'Timeline updated successfully.'
+          : 'Activity updated successfully.';
+        Alert.alert('Saved', successMessage, [{ text: 'OK', onPress: () => router.back() }]);
+      }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Update failed.');
     } finally {
       setSaving(false);
     }
-  }, [id, buildPatch, pendingCoverUri]);
+  }, [id, buildPatch, pendingCoverUri, timelineEntries, originalTimelineEntries, startDateTime, endDateTime, original]);
 
   const handleDelete = useCallback(() => {
     if (!id || !original) return;
@@ -310,9 +427,12 @@ export default function EditActivityScreen() {
 
   const isReadOnlyView = readOnly === '1';
   const isDraft = !isReadOnlyView && original?.status === 'draft';
+  const canEditTimeline =
+    !isReadOnlyView && (original?.status === 'draft' || original?.status === 'published');
   const shouldDimReadOnly = !isDraft && !isReadOnlyView;
   const selectedProvinceName = provinceOptions.find((p) => p.code === provinceCode)?.name;
   const selectedWardName = wardOptions.find((w) => w.code === wardCode)?.name;
+  const showSaveButton = isDraft || (original?.status === 'published' && !isReadOnlyView);
 
   return (
     <KeyboardAvoidingView
@@ -324,11 +444,20 @@ export default function EditActivityScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {!isDraft && !isReadOnlyView && (
+        {!isReadOnlyView && original?.status === 'published' && (
+          <View style={styles.publishedTimelineInfoBanner}>
+            <MaterialIcons name="event-note" size={16} color="#0f766e" />
+            <ThemedText style={styles.publishedTimelineInfoText}>
+              Published: you can update the schedule timeline below. Other details are read-only.
+            </ThemedText>
+          </View>
+        )}
+
+        {!isDraft && !isReadOnlyView && original?.status !== 'published' && (
           <View style={styles.readOnlyBanner}>
             <MaterialIcons name="lock-outline" size={16} color="#b45309" />
             <ThemedText style={styles.readOnlyBannerText}>
-              {`This activity is ${original?.status}. Only draft activities can be edited.`}
+              {`This activity is ${original?.status}. Only draft activities can be fully edited.`}
             </ThemedText>
           </View>
         )}
@@ -503,6 +632,15 @@ export default function EditActivityScreen() {
           />
         )}
 
+        <FieldLabel label="Timeline" />
+        <ActivityTimelineEditor
+          entries={timelineEntries}
+          onChange={setTimelineEntries}
+          activityStart={startDateTime}
+          activityEnd={endDateTime}
+          disabled={!canEditTimeline}
+        />
+
         <FieldLabel label="Capacity" required />
         <TextInput
           style={[styles.input, shouldDimReadOnly && styles.inputDisabled]}
@@ -563,7 +701,7 @@ export default function EditActivityScreen() {
           })}
         </ScrollView>
 
-        {isDraft && (
+        {showSaveButton && (
           <Pressable
             style={[styles.saveButton, saving && styles.buttonDisabled]}
             onPress={() => void handleSave()}
@@ -576,7 +714,7 @@ export default function EditActivityScreen() {
           </Pressable>
         )}
 
-        {!isReadOnlyView && (
+        {isDraft && (
           <Pressable style={styles.deleteButton} onPress={handleDelete}>
             <MaterialIcons name="delete-outline" size={18} color="#dc2626" />
             <ThemedText style={styles.deleteButtonText}>Delete Activity</ThemedText>
@@ -674,6 +812,23 @@ const styles = StyleSheet.create({
   readOnlyBannerText: {
     fontSize: 13,
     color: '#92400e',
+    flex: 1,
+  },
+  publishedTimelineInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#dff3ef',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 4,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#a7d7cf',
+  },
+  publishedTimelineInfoText: {
+    fontSize: 13,
+    color: '#115e59',
     flex: 1,
   },
   row: {

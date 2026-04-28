@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,14 +13,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 import { useAuth, type UserRole } from '@/src/features/auth';
-import { getActivity } from '@/src/features/organizer-activities';
-import type { ActivityRecord } from '@/src/features/organizer-activities';
+import {
+  ActivityTimelineList,
+  getActivity,
+  listActivityTimeline,
+  mapServerRowsToEntries,
+} from '@/src/features/organizer-activities';
+import type { ActivityRecord, ActivityTimelineEntry } from '@/src/features/organizer-activities';
 import {
   cancelActivityRegistration,
-  fetchMyParticipationForActivity,
-  hasApprovedParticipationElsewhere,
+  fetchActiveParticipationsForConflict,
+  fetchMyParticipationStatusForActivity,
+  findTimeConflict,
   isActiveParticipationStatus,
   registerForActivity,
+  type ActiveParticipationForConflict,
   type ParticipationRow,
 } from '@/src/features/participations';
 import {
@@ -28,8 +35,9 @@ import {
   fetchVolunteerRecommendations,
   formatDateRangeLine,
   formatLocationLine,
-  pickHeroImage,
+  resolveExploreCoverUrl,
 } from '@/src/features/volunteer-explore';
+import { getOrganizerProfile, type OrganizerProfileView } from '@/src/features/profile';
 import { ThemedText } from '@/src/shared/ui/themed-text';
 
 const PRIMARY = '#00AEEF';
@@ -67,16 +75,28 @@ export default function VolunteerActivityDetailScreen() {
   const { user, role } = useAuth();
 
   const [activity, setActivity] = useState<ActivityRecord | null>(null);
+  const [timeline, setTimeline] = useState<ActivityTimelineEntry[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [organizerName, setOrganizerName] = useState<string | null>(null);
+  const [organizer, setOrganizer] = useState<OrganizerProfileView | null>(null);
+  const [organizerNameFromRec, setOrganizerNameFromRec] = useState<string | null>(null);
   const [matchScore, setMatchScore] = useState<number | null>(null);
   const [matchExplanation, setMatchExplanation] = useState<string | null>(null);
   const [participation, setParticipation] = useState<ParticipationRow | null>(null);
+  const [priorParticipation, setPriorParticipation] = useState<ParticipationRow | null>(null);
+  const [conflictCandidates, setConflictCandidates] = useState<ActiveParticipationForConflict[]>([]);
   const [participationLoading, setParticipationLoading] = useState(false);
   const [committedElsewhere, setCommittedElsewhere] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  const timeConflict = useMemo(() => {
+    if (!activity || conflictCandidates.length === 0) return null;
+    return findTimeConflict(
+      { id: activity.id, start_time: activity.start_time, end_time: activity.end_time },
+      conflictCandidates,
+    );
+  }, [activity, conflictCandidates]);
 
   const load = useCallback(async () => {
     if (!activityId) {
@@ -92,26 +112,44 @@ export default function VolunteerActivityDetailScreen() {
       const data = await getActivity(activityId);
       setActivity(data);
 
+      try {
+        const rows = await listActivityTimeline(activityId);
+        setTimeline(mapServerRowsToEntries(rows));
+      } catch {
+        setTimeline([]);
+      }
+
+      if (data?.organizer_id) {
+        try {
+          const profile = await getOrganizerProfile(data.organizer_id);
+          setOrganizer(profile);
+        } catch {
+          setOrganizer(null);
+        }
+      } else {
+        setOrganizer(null);
+      }
+
       if (user?.id) {
         try {
           const rec = await fetchVolunteerRecommendations(user.id, 80);
           const hit = rec.activities?.find((a) => a.activityId === activityId);
           if (hit) {
-            setOrganizerName(hit.organizerName);
+            setOrganizerNameFromRec(hit.organizerName);
             setMatchScore(hit.matchScore);
             setMatchExplanation(hit.explanation);
           } else {
-            setOrganizerName(null);
+            setOrganizerNameFromRec(null);
             setMatchScore(null);
             setMatchExplanation(null);
           }
         } catch {
-          setOrganizerName(null);
+          setOrganizerNameFromRec(null);
           setMatchScore(null);
           setMatchExplanation(null);
         }
       } else {
-        setOrganizerName(null);
+        setOrganizerNameFromRec(null);
         setMatchScore(null);
         setMatchExplanation(null);
       }
@@ -131,20 +169,33 @@ export default function VolunteerActivityDetailScreen() {
   const loadParticipation = useCallback(async () => {
     if (!activityId || !user?.id || role !== 'volunteer') {
       setParticipation(null);
+      setPriorParticipation(null);
       setCommittedElsewhere(false);
+      setConflictCandidates([]);
       return;
     }
     setParticipationLoading(true);
     try {
-      const [row, blocked] = await Promise.all([
-        fetchMyParticipationForActivity(activityId),
-        hasApprovedParticipationElsewhere(activityId),
+      const [statusResult, allActive] = await Promise.all([
+        fetchMyParticipationStatusForActivity(activityId),
+        fetchActiveParticipationsForConflict(),
       ]);
-      setParticipation(row);
-      setCommittedElsewhere(blocked);
+      setParticipation(statusResult.active);
+      setPriorParticipation(statusResult.prior);
+      // Derive "committed elsewhere": approved/checked_in on a different activity
+      const committed = allActive.some(
+        (p) =>
+          p.activityId !== activityId &&
+          (p.status === 'approved' || p.status === 'checked_in'),
+      );
+      setCommittedElsewhere(committed);
+      // Store candidates excluding current activity (current activity status is tracked separately)
+      setConflictCandidates(allActive.filter((p) => p.activityId !== activityId));
     } catch {
       setParticipation(null);
+      setPriorParticipation(null);
       setCommittedElsewhere(false);
+      setConflictCandidates([]);
     } finally {
       setParticipationLoading(false);
     }
@@ -165,6 +216,13 @@ export default function VolunteerActivityDetailScreen() {
       Alert.alert('Registration', 'This activity is not open for registration.');
       return;
     }
+    if (timeConflict !== null) {
+      Alert.alert(
+        'Schedule conflict',
+        `This activity overlaps with "${timeConflict.conflicting.activityName}". Cancel that registration first to join this one.`,
+      );
+      return;
+    }
     setRegistering(true);
     try {
       const result = await registerForActivity(activityId);
@@ -176,7 +234,7 @@ export default function VolunteerActivityDetailScreen() {
     } finally {
       setRegistering(false);
     }
-  }, [activityId, activity?.status, role, loadParticipation]);
+  }, [activityId, activity?.status, role, timeConflict, loadParticipation]);
 
   const onCancelRegistration = useCallback(() => {
     if (!activityId) return;
@@ -248,13 +306,34 @@ export default function VolunteerActivityDetailScreen() {
   const categoryLabel = categoryFromSkills(activity.required_skills ?? []);
   const dateLine = formatDateRangeLine(activity.start_time, activity.end_time);
   const locationLine = formatLocationLine(activity.location);
-  const heroUri = pickHeroImage(activity.id);
-  const hostLabel = organizerName ?? 'Organizer';
+  const heroUri = resolveExploreCoverUrl(activity.id, activity.cover_image_url);
+  const hostLabel = organizer?.fullName ?? organizerNameFromRec ?? 'Organizer';
+  const canOpenOrganizer = Boolean(activity.organizer_id);
+  const onOpenOrganizer = () => {
+    if (!activity.organizer_id) return;
+    router.push(`/(volunteer)/organizer/${activity.organizer_id}`);
+  };
+  const statusLabel = (() => {
+    switch (activity.status) {
+      case 'published':
+        return 'Open for registration';
+      case 'completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'draft':
+        return 'Draft';
+      default:
+        return null;
+    }
+  })();
   const hasActiveRegistration = participation != null && isActiveParticipationStatus(participation.status);
   const canCancel =
     hasActiveRegistration && String(participation?.status ?? '').toLowerCase() !== 'checked_in';
   const registerBlockedByOtherApproval =
     committedElsewhere && !hasActiveRegistration && canRegisterRole(role) && activity.status === 'published';
+  const registerBlockedByConflict =
+    timeConflict !== null && !hasActiveRegistration && canRegisterRole(role) && activity.status === 'published';
 
   const registerDisabled =
     registering ||
@@ -262,7 +341,8 @@ export default function VolunteerActivityDetailScreen() {
     activity.status !== 'published' ||
     !canRegisterRole(role) ||
     hasActiveRegistration ||
-    registerBlockedByOtherApproval;
+    registerBlockedByOtherApproval ||
+    registerBlockedByConflict;
 
   return (
     <>
@@ -294,8 +374,8 @@ export default function VolunteerActivityDetailScreen() {
               <View style={styles.categoryPill}>
                 <ThemedText style={styles.categoryPillText}>{categoryLabel}</ThemedText>
               </View>
-              {activity.status === 'published' ? (
-                <ThemedText style={styles.statusHint}>• Open for registration</ThemedText>
+              {statusLabel ? (
+                <ThemedText style={styles.statusHint}>• {statusLabel}</ThemedText>
               ) : null}
             </View>
 
@@ -321,14 +401,33 @@ export default function VolunteerActivityDetailScreen() {
               </ThemedText>
             </View>
 
-            <View style={styles.hostRow}>
+            <Pressable
+              style={({ pressed }) => [styles.hostRow, pressed && styles.hostRowPressed]}
+              onPress={canOpenOrganizer ? onOpenOrganizer : undefined}
+              disabled={!canOpenOrganizer}
+              accessibilityRole={canOpenOrganizer ? 'button' : undefined}
+              accessibilityLabel={`Open organizer ${hostLabel} profile`}>
               <View style={styles.hostAvatar}>
-                <MaterialIcons name="eco" size={20} color="#0f766e" />
+                {organizer?.avatarUrl ? (
+                  <Image
+                    source={{ uri: organizer.avatarUrl }}
+                    style={styles.hostAvatarImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <MaterialIcons name="eco" size={20} color="#0f766e" />
+                )}
               </View>
-              <ThemedText style={styles.hostText} numberOfLines={1}>
-                Hosted by <ThemedText type="defaultSemiBold">{hostLabel}</ThemedText>
-              </ThemedText>
-            </View>
+              <View style={styles.hostTextWrap}>
+                <ThemedText style={styles.hostLabel}>Organizer</ThemedText>
+                <ThemedText type="defaultSemiBold" style={styles.hostName} numberOfLines={1}>
+                  {hostLabel}
+                </ThemedText>
+              </View>
+              {canOpenOrganizer ? (
+                <MaterialIcons name="chevron-right" size={22} color="#94a3b8" />
+              ) : null}
+            </Pressable>
 
             {matchScore != null && matchExplanation ? (
               <View style={styles.matchBox}>
@@ -344,8 +443,24 @@ export default function VolunteerActivityDetailScreen() {
               </View>
             ) : null}
 
+            {timeline.length > 0 ? (
+              <>
+                <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+                  Schedule
+                </ThemedText>
+                <ActivityTimelineList
+                  entries={timeline}
+                  multiDay={
+                    new Date(activity.start_time).toDateString() !==
+                    new Date(activity.end_time).toDateString()
+                  }
+                  accentColor={PRIMARY}
+                />
+              </>
+            ) : null}
+
             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-              About the event
+              About the activity
             </ThemedText>
             <ThemedText style={styles.description}>{activity.description || 'No description provided.'}</ThemedText>
 
@@ -396,12 +511,28 @@ export default function VolunteerActivityDetailScreen() {
             </>
           ) : (
             <>
+              {priorParticipation && !hasActiveRegistration ? (
+                <View style={styles.priorStatusHint}>
+                  <MaterialIcons name="history" size={16} color="#64748b" />
+                  <ThemedText style={styles.priorStatusHintText}>
+                    Previous registration: {formatParticipationStatus(priorParticipation.status)}
+                  </ThemedText>
+                </View>
+              ) : null}
               {registerBlockedByOtherApproval ? (
                 <View style={styles.commitmentHint}>
                   <MaterialIcons name="info-outline" size={18} color="#b45309" />
                   <ThemedText style={styles.commitmentHintText}>
                     You already have an approved registration for another activity. Cancel it first to
                     join this one.
+                  </ThemedText>
+                </View>
+              ) : registerBlockedByConflict && timeConflict ? (
+                <View style={styles.conflictHint}>
+                  <MaterialIcons name="schedule" size={18} color="#7c3aed" />
+                  <ThemedText style={styles.conflictHintText}>
+                    Schedule conflict with &quot;{timeConflict.conflicting.activityName}&quot;. Cancel
+                    that registration first to join this one.
                   </ThemedText>
                 </View>
               ) : null}
@@ -419,7 +550,9 @@ export default function VolunteerActivityDetailScreen() {
                         ? 'Volunteer sign-in required'
                         : registerBlockedByOtherApproval
                           ? 'Already committed elsewhere'
-                          : 'Register now'}
+                          : registerBlockedByConflict
+                            ? 'Schedule conflict'
+                            : 'Register now'}
                   </ThemedText>
                 )}
               </Pressable>
@@ -530,9 +663,18 @@ const styles = StyleSheet.create({
   hostRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     marginTop: 4,
     marginBottom: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  hostRowPressed: {
+    opacity: 0.85,
   },
   hostAvatar: {
     width: 40,
@@ -541,11 +683,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#d1fae5',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  hostText: {
+  hostAvatarImage: {
+    width: 40,
+    height: 40,
+  },
+  hostTextWrap: {
     flex: 1,
-    fontSize: 15,
-    color: '#334155',
+  },
+  hostLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  hostName: {
+    fontSize: 16,
+    color: '#0f172a',
+    marginTop: 2,
   },
   matchBox: {
     backgroundColor: MATCH_BG,
@@ -664,6 +820,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: '#92400e',
+  },
+  priorStatusHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  priorStatusHintText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#64748b',
+  },
+  conflictHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#f5f3ff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+  },
+  conflictHintText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5b21b6',
   },
   cancelBtn: {
     borderWidth: 1.5,

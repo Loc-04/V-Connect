@@ -15,13 +15,18 @@ import {
 } from 'react-native';
 
 import {
+  ActivityTimelineEditor,
   createActivity,
+  createActivityTimelineItem,
   updateActivityCoverImageUrl,
   fetchSkillOptions,
   fetchProvinceOptions,
   fetchWardOptions,
+  sortTimelineEntries,
+  validateActivityTimeline,
   type ActivityPayload,
   type ActivityStatus,
+  type ActivityTimelineEntry,
   type SkillOption,
   type ProvinceOption,
   type WardOption,
@@ -59,6 +64,7 @@ export default function CreateActivityScreen() {
   const [status, setStatus] = useState<ActivityStatus>('draft');
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [timelineEntries, setTimelineEntries] = useState<ActivityTimelineEntry[]>([]);
 
   const [skillOptions, setSkillOptions] = useState<SkillOption[]>([]);
   const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>([]);
@@ -143,8 +149,13 @@ export default function CreateActivityScreen() {
     const cap = Number(capacity);
     if (!Number.isInteger(cap) || cap <= 0) return 'Capacity must be a positive integer.';
 
+    if (timelineEntries.length > 0) {
+      const tlError = validateActivityTimeline(timelineEntries, startDateTime!, endDateTime!);
+      if (tlError) return tlError;
+    }
+
     return null;
-  }, [title, location, startDateTime, endDateTime, capacity]);
+  }, [title, location, startDateTime, endDateTime, capacity, timelineEntries]);
 
   const handleSubmit = useCallback(async () => {
     const error = validate();
@@ -167,8 +178,24 @@ export default function CreateActivityScreen() {
     };
 
     setSubmitting(true);
+    let timelineSyncFailed = false;
     try {
       const activity = await createActivity(payload);
+
+      if (timelineEntries.length > 0) {
+        const ordered = sortTimelineEntries(timelineEntries);
+        for (const entry of ordered) {
+          try {
+            await createActivityTimelineItem(activity.id, {
+              title: entry.title.trim(),
+              description: entry.description ?? '',
+              timelineChoice: entry.at,
+            });
+          } catch {
+            timelineSyncFailed = true;
+          }
+        }
+      }
 
       if (pendingCoverUri) {
         try {
@@ -182,15 +209,23 @@ export default function CreateActivityScreen() {
         }
       }
 
-      Alert.alert('Success', 'Activity created successfully.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      if (timelineSyncFailed) {
+        Alert.alert(
+          'Timeline sync incomplete',
+          'Activity was created, but one or more timeline entries could not be saved. You can add them again from the activity edit screen.',
+          [{ text: 'OK', onPress: () => router.back() }],
+        );
+      } else {
+        Alert.alert('Success', 'Activity created successfully.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create activity.');
     } finally {
       setSubmitting(false);
     }
-  }, [validate, title, description, location, startDateTime, endDateTime, capacity, selectedSkills, status, provinceCode, wardCode, pendingCoverUri]);
+  }, [validate, title, description, location, startDateTime, endDateTime, capacity, selectedSkills, status, provinceCode, wardCode, pendingCoverUri, timelineEntries]);
 
   const selectedProvinceName = provinceOptions.find((p) => p.code === provinceCode)?.name;
   const selectedWardName = wardOptions.find((w) => w.code === wardCode)?.name;
@@ -374,6 +409,14 @@ export default function CreateActivityScreen() {
             onChange={handlePickerChange(activePicker)}
           />
         )}
+
+        <FieldLabel label="Timeline" />
+        <ActivityTimelineEditor
+          entries={timelineEntries}
+          onChange={setTimelineEntries}
+          activityStart={startDateTime}
+          activityEnd={endDateTime}
+        />
 
         <FieldLabel label="Capacity" required />
         <TextInput

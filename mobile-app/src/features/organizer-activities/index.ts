@@ -7,13 +7,14 @@ export type {
 
 export {
   listActivities,
+  searchActivities,
   getActivity,
   createActivity,
   updateActivity,
   deleteActivity,
 } from './services/activity-service';
 
-export type { ListActivitiesOptions } from './services/activity-service';
+export type { ListActivitiesOptions, SearchActivitiesOptions } from './services/activity-service';
 
 export {
   fetchSkillOptions,
@@ -28,3 +29,29 @@ export type {
 } from './services/activity-options-service';
 
 export { updateActivityCoverImageUrl } from './services/activity-cover-service';
+
+export {
+  listActivityTimeline,
+  createActivityTimelineItem,
+  updateActivityTimelineItem,
+  deleteActivityTimelineItem,
+} from './services/activity-timeline-service';
+
+export type {
+  TimelineMilestoneRow,
+  TimelineCreatePayload,
+  TimelineUpdatePayload,
+} from './services/activity-timeline-service';
+
+export {
+  createTimelineEntryId,
+  mapServerRowToEntry,
+  mapServerRowsToEntries,
+  sortTimelineEntries,
+  validateActivityTimeline,
+} from './activity-timeline';
+
+export type { ActivityTimelineEntry } from './activity-timeline';
+
+export { ActivityTimelineEditor } from './components/ActivityTimelineEditor';
+export { ActivityTimelineList } from './components/ActivityTimelineList';

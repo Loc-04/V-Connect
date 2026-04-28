@@ -64,6 +64,28 @@ export async function fetchMyParticipationForActivity(activityId: string): Promi
   return active ?? null;
 }
 
+export interface ParticipationStatusForActivity {
+  /** Active participation (assigned/pending/approved/checked_in), or null if none. */
+  active: ParticipationRow | null;
+  /** Most recent non-active row (rejected/cancelled) when no active exists, for prior-status display. */
+  prior: ParticipationRow | null;
+}
+
+/**
+ * Single-call replacement for fetchMyParticipationForActivity that also surfaces
+ * a rejected/cancelled prior registration so the UI can show contextual hints.
+ */
+export async function fetchMyParticipationStatusForActivity(
+  activityId: string,
+): Promise<ParticipationStatusForActivity> {
+  const params = new URLSearchParams({ activityId, limit: '10' });
+  const res = await apiRequest<ParticipationsResponse>(`/participations?${params.toString()}`);
+  const list = res.participations ?? [];
+  const active = list.find((p) => ACTIVE_STATUSES.has(String(p.status ?? '').toLowerCase())) ?? null;
+  const prior = active === null ? (list[0] ?? null) : null;
+  return { active, prior };
+}
+
 export function isActiveParticipationStatus(status: string | undefined): boolean {
   return ACTIVE_STATUSES.has(String(status ?? '').toLowerCase());
 }

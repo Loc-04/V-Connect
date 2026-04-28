@@ -329,25 +329,34 @@ export async function getRecentParticipations(
   });
 }
 
+interface PublicUserProfileRow {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
+  role: string;
+}
+
 export async function getOrganizerProfile(userId: string): Promise<OrganizerProfileView | null> {
-  const result = await supabase
-    .from('users')
-    .select('id, full_name, avatar_url, role')
-    .eq('id', userId)
-    .maybeSingle<Pick<UserRow, 'id' | 'full_name' | 'avatar_url' | 'role'>>();
+  // Use the security-definer RPC so this works regardless of the
+  // `users_select_own` RLS policy on public.users (see
+  // mobile-app/scripts/organizer-public-profile-rpc.sql).
+  const result = await supabase.rpc('get_user_public_profile', { p_user_id: userId });
 
   if (result.error) {
     throw new Error(result.error.message);
   }
-  if (!result.data) {
+
+  const rows = (result.data ?? []) as PublicUserProfileRow[];
+  const row = rows[0];
+  if (!row) {
     return null;
   }
 
   return {
-    userId: result.data.id,
-    fullName: result.data.full_name,
-    avatarUrl: result.data.avatar_url,
-    role: toRole(result.data.role),
+    userId: row.id,
+    fullName: row.full_name,
+    avatarUrl: row.avatar_url,
+    role: toRole(row.role),
   };
 }
 
@@ -493,11 +502,7 @@ export async function getOrganizerRecommendedVolunteers(
   }
 
   const [usersResult, profilesResult] = await Promise.all([
-    supabase
-      .from('users')
-      .select('id, full_name, avatar_url')
-      .in('id', volunteerIds)
-      .returns<OrganizerVolunteerUserRow[]>(),
+    supabase.rpc('get_users_public_profiles', { p_user_ids: volunteerIds }),
     supabase
       .from('volunteer_profiles')
       .select('user_id, skills, available_choices')
@@ -512,9 +517,14 @@ export async function getOrganizerRecommendedVolunteers(
     throw new Error(profilesResult.error.message);
   }
 
+  const usersData = (usersResult.data ?? []) as PublicUserProfileRow[];
   const userMap = new Map<string, OrganizerVolunteerUserRow>();
-  for (const user of usersResult.data ?? []) {
-    userMap.set(user.id, user);
+  for (const user of usersData) {
+    userMap.set(user.id, {
+      id: user.id,
+      full_name: user.full_name,
+      avatar_url: user.avatar_url,
+    });
   }
 
   const profileMap = new Map<string, VolunteerProfileLiteRow>();
