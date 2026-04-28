@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { router } from 'expo-router';
 
@@ -160,9 +161,13 @@ export default function ProfileScreen() {
 
   if (authStatus === 'loading') {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Volunteer Profile</ThemedText>
-        <ThemedText style={styles.statusText}>Loading session...</ThemedText>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Volunteer Profile</ThemedText>
+            <ThemedText style={styles.statusText}>Loading session...</ThemedText>
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
@@ -179,56 +184,69 @@ export default function ProfileScreen() {
 
   if (state === 'loading') {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Volunteer Profile</ThemedText>
-        <ThemedText style={styles.statusText}>Loading your profile...</ThemedText>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Volunteer Profile</ThemedText>
+            <ThemedText style={styles.statusText}>Loading your profile...</ThemedText>
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   if (state === 'error') {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Volunteer Profile</ThemedText>
-        <ThemedText style={styles.errorText}>{errorMessage ?? 'Unable to load profile.'}</ThemedText>
-        <Pressable style={styles.retryButton} onPress={() => void loadProfileData()}>
-          <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
-          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
-          <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
-        </Pressable>
-        {renderSignOutButton()}
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Volunteer Profile</ThemedText>
+            <ThemedText style={styles.errorText}>{errorMessage ?? 'Unable to load profile.'}</ThemedText>
+            <Pressable style={styles.retryButton} onPress={() => void loadProfileData()}>
+              <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
+              style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+              <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
+            </Pressable>
+            {renderSignOutButton()}
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   if (state === 'empty' || !profile || !stats) {
     return (
-      <ThemedView style={styles.centeredContainer}>
-        <ThemedText type="title">Volunteer Profile</ThemedText>
-        <ThemedText style={styles.statusText}>
-          We could not find your volunteer profile yet. Complete onboarding or contact support.
-        </ThemedText>
-        <Pressable style={styles.retryButton} onPress={() => void loadProfileData()}>
-          <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
-          style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
-          <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
-        </Pressable>
-        {renderSignOutButton()}
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeTop} edges={['top']}>
+          <View style={styles.centeredContainer}>
+            <ThemedText type="title">Volunteer Profile</ThemedText>
+            <ThemedText style={styles.statusText}>
+              We could not find your volunteer profile yet. Complete onboarding or contact support.
+            </ThemedText>
+            <Pressable style={styles.retryButton} onPress={() => void loadProfileData()}>
+              <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push(ROUTES.VOLUNTEER.AVAILABILITY)}
+              style={({ pressed }) => [styles.availabilityNavButton, pressed && styles.availabilityNavButtonPressed]}>
+              <ThemedText style={styles.availabilityNavButtonText}>Manage Availability</ThemedText>
+            </Pressable>
+            {renderSignOutButton()}
+          </View>
+        </SafeAreaView>
       </ThemedView>
     );
   }
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={styles.safeTop} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <ThemedText type="title" style={styles.pageTitle}>
           Volunteer Profile
         </ThemedText>
@@ -384,13 +402,17 @@ export default function ProfileScreen() {
         )}
 
         {renderSignOutButton()}
-      </ScrollView>
+        </ScrollView>
+      </SafeAreaView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  safeTop: {
     flex: 1,
   },
   centeredContainer: {

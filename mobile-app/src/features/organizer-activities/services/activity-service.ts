@@ -21,6 +21,18 @@ export interface ListActivitiesOptions {
   limit?: number;
 }
 
+export interface SearchActivitiesOptions {
+  keyword?: string;
+  location?: string;
+  skills?: string[];
+  date?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: ActivityStatus | 'all';
+  mine?: boolean;
+  limit?: number;
+}
+
 function buildQuery(options: ListActivitiesOptions): string {
   const params = new URLSearchParams();
   if (options.mine !== undefined) params.set('mine', String(options.mine));
@@ -31,8 +43,32 @@ function buildQuery(options: ListActivitiesOptions): string {
   return qs ? `?${qs}` : '';
 }
 
+function buildSearchQuery(options: SearchActivitiesOptions): string {
+  const params = new URLSearchParams();
+  if (options.keyword) params.set('keyword', options.keyword);
+  if (options.location) params.set('location', options.location);
+  if (options.skills && options.skills.length > 0) {
+    params.set('skills', options.skills.join(','));
+  }
+  if (options.date) params.set('date', options.date);
+  if (options.dateFrom) params.set('dateFrom', options.dateFrom);
+  if (options.dateTo) params.set('dateTo', options.dateTo);
+  if (options.status) params.set('status', options.status);
+  if (options.mine !== undefined) params.set('mine', String(options.mine));
+  if (options.limit) params.set('limit', String(options.limit));
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export async function listActivities(options: ListActivitiesOptions = {}): Promise<ActivityRecord[]> {
   const res = await apiRequest<ActivitiesResponse>(`/activities${buildQuery(options)}`);
+  return res.activities;
+}
+
+export async function searchActivities(
+  options: SearchActivitiesOptions = {},
+): Promise<ActivityRecord[]> {
+  const res = await apiRequest<ActivitiesResponse>(`/activities/search${buildSearchQuery(options)}`);
   return res.activities;
 }
 

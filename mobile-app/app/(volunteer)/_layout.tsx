@@ -11,6 +11,7 @@ export default function VolunteerLayout() {
       />
       <Stack.Screen name="activity/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="activity/check-in" options={{ headerShown: false }} />
+      <Stack.Screen name="organizer/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

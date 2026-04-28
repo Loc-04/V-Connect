@@ -7,13 +7,14 @@ export type {
 
 export {
   listActivities,
+  searchActivities,
   getActivity,
   createActivity,
   updateActivity,
   deleteActivity,
 } from './services/activity-service';
 
-export type { ListActivitiesOptions } from './services/activity-service';
+export type { ListActivitiesOptions, SearchActivitiesOptions } from './services/activity-service';
 
 export {
   fetchSkillOptions,

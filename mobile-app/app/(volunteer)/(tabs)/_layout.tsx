@@ -6,7 +6,6 @@ import { Colors } from '@/src/shared/constants/theme';
 import { useColorScheme } from '@/src/shared/hooks/use-color-scheme';
 
 const homeIcon = require('@/assets/home_icon.png');
-const exploreIcon = require('@/assets/Explore_Icon.png');
 const aiMatchIcon = require('@/assets/AI_icon.png');
 const activityIcon = require('@/assets/activity_icon.png');
 const profileIcon = require('@/assets/pro5_icon.png');
@@ -40,13 +39,6 @@ export default function VolunteerTabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color }) => renderTabIcon(homeIcon, color),
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => renderTabIcon(exploreIcon, color),
         }}
       />
       <Tabs.Screen
