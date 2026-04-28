@@ -356,7 +356,8 @@ export function OrganizerRecommendationsPage() {
       const response = await createRecommendationAssignment(
         selectedActivityId,
         selectedVolunteer.userId,
-        session.access_token
+        session.access_token,
+        selectedVolunteer.recommendation_item_id ?? null
       );
       setNotice(response.message ?? `Assigned ${selectedVolunteer.fullName} successfully.`);
       await refreshSelectedActivityData();

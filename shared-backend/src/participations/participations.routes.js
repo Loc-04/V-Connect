@@ -13,6 +13,7 @@ import {
 } from './participations.service.js';
 import { recommend as aiRecommend } from '../ai/ai.router.js';
 import { createNotificationRecord } from '../notifications/notifications.service.js';
+import { tryLogRecommendationInteraction } from '../recommendations/recommendation.logging.js';
 import {
   generateCheckInCode,
   isSameCalendarDate,
@@ -21,6 +22,11 @@ import {
 } from './checkin-code.js';
 
 const router = Router();
+
+function asUuidOrNull(value) {
+  const raw = String(value ?? '').trim();
+  return isUuid(raw) ? raw : null;
+}
 
 async function enrichParticipation(participation) {
   if (!participation) {
@@ -168,7 +174,7 @@ async function computeRegistrationMatchRatio(activity, volunteerId) {
   }
 }
 
-async function createRegistration({ activityId, volunteerId, requesterRole }) {
+async function createRegistration({ activityId, volunteerId, requesterRole, recommendationItemId = null }) {
   const activity = await getActivityById(activityId);
   if (!activity) {
     const error = new Error('Activity not found.');
@@ -263,12 +269,16 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
 
   const matchRatio = await computeRegistrationMatchRatio(activity, volunteerId);
   const now = new Date().toISOString();
+  const normalizedRecommendationItemId = asUuidOrNull(recommendationItemId);
+  const registrationSource = normalizedRecommendationItemId ? 'recommendation' : 'direct';
 
   let data;
   if (existingRegistration) {
     const updatePayload = {
       status: 'pending',
       ai_match_score: matchRatio,
+      recommendation_item_id: normalizedRecommendationItemId,
+      registration_source: registrationSource,
       checked_in_at: null,
       updated_at: now,
     };
@@ -293,6 +303,8 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
         volunteer_id: volunteerId,
         status: 'pending',
         ai_match_score: matchRatio,
+        recommendation_item_id: normalizedRecommendationItemId,
+        registration_source: registrationSource,
         updated_at: now,
       })
       .select(participationColumns)
@@ -332,6 +344,22 @@ async function createRegistration({ activityId, volunteerId, requesterRole }) {
       },
     });
   }
+
+  await tryLogRecommendationInteraction(
+    {
+      event_type: 'register',
+      serving_item_id: normalizedRecommendationItemId,
+      actor_user_id: volunteerId,
+      activity_id: activityId,
+      volunteer_id: volunteerId,
+      participation_id: data?.id ?? existingRegistration?.id ?? null,
+      source_surface: 'web',
+      metadata: {
+        registration_source: registrationSource,
+      },
+    },
+    'participations.register'
+  );
 
   return {
     registration: await enrichParticipation(data),
@@ -430,6 +458,19 @@ async function cancelRegistration({ activityId, volunteerId }) {
     });
   }
 
+  await tryLogRecommendationInteraction(
+    {
+      event_type: 'cancelled',
+      serving_item_id: data?.recommendation_item_id ?? existingRegistration?.recommendation_item_id ?? null,
+      actor_user_id: volunteerId,
+      activity_id: activityId,
+      volunteer_id: volunteerId,
+      participation_id: data?.id ?? existingRegistration?.id ?? null,
+      source_surface: 'web',
+    },
+    'participations.cancel'
+  );
+
   return {
     registration: await enrichParticipation(data),
     message: 'Registration cancelled successfully.',
@@ -523,13 +564,26 @@ async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
     });
   }
 
+  await tryLogRecommendationInteraction(
+    {
+      event_type: nextStatus,
+      serving_item_id: data?.recommendation_item_id ?? participation?.recommendation_item_id ?? null,
+      actor_user_id: auth.user.id,
+      activity_id: data?.activity_id ?? participation.activity_id,
+      volunteer_id: data?.volunteer_id ?? participation.volunteer_id,
+      participation_id: data?.id ?? participation.id,
+      source_surface: 'web',
+    },
+    'participations.status'
+  );
+
   return {
     registration: await enrichParticipation(data),
     message: `Registration ${nextStatus} successfully.`,
   };
 }
 
-async function performCheckIn({ participation, activity }) {
+async function performCheckIn({ participation, activity, actorUserId = null }) {
   if (!isSameCalendarDate(activity?.start_time)) {
     throw createCheckInDateLockedError(activity);
   }
@@ -624,6 +678,19 @@ async function performCheckIn({ participation, activity }) {
     });
   }
 
+  await tryLogRecommendationInteraction(
+    {
+      event_type: 'checked_in',
+      serving_item_id: data?.recommendation_item_id ?? participation?.recommendation_item_id ?? null,
+      actor_user_id: actorUserId,
+      activity_id: data?.activity_id ?? participation.activity_id,
+      volunteer_id: data?.volunteer_id ?? participation.volunteer_id,
+      participation_id: data?.id ?? participation.id,
+      source_surface: 'web',
+    },
+    'participations.checkin'
+  );
+
   return { participation: updatedParticipation ?? data };
 }
 
@@ -703,6 +770,7 @@ router.post('/activities/:id/register', requireAuth, async (req, res) => {
       activityId,
       volunteerId: req.auth.user.id,
       requesterRole: role,
+      recommendationItemId: req.body?.recommendation_item_id,
     });
     res.status(result.created ? 201 : 200).json(result);
   } catch (error) {
@@ -942,6 +1010,7 @@ router.post('/participations', requireAuth, async (req, res) => {
       activityId: payload.activity_id,
       volunteerId: req.auth.user.id,
       requesterRole: role,
+      recommendationItemId: req.body?.recommendation_item_id,
     });
 
     res.status(result.created ? 201 : 200).json({
@@ -988,7 +1057,7 @@ router.post('/participations/:id/check-in', requireAuth, async (req, res) => {
       return;
     }
 
-    const result = await performCheckIn({ participation, activity });
+    const result = await performCheckIn({ participation, activity, actorUserId: req.auth.user.id });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to check in participant.';
@@ -1048,7 +1117,7 @@ router.post('/activities/:id/check-in-by-code', requireAuth, async (req, res) =>
       return;
     }
 
-    const result = await performCheckIn({ participation, activity });
+    const result = await performCheckIn({ participation, activity, actorUserId: req.auth.user.id });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to check in by code.';

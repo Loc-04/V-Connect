@@ -18,6 +18,7 @@ export interface RecommendationFeatureContribution {
 
 export interface RecommendedActivityRecord {
   activityId: string;
+  recommendation_item_id?: string | null;
   title: string;
   organizerId: string;
   organizerName: string;
@@ -36,10 +37,15 @@ export interface RecommendedActivityRecord {
   score_breakdown?: RecommendationScoreBreakdown | null;
   feature_contributions?: RecommendationFeatureContribution[];
   model_version?: string | null;
+  provider?: string | null;
+  model_kind?: string | null;
+  feature_snapshot?: Record<string, unknown> | null;
+  prediction_snapshot?: Record<string, unknown> | null;
 }
 
 export interface RecommendedVolunteerRecord {
   userId: string;
+  recommendation_item_id?: string | null;
   fullName: string;
   avatarUrl: string | null;
   matchScore: number;
@@ -55,6 +61,10 @@ export interface RecommendedVolunteerRecord {
   score_breakdown?: RecommendationScoreBreakdown | null;
   feature_contributions?: RecommendationFeatureContribution[];
   model_version?: string | null;
+  provider?: string | null;
+  model_kind?: string | null;
+  feature_snapshot?: Record<string, unknown> | null;
+  prediction_snapshot?: Record<string, unknown> | null;
 }
 
 export interface UserRecommendationResponse {

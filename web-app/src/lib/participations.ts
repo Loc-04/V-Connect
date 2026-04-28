@@ -109,11 +109,17 @@ export async function listParticipations(
 
 export async function createParticipation(
   activityId: string,
-  accessToken: string
+  accessToken: string,
+  options: {
+    recommendationItemId?: string | null;
+  } = {}
 ): Promise<{ participation: ParticipationRecord; created: boolean; message?: string }> {
   const response = await apiRequest<RegistrationResponse>(`/activities/${activityId}/register`, {
     method: 'POST',
     accessToken,
+    body: {
+      recommendation_item_id: options.recommendationItemId ?? null,
+    },
   });
 
   const participation = response.registration ?? response.participation;

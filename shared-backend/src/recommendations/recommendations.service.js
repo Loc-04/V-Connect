@@ -8,8 +8,10 @@ import {
   computeAvailabilityMatch,
   getAvailableChoices,
 } from '../common/utils/availability.js';
+import { scoreWithMlModel } from './recommendation.ml.js';
 
 const RECOMMENDATION_MODEL_VERSION = 'heuristic-v2-lite-2026-04';
+const RECOMMENDATION_PROVIDER = 'internal';
 const SKILL_SCORE_MAX = 50;
 const INTEREST_SCORE_MAX = 20;
 const AVAILABILITY_SCORE_MAX = 15;
@@ -122,6 +124,18 @@ function toStructuredRecommendationFields(score) {
         : null,
     feature_contributions: Array.isArray(score?.feature_contributions) ? score.feature_contributions : [],
     model_version: String(score?.model_version ?? '').trim() || RECOMMENDATION_MODEL_VERSION,
+    provider: String(score?.provider ?? '').trim() || RECOMMENDATION_PROVIDER,
+    model_kind: String(score?.model_kind ?? '').trim() || 'heuristic',
+    feature_snapshot:
+      score?.feature_snapshot && typeof score.feature_snapshot === 'object' && !Array.isArray(score.feature_snapshot)
+        ? score.feature_snapshot
+        : null,
+    prediction_snapshot:
+      score?.prediction_snapshot &&
+      typeof score.prediction_snapshot === 'object' &&
+      !Array.isArray(score.prediction_snapshot)
+        ? score.prediction_snapshot
+        : null,
   };
 }
 
@@ -241,7 +255,7 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     ),
   ];
 
-  return {
+  const heuristicResult = {
     matchScore,
     matchRatio: Number((matchScore / 100).toFixed(2)),
     reasons: uniqueReasons(reasons).slice(0, 4),
@@ -249,11 +263,26 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     score_breakdown: scoreBreakdown,
     feature_contributions: featureContributions,
     model_version: RECOMMENDATION_MODEL_VERSION,
+    provider: RECOMMENDATION_PROVIDER,
+    model_kind: 'heuristic',
     explanation: buildGroundedExplanation({
       contributions: featureContributions,
       fallbackText: 'Calculated from volunteer skills, interests, availability, and prior activity history.',
     }),
+    feature_snapshot: {
+      skill_score: scoreBreakdown.skill_score,
+      interest_score: scoreBreakdown.interest_score,
+      availability_score: scoreBreakdown.availability_score,
+      experience_score: scoreBreakdown.experience_score,
+      history_score: scoreBreakdown.history_score,
+    },
+    prediction_snapshot: {
+      strategy: 'heuristic_scoring',
+      final_score: matchScore,
+    },
   };
+
+  return scoreWithMlModel(heuristicResult);
 }
 
 async function getOrganizerNamesByIds(organizerIds) {

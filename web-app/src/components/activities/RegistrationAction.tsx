@@ -10,6 +10,7 @@ type RegistrationActionMode = 'full' | 'badge';
 
 interface RegistrationActionProps {
   activityId: string;
+  recommendationItemId?: string | null;
   currentStatus?: string | null;
   accessToken?: string | null;
   participationId?: string | null;
@@ -69,6 +70,7 @@ function getStatusLabel(status: string) {
 
 export function RegistrationAction({
   activityId,
+  recommendationItemId = null,
   currentStatus,
   accessToken,
   participationId = null,
@@ -115,7 +117,9 @@ export function RegistrationAction({
 
     setRegistering(true);
     try {
-      const result = await createParticipation(activityId, accessToken);
+      const result = await createParticipation(activityId, accessToken, {
+        recommendationItemId,
+      });
       onRegistered?.(result.participation);
       notify('success', result.message ?? (result.created ? 'Registration submitted successfully.' : 'Participation already exists.'));
     } catch (error) {

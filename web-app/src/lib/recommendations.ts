@@ -15,6 +15,14 @@ interface RecommendationAssignmentResponse {
   message?: string;
 }
 
+type RecommendationInteractionEventType =
+  | 'detail_open'
+  | 'register'
+  | 'approved'
+  | 'rejected'
+  | 'checked_in'
+  | 'cancelled';
+
 function normalizeRecommendedActivityRecord(record: RecommendedActivityRecord): RecommendedActivityRecord {
   return {
     ...record,
@@ -76,13 +84,17 @@ export async function getRecommendationsForActivity(
 export async function createRecommendationAssignment(
   activityId: string,
   volunteerId: string,
-  accessToken: string
+  accessToken: string,
+  recommendationItemId?: string | null
 ): Promise<RecommendationAssignmentResponse> {
   return normalizeAssignmentResponse(
     apiRequest<RecommendationAssignmentResponse>(`/recommendations/activity/${activityId}/assignments`, {
       method: 'POST',
       accessToken,
-      body: { volunteerId },
+      body: {
+        volunteerId,
+        recommendation_item_id: recommendationItemId ?? null,
+      },
     })
   );
 }
@@ -111,4 +123,31 @@ export async function deleteRecommendationAssignment(
       accessToken,
     })
   );
+}
+
+export async function logRecommendationInteraction(
+  params: {
+    eventType: RecommendationInteractionEventType;
+    servingItemId?: string | null;
+    activityId?: string | null;
+    volunteerId?: string | null;
+    participationId?: string | null;
+    sourceSurface?: string;
+    metadata?: Record<string, unknown> | null;
+  },
+  accessToken: string
+): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/recommendations/interactions`, {
+    method: 'POST',
+    accessToken,
+    body: {
+      event_type: params.eventType,
+      serving_item_id: params.servingItemId ?? null,
+      activity_id: params.activityId ?? null,
+      volunteer_id: params.volunteerId ?? null,
+      participation_id: params.participationId ?? null,
+      source_surface: params.sourceSurface ?? 'web',
+      metadata: params.metadata ?? null,
+    },
+  });
 }

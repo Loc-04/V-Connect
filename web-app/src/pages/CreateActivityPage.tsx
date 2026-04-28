@@ -835,6 +835,7 @@ export function CreateActivityPage() {
         startTime: startIso,
         endTime: endIso,
         capacity: capacityValue,
+        skillRequirements: requiredSkills.map((skill) => ({ skill, priority: 'normal' as const })),
         requiredSkills,
         status,
       };

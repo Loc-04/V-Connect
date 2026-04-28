@@ -62,6 +62,18 @@ function normalizeMatchResult(result) {
         }))
     : [];
   const modelVersion = String(result?.model_version ?? '').trim() || 'heuristic-v2-lite-2026-04';
+  const provider = String(result?.provider ?? '').trim() || 'internal';
+  const modelKind = String(result?.model_kind ?? '').trim() || 'heuristic';
+  const featureSnapshot =
+    result?.feature_snapshot && typeof result.feature_snapshot === 'object' && !Array.isArray(result.feature_snapshot)
+      ? result.feature_snapshot
+      : null;
+  const predictionSnapshot =
+    result?.prediction_snapshot &&
+    typeof result.prediction_snapshot === 'object' &&
+    !Array.isArray(result.prediction_snapshot)
+      ? result.prediction_snapshot
+      : null;
 
   return {
     matchScore: safeMatchScore,
@@ -71,6 +83,10 @@ function normalizeMatchResult(result) {
     score_breakdown: scoreBreakdown,
     feature_contributions: featureContributions,
     model_version: modelVersion,
+    provider,
+    model_kind: modelKind,
+    feature_snapshot: featureSnapshot,
+    prediction_snapshot: predictionSnapshot,
     explanation:
       explanation || 'Calculated from volunteer skills, interests, availability, and prior activity history.',
   };

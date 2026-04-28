@@ -25,6 +25,8 @@ export interface ParticipationRecord {
   volunteer_id?: string;
   status: ParticipationStatus;
   ai_match_score?: number | null;
+  recommendation_item_id?: string | null;
+  registration_source?: 'direct' | 'recommendation' | 'organizer_assignment' | string | null;
   checked_in_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
