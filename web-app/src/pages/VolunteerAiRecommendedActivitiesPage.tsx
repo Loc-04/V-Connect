@@ -341,7 +341,6 @@ export function VolunteerAiRecommendedActivitiesPage() {
           Browse all opportunities
         </Button>
       }
-      pageEyebrow="Sprint 3 Matching"
       pageSubtitle={
         hasStructuredAiData
           ? 'Recommendations are ranked from structured profile/activity signals with score breakdowns.'

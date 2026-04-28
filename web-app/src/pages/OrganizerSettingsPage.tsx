@@ -1,6 +1,6 @@
-import { Bell, Building2, Info, KeyRound, LogOut, Mail, Phone, Save, ShieldCheck, UserRound } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import { Bell, Building2, Camera, Info, KeyRound, LogOut, Mail, Phone, Save, ShieldCheck, UserRound } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
@@ -13,28 +13,109 @@ import './OrganizerSettingsPage.css';
 interface OrganizerSettingsForm {
   fullName: string;
   phone: string;
-  avatarUrl: string;
 }
+
+const acceptedAvatarMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const maxAvatarFileSizeBytes = 5 * 1024 * 1024;
+const avatarTargetSize = 512;
 
 function normalizeField(value: string | null | undefined) {
   return String(value ?? '').trim();
-}
-
-function isHttpUrl(value: string) {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 function buildInitialFormState(profile: { full_name: string | null; phone: string | null; avatar_url: string | null } | null): OrganizerSettingsForm {
   return {
     fullName: normalizeField(profile?.full_name),
     phone: normalizeField(profile?.phone),
-    avatarUrl: normalizeField(profile?.avatar_url),
   };
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Failed to read selected image.'));
+    };
+    reader.onerror = () => reject(new Error('Failed to read selected image.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to decode selected image.'));
+    image.src = source;
+  });
+}
+
+function estimateDataUrlSizeBytes(value: string) {
+  const base64Payload = value.split(',')[1] ?? '';
+  const paddingBytes = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
+  return Math.floor((base64Payload.length * 3) / 4) - paddingBytes;
+}
+
+async function normalizeAvatarImage(file: File): Promise<string> {
+  const source = await readFileAsDataUrl(file);
+  const image = await loadImage(source);
+
+  const sourceWidth = Math.max(1, image.naturalWidth || image.width);
+  const sourceHeight = Math.max(1, image.naturalHeight || image.height);
+  const sourceAspect = sourceWidth / sourceHeight;
+
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+  let cropX = 0;
+  let cropY = 0;
+
+  if (sourceAspect > 1) {
+    cropWidth = sourceHeight;
+    cropX = Math.round((sourceWidth - cropWidth) / 2);
+  } else if (sourceAspect < 1) {
+    cropHeight = sourceWidth;
+    cropY = Math.round((sourceHeight - cropHeight) / 2);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = avatarTargetSize;
+  canvas.height = avatarTargetSize;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Image processing is not available in this browser.');
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    avatarTargetSize,
+    avatarTargetSize
+  );
+
+  const qualitySteps = [0.9, 0.82, 0.74, 0.66];
+  for (const quality of qualitySteps) {
+    const encoded = canvas.toDataURL('image/jpeg', quality);
+    if (estimateDataUrlSizeBytes(encoded) <= maxAvatarFileSizeBytes) {
+      return encoded;
+    }
+  }
+
+  const fallback = canvas.toDataURL('image/jpeg', 0.58);
+  if (estimateDataUrlSizeBytes(fallback) > maxAvatarFileSizeBytes) {
+    throw new Error('Avatar image is too large after processing. Please choose a smaller image.');
+  }
+  return fallback;
 }
 
 function SettingsField({
@@ -104,6 +185,9 @@ export function OrganizerSettingsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<OrganizerSettingsForm>(buildInitialFormState(profile));
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [avatarUploadDataUrl, setAvatarUploadDataUrl] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const accessToken = session?.access_token ?? '';
 
@@ -145,6 +229,7 @@ export function OrganizerSettingsPage() {
     const fullName = normalizeField(profile?.full_name);
     return fullName ? `${fullName} Workspace` : 'Not available yet';
   }, [profile?.full_name]);
+  const displayAvatarUrl = avatarPreviewUrl || normalizeField(profile?.avatar_url);
 
   const handleFieldChange = (field: keyof OrganizerSettingsForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -152,12 +237,47 @@ export function OrganizerSettingsPage() {
     setNotice(null);
   };
 
+  const handleAvatarUploadClick = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    setFormError(null);
+    setNotice(null);
+
+    if (!acceptedAvatarMimeTypes.has(file.type.toLowerCase())) {
+      setFormError('Please choose a PNG, JPG, WEBP, or GIF file for avatar.');
+      return;
+    }
+
+    if (file.size > maxAvatarFileSizeBytes) {
+      setFormError('Avatar image must be smaller than 5 MB.');
+      return;
+    }
+
+    void (async () => {
+      try {
+        const normalizedAvatar = await normalizeAvatarImage(file);
+        setAvatarPreviewUrl(normalizedAvatar);
+        setAvatarUploadDataUrl(normalizedAvatar);
+        setNotice('Avatar selected. Click Save changes to update your profile.');
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : 'Failed to process avatar image.');
+      }
+    })();
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const fullName = normalizeField(form.fullName);
     const phone = normalizeField(form.phone);
-    const avatarUrl = normalizeField(form.avatarUrl);
 
     if (!fullName) {
       setFormError('Full name is required.');
@@ -166,11 +286,6 @@ export function OrganizerSettingsPage() {
 
     if (!phone) {
       setFormError('Phone number is required.');
-      return;
-    }
-
-    if (avatarUrl && !isHttpUrl(avatarUrl)) {
-      setFormError('Avatar URL must use http or https.');
       return;
     }
 
@@ -184,15 +299,18 @@ export function OrganizerSettingsPage() {
     setNotice(null);
 
     try {
-      await patchProfileMe(
-        {
-          fullName,
-          phone,
-          avatarUrl: avatarUrl || null,
-        },
-        accessToken
-      );
+      const payload: { fullName: string; phone: string; avatarUrl?: string | null } = {
+        fullName,
+        phone,
+      };
+      if (avatarUploadDataUrl) {
+        payload.avatarUrl = avatarUploadDataUrl;
+      }
+
+      await patchProfileMe(payload, accessToken);
       await refreshProfile();
+      setAvatarUploadDataUrl(null);
+      setAvatarPreviewUrl(null);
       setNotice('Organizer profile updated successfully.');
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Failed to update organizer profile.');
@@ -203,6 +321,8 @@ export function OrganizerSettingsPage() {
 
   const handleReset = () => {
     setForm(buildInitialFormState(profile));
+    setAvatarUploadDataUrl(null);
+    setAvatarPreviewUrl(null);
     setFormError(null);
     setNotice(null);
   };
@@ -254,6 +374,14 @@ export function OrganizerSettingsPage() {
             title="Basic account profile"
           >
             <form className="org-settings-form" id="organizer-settings-form" onSubmit={handleSubmit}>
+              <input
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="org-settings-avatar-file-input"
+                onChange={handleAvatarFileChange}
+                ref={avatarInputRef}
+                type="file"
+              />
+
               <label className="org-settings-field">
                 <span>Full name</span>
                 <Input
@@ -276,17 +404,25 @@ export function OrganizerSettingsPage() {
                 />
               </label>
 
-              <label className="org-settings-field org-settings-field-span">
-                <span>Avatar URL</span>
-                <Input
-                  disabled={loading || saving}
-                  onChange={(event) => handleFieldChange('avatarUrl', event.target.value)}
-                  placeholder="https://example.com/avatar.png"
-                  type="url"
-                  value={form.avatarUrl}
-                />
-                <small>Optional. When provided, it must be a valid http/https URL.</small>
-              </label>
+              <div className="org-settings-field org-settings-field-span">
+                <span>Avatar</span>
+                <div className="org-settings-avatar-uploader">
+                  <div className="org-settings-avatar-preview">
+                    {displayAvatarUrl ? (
+                      <img alt={normalizeField(form.fullName) || 'Organizer avatar'} src={displayAvatarUrl} />
+                    ) : (
+                      <span>{(normalizeField(form.fullName) || 'O').charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="org-settings-avatar-uploader-actions">
+                    <Button disabled={loading || saving} onClick={handleAvatarUploadClick} type="button" variant="secondary">
+                      <Camera size={15} />
+                      <span>Upload avatar</span>
+                    </Button>
+                    {avatarUploadDataUrl ? <small>New avatar is ready to save.</small> : <small>PNG, JPG, WEBP, GIF up to 5MB.</small>}
+                  </div>
+                </div>
+              </div>
 
               <div className="org-settings-form-actions">
                 <Button disabled={loading || saving} onClick={handleReset} type="button" variant="secondary">

@@ -2,23 +2,18 @@ import {
   CheckCircle2,
   CircleDashed,
   ClipboardList,
-  Eye,
   FilterX,
-  MoreVertical,
-  Pencil,
   RefreshCw,
   Search,
   UserCheck,
   XCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
+import { AttendanceStatusBadge } from '../components/attendance';
 import { Button, Card, Input, Select, Table } from '../components/ui';
-import { checkInParticipationWithCode, listParticipations } from '../lib/participations';
-import { approveRegistration, rejectRegistration } from '../lib/registrations';
+import { listParticipations } from '../lib/participations';
 import type { ParticipationRecord } from '../types/participation';
 import './AdminParticipationsPage.css';
 
@@ -41,12 +36,6 @@ interface ParticipationViewModel {
   matchScore: number | null;
   hours: number | null;
   searchText: string;
-}
-
-interface NoticeState {
-  tone: CheckInResultTone;
-  title: string;
-  description?: string;
 }
 
 function normalizeStatus(value: string | null | undefined) {
@@ -121,14 +110,6 @@ function getActivityId(participation: ParticipationRecord) {
   return participation.activityId ?? participation.activity_id ?? null;
 }
 
-function canApproveOrReject(status: string) {
-  return status === 'pending';
-}
-
-function canCheckIn(status: string) {
-  return status === 'approved';
-}
-
 function buildViewModel(participation: ParticipationRecord): ParticipationViewModel {
   const id = getParticipationId(participation);
   const activityId = getActivityId(participation);
@@ -173,25 +154,18 @@ function buildViewModel(participation: ParticipationRecord): ParticipationViewMo
 }
 
 export function AdminParticipationsPage() {
-  const navigate = useNavigate();
   const { session } = useAuth();
   const accessToken = session?.access_token ?? null;
 
   const [participations, setParticipations] = useState<ParticipationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>('all');
   const [activityFilter, setActivityFilter] = useState('all');
   const [organizerFilter, setOrganizerFilter] = useState('all');
-  const [openMenuParticipationId, setOpenMenuParticipationId] = useState<string | null>(null);
-  const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedParticipation, setSelectedParticipation] = useState<ParticipationViewModel | null>(null);
-  const [checkInCode, setCheckInCode] = useState('');
 
   const loadData = useCallback(async () => {
     if (!accessToken) {
@@ -202,8 +176,6 @@ export function AdminParticipationsPage() {
 
     setLoading(true);
     setError(null);
-    setMessage(null);
-    setNotice(null);
 
     try {
       const rows = await listParticipations({
@@ -222,24 +194,6 @@ export function AdminParticipationsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    const handleWindowClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      if (target.closest('.row-action-wrap')) {
-        return;
-      }
-      setOpenMenuParticipationId(null);
-    };
-
-    window.addEventListener('click', handleWindowClick);
-    return () => {
-      window.removeEventListener('click', handleWindowClick);
-    };
-  }, []);
 
   const rows = useMemo(() => participations.map(buildViewModel), [participations]);
 
@@ -297,108 +251,6 @@ export function AdminParticipationsPage() {
     activityFilter !== 'all' ||
     organizerFilter !== 'all';
 
-  const syncUpdatedParticipation = (updated: ParticipationRecord) => {
-    const updatedId = getParticipationId(updated);
-    setParticipations((current) => current.map((item) => (getParticipationId(item) === updatedId ? updated : item)));
-    setSelectedParticipation((current) => {
-      if (!current || current.id !== updatedId) {
-        return current;
-      }
-      return buildViewModel(updated);
-    });
-  };
-
-  const handleApprove = async (row: ParticipationViewModel) => {
-    if (!accessToken) {
-      setError('No active session token.');
-      return;
-    }
-
-    setUpdatingId(row.id);
-    setError(null);
-    setMessage(null);
-    setNotice(null);
-
-    try {
-      const result = await approveRegistration(row.id, accessToken);
-      syncUpdatedParticipation(result.registration);
-      setMessage(result.message ?? 'Registration approved successfully.');
-      setOpenMenuParticipationId(null);
-    } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : 'Failed to approve registration.');
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleReject = async (row: ParticipationViewModel) => {
-    if (!accessToken) {
-      setError('No active session token.');
-      return;
-    }
-
-    setUpdatingId(row.id);
-    setError(null);
-    setMessage(null);
-    setNotice(null);
-
-    try {
-      const result = await rejectRegistration(row.id, accessToken);
-      syncUpdatedParticipation(result.registration);
-      setMessage(result.message ?? 'Registration rejected successfully.');
-      setOpenMenuParticipationId(null);
-    } catch (rejectError) {
-      setError(rejectError instanceof Error ? rejectError.message : 'Failed to reject registration.');
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleCheckIn = async (row: ParticipationViewModel) => {
-    if (!accessToken) {
-      setNotice({
-        tone: 'error',
-        title: 'Check-in failed',
-        description: 'No active session token.',
-      });
-      return;
-    }
-
-    const normalizedCode = checkInCode.trim();
-    if (!/^\d{5}$/.test(normalizedCode)) {
-      setNotice({
-        tone: 'error',
-        title: 'Check-in failed',
-        description: 'Check-in code must be exactly 5 digits.',
-      });
-      return;
-    }
-
-    setUpdatingId(row.id);
-    setError(null);
-    setMessage(null);
-    setNotice(null);
-
-    try {
-      const updated = await checkInParticipationWithCode(row.id, accessToken, normalizedCode);
-      syncUpdatedParticipation(updated);
-      setCheckInCode('');
-      setNotice({
-        tone: 'success',
-        title: 'Check-in successful',
-        description: `${row.volunteerName} was checked in for ${row.activityName}.`,
-      });
-    } catch (checkInError) {
-      setNotice({
-        tone: 'error',
-        title: 'Check-in failed',
-        description: checkInError instanceof Error ? checkInError.message : 'Failed to check in participant.',
-      });
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -409,9 +261,6 @@ export function AdminParticipationsPage() {
 
   const openDetail = (row: ParticipationViewModel) => {
     setSelectedParticipation(row);
-    setCheckInCode('');
-    setNotice(null);
-    setOpenMenuParticipationId(null);
   };
 
   const isBlockingError = Boolean(error && !loading && rows.length === 0);
@@ -426,7 +275,7 @@ export function AdminParticipationsPage() {
         </div>
 
         <div className="admin-participations-actions">
-          <Button disabled={loading || Boolean(updatingId)} onClick={() => void loadData()} type="button" variant="secondary">
+          <Button disabled={loading} onClick={() => void loadData()} type="button" variant="secondary">
             <RefreshCw size={16} />
             Refresh
           </Button>
@@ -572,8 +421,6 @@ export function AdminParticipationsPage() {
         ) : null}
 
         {!isBlockingError && error ? <p className="form-error">{error}</p> : null}
-        {!isBlockingError && message ? <p className="form-success">{message}</p> : null}
-        {!isBlockingError && notice ? <CheckInResultState description={notice.description} title={notice.title} tone={notice.tone} /> : null}
 
         {!isBlockingError && loading ? (
           <div className="admin-participations-state">
@@ -593,13 +440,13 @@ export function AdminParticipationsPage() {
           <Table className="admin-participations-table" wrapperClassName="admin-participations-table-wrap">
             <thead>
               <tr>
+                <th>No.</th>
                 <th>Volunteer</th>
                 <th>Activity</th>
                 <th>Organizer</th>
                 <th>Status</th>
-                <th>Registered</th>
                 <th>Check-in</th>
-                <th>Actions</th>
+                <th>Registered</th>
               </tr>
             </thead>
             <tbody>
@@ -618,8 +465,21 @@ export function AdminParticipationsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
-                  <tr key={row.id}>
+                filteredRows.map((row, rowIndex) => (
+                  <tr
+                    className="admin-participations-data-row"
+                    key={row.id}
+                    onClick={() => openDetail(row)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openDetail(row);
+                      }
+                    }}
+                  >
+                    <td>{rowIndex + 1}</td>
                     <td>
                       <div className="admin-participations-volunteer-cell">
                         {row.avatarUrl ? <img alt={row.volunteerName} src={row.avatarUrl} /> : <span>{getInitials(row.volunteerName) || 'V'}</span>}
@@ -639,7 +499,6 @@ export function AdminParticipationsPage() {
                     <td>
                       <AttendanceStatusBadge status={row.status} />
                     </td>
-                    <td>{formatDateTime(row.registeredAt)}</td>
                     <td>
                       <div className="admin-participations-checkin-cell">
                         <span>{formatCheckInTime(row.checkedInAt)}</span>
@@ -649,87 +508,7 @@ export function AdminParticipationsPage() {
                         />
                       </div>
                     </td>
-                    <td>
-                      <div className="row-action-wrap">
-                        <button
-                          aria-expanded={openMenuParticipationId === row.id}
-                          aria-haspopup="menu"
-                          aria-label={`Open actions for ${row.volunteerName}`}
-                          className="row-menu-btn"
-                          disabled={updatingId === row.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            const triggerRect = event.currentTarget.getBoundingClientRect();
-                            const availableBelow = window.innerHeight - triggerRect.bottom;
-                            const availableAbove = triggerRect.top;
-                            const estimatedMenuHeight = 260;
-                            const shouldOpenUp = availableBelow < estimatedMenuHeight && availableAbove > availableBelow;
-
-                            setMenuPlacement(shouldOpenUp ? 'up' : 'down');
-                            setOpenMenuParticipationId((current) => (current === row.id ? null : row.id));
-                          }}
-                          type="button"
-                        >
-                          <MoreVertical className="users-icon-sm" />
-                        </button>
-
-                        {openMenuParticipationId === row.id ? (
-                          <div
-                            aria-label="Participation row actions"
-                            className={
-                              menuPlacement === 'up'
-                                ? 'row-action-menu admin-participations-row-menu is-drop-up'
-                                : 'row-action-menu admin-participations-row-menu'
-                            }
-                            role="menu"
-                          >
-                            <button className="row-action-item" onClick={() => openDetail(row)} type="button">
-                              <Eye size={14} />
-                              Inspect Details
-                            </button>
-
-                            <button
-                              className="row-action-item"
-                              disabled={!row.activityId}
-                              onClick={() => {
-                                if (row.activityId) {
-                                  navigate(`/activities/${row.activityId}/edit`);
-                                }
-                              }}
-                              type="button"
-                            >
-                              <Pencil size={14} />
-                              Edit Linked Activity
-                            </button>
-
-                            <button
-                              className="row-action-item"
-                              disabled={!canApproveOrReject(row.status) || updatingId === row.id}
-                              onClick={() => void handleApprove(row)}
-                              type="button"
-                            >
-                              <CheckCircle2 size={14} />
-                              Approve
-                            </button>
-
-                            <button
-                              className="row-action-item"
-                              disabled={!canApproveOrReject(row.status) || updatingId === row.id}
-                              onClick={() => void handleReject(row)}
-                              type="button"
-                            >
-                              <XCircle size={14} />
-                              Reject
-                            </button>
-
-                            <button className="row-action-item" disabled={!canCheckIn(row.status)} onClick={() => openDetail(row)} type="button">
-                              <UserCheck size={14} />
-                              Check-in by Code
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
+                    <td>{formatDateTime(row.registeredAt)}</td>
                   </tr>
                 ))
               )}
@@ -782,75 +561,6 @@ export function AdminParticipationsPage() {
                 <span>Hours</span>
                 <strong>{selectedParticipation.hours === null ? '--' : selectedParticipation.hours}</strong>
               </div>
-            </div>
-
-            {notice ? <CheckInResultState description={notice.description} title={notice.title} tone={notice.tone} /> : null}
-
-            <div className="admin-participation-detail-section">
-              <h4>Approval actions</h4>
-              <div className="admin-participation-detail-actions">
-                <Button
-                  disabled={!canApproveOrReject(selectedParticipation.status) || updatingId === selectedParticipation.id}
-                  onClick={() => void handleApprove(selectedParticipation)}
-                  type="button"
-                  variant="secondary"
-                >
-                  Approve
-                </Button>
-                <Button
-                  disabled={!canApproveOrReject(selectedParticipation.status) || updatingId === selectedParticipation.id}
-                  onClick={() => void handleReject(selectedParticipation)}
-                  type="button"
-                  variant="secondary"
-                >
-                  Reject
-                </Button>
-                <Button
-                  disabled={!selectedParticipation.activityId}
-                  onClick={() => {
-                    if (selectedParticipation.activityId) {
-                      navigate(`/activities/${selectedParticipation.activityId}/edit`);
-                    }
-                  }}
-                  type="button"
-                >
-                  Edit Activity
-                </Button>
-              </div>
-              {!canApproveOrReject(selectedParticipation.status) ? (
-                <p className="muted">Approve/reject is only exposed for pending records to avoid changing finalized states.</p>
-              ) : null}
-            </div>
-
-            <div className="admin-participation-detail-section">
-              <h4>Check-in by code</h4>
-              {canCheckIn(selectedParticipation.status) ? (
-                <div className="admin-participation-checkin-form">
-                  <Input
-                    aria-label="Check-in code"
-                    onChange={(event) => setCheckInCode(event.target.value.replace(/\D/g, '').slice(0, 5))}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        void handleCheckIn(selectedParticipation);
-                      }
-                    }}
-                    placeholder="Enter 5-digit code"
-                    value={checkInCode}
-                  />
-                  <Button
-                    disabled={updatingId === selectedParticipation.id || !/^\d{5}$/.test(checkInCode)}
-                    onClick={() => void handleCheckIn(selectedParticipation)}
-                    type="button"
-                  >
-                    Check in
-                  </Button>
-                </div>
-              ) : selectedParticipation.status === 'checked_in' ? (
-                <p className="muted">This participant is already checked in.</p>
-              ) : (
-                <p className="muted">Check-in is only available for approved records and still requires the valid 5-digit code.</p>
-              )}
             </div>
 
             <div className="admin-participation-detail-actions is-footer">

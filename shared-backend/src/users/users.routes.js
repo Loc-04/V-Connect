@@ -12,6 +12,8 @@ import { supabaseAdmin } from '../database/supabase.js';
 import { getVolunteerProfileByUserId } from './users.service.js';
 
 const router = Router();
+const allowedAvatarMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const maxAvatarSizeBytes = 5 * 1024 * 1024;
 
 function extractVolunteerProfileUpdates(body, { requireAtLeastOne = false } = {}) {
   if (!isPlainObject(body)) {
@@ -189,17 +191,43 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
     }
 
     if (typeof avatarUrl === 'string' && avatarUrl.trim().length > 0) {
-      try {
-        const parsed = new URL(avatarUrl.trim());
-        if (!['http:', 'https:'].includes(parsed.protocol)) {
-          res.status(400).json({ message: 'avatarUrl must use http or https.' });
+      const normalizedAvatarUrl = avatarUrl.trim();
+
+      if (/^data:/i.test(normalizedAvatarUrl)) {
+        const dataUrlMatch = normalizedAvatarUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+        if (!dataUrlMatch) {
+          res.status(400).json({ message: 'avatarUrl data URL is invalid.' });
           return;
         }
-      } catch {
-        res.status(400).json({ message: 'avatarUrl is not a valid URL.' });
-        return;
+
+        const mimeType = dataUrlMatch[1].toLowerCase();
+        if (!allowedAvatarMimeTypes.has(mimeType)) {
+          res.status(400).json({ message: 'avatarUrl must be PNG, JPG, GIF, or WEBP.' });
+          return;
+        }
+
+        const base64Payload = dataUrlMatch[2];
+        const paddingBytes = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
+        const fileSizeBytes = Math.floor((base64Payload.length * 3) / 4) - paddingBytes;
+        if (fileSizeBytes > maxAvatarSizeBytes) {
+          res.status(400).json({ message: 'avatarUrl image must be smaller than 5 MB.' });
+          return;
+        }
+
+        userUpdates.avatar_url = normalizedAvatarUrl;
+      } else {
+        try {
+          const parsed = new URL(normalizedAvatarUrl);
+          if (!['http:', 'https:'].includes(parsed.protocol)) {
+            res.status(400).json({ message: 'avatarUrl must use http or https.' });
+            return;
+          }
+        } catch {
+          res.status(400).json({ message: 'avatarUrl is not a valid URL.' });
+          return;
+        }
+        userUpdates.avatar_url = normalizedAvatarUrl;
       }
-      userUpdates.avatar_url = avatarUrl.trim();
     } else {
       userUpdates.avatar_url = null;
     }

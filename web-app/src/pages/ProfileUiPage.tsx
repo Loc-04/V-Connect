@@ -51,7 +51,99 @@ interface AvatarFeedback {
 interface EditFormState {
   fullName: string;
   phone: string;
-  avatarUrl: string;
+}
+
+const acceptedAvatarMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const maxAvatarFileSizeBytes = 5 * 1024 * 1024;
+const avatarTargetSize = 512;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Failed to read selected image.'));
+    };
+    reader.onerror = () => reject(new Error('Failed to read selected image.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to decode selected image.'));
+    image.src = source;
+  });
+}
+
+function estimateDataUrlSizeBytes(value: string) {
+  const base64Payload = value.split(',')[1] ?? '';
+  const paddingBytes = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
+  return Math.floor((base64Payload.length * 3) / 4) - paddingBytes;
+}
+
+async function normalizeAvatarImage(file: File): Promise<string> {
+  const source = await readFileAsDataUrl(file);
+  const image = await loadImage(source);
+
+  const sourceWidth = Math.max(1, image.naturalWidth || image.width);
+  const sourceHeight = Math.max(1, image.naturalHeight || image.height);
+  const sourceAspect = sourceWidth / sourceHeight;
+  const targetAspect = 1;
+
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+  let cropX = 0;
+  let cropY = 0;
+
+  if (sourceAspect > targetAspect) {
+    cropWidth = Math.round(sourceHeight * targetAspect);
+    cropX = Math.round((sourceWidth - cropWidth) / 2);
+  } else if (sourceAspect < targetAspect) {
+    cropHeight = Math.round(sourceWidth / targetAspect);
+    cropY = Math.round((sourceHeight - cropHeight) / 2);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = avatarTargetSize;
+  canvas.height = avatarTargetSize;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Image processing is not available in this browser.');
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    avatarTargetSize,
+    avatarTargetSize
+  );
+
+  const qualitySteps = [0.9, 0.82, 0.74, 0.66];
+  for (const quality of qualitySteps) {
+    const encoded = canvas.toDataURL('image/jpeg', quality);
+    if (estimateDataUrlSizeBytes(encoded) <= maxAvatarFileSizeBytes) {
+      return encoded;
+    }
+  }
+
+  const fallback = canvas.toDataURL('image/jpeg', 0.58);
+  if (estimateDataUrlSizeBytes(fallback) > maxAvatarFileSizeBytes) {
+    throw new Error('Avatar image is too large after processing. Please choose a smaller image.');
+  }
+  return fallback;
 }
 
 function formatMonthYear(value: string | null | undefined): string {
@@ -117,7 +209,6 @@ function toEditForm(profile: UserRecord | null): EditFormState {
   return {
     fullName: profile?.full_name ?? '',
     phone: profile?.phone ?? '',
-    avatarUrl: profile?.avatar_url ?? '',
   };
 }
 
@@ -167,10 +258,10 @@ export function ProfileUiPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [avatarUploadDataUrl, setAvatarUploadDataUrl] = useState<string | null>(null);
   const [avatarFeedback, setAvatarFeedback] = useState<AvatarFeedback | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
-  const avatarObjectUrlRef = useRef<string | null>(null);
 
   const accessToken = session?.access_token ?? '';
 
@@ -200,15 +291,6 @@ export function ProfileUiPage() {
   useEffect(() => {
     setProfile(authProfile);
   }, [authProfile]);
-
-  useEffect(() => {
-    return () => {
-      if (avatarObjectUrlRef.current) {
-        URL.revokeObjectURL(avatarObjectUrlRef.current);
-        avatarObjectUrlRef.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     void loadProfile();
@@ -283,6 +365,9 @@ export function ProfileUiPage() {
     : null;
   const handleCancelProfileEdit = () => {
     setForm(toEditForm(profile));
+    setAvatarPreviewUrl(null);
+    setAvatarUploadDataUrl(null);
+    setAvatarFeedback(null);
     setSaveError(null);
     setSaveNotice(null);
     setIsEditingProfile(false);
@@ -303,16 +388,15 @@ export function ProfileUiPage() {
 
     setAvatarFeedback(null);
 
-    if (!file.type.startsWith('image/')) {
+    if (!acceptedAvatarMimeTypes.has(file.type.toLowerCase())) {
       setAvatarFeedback({
         tone: 'error',
-        message: 'Please choose a valid image file for your avatar.',
+        message: 'Please choose a PNG, JPG, WEBP, or GIF image for your avatar.',
       });
       return;
     }
 
-    const maxFileSize = 5 * 1024 * 1024;
-    if (file.size > maxFileSize) {
+    if (file.size > maxAvatarFileSizeBytes) {
       setAvatarFeedback({
         tone: 'error',
         message: 'Avatar image must be smaller than 5 MB.',
@@ -320,17 +404,25 @@ export function ProfileUiPage() {
       return;
     }
 
-    if (avatarObjectUrlRef.current) {
-      URL.revokeObjectURL(avatarObjectUrlRef.current);
-    }
-
-    const nextPreviewUrl = URL.createObjectURL(file);
-    avatarObjectUrlRef.current = nextPreviewUrl;
-    setAvatarPreviewUrl(nextPreviewUrl);
-    setAvatarFeedback({
-      tone: 'success',
-      message: 'Avatar preview updated for this session.',
-    });
+    void (async () => {
+      try {
+        const normalizedAvatar = await normalizeAvatarImage(file);
+        setAvatarPreviewUrl(normalizedAvatar);
+        setAvatarUploadDataUrl(normalizedAvatar);
+        setIsEditingProfile(true);
+        setSaveError(null);
+        setSaveNotice(null);
+        setAvatarFeedback({
+          tone: 'success',
+          message: 'Avatar selected. Click Save changes to apply it to your profile.',
+        });
+      } catch (avatarError) {
+        setAvatarFeedback({
+          tone: 'error',
+          message: avatarError instanceof Error ? avatarError.message : 'Failed to process avatar image.',
+        });
+      }
+    })();
   };
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
@@ -346,16 +438,25 @@ export function ProfileUiPage() {
     setSaveNotice(null);
 
     try {
-      const payload = {
+      const payload: {
+        fullName: string;
+        phone: string;
+        avatarUrl?: string | null;
+      } = {
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
-        avatarUrl: form.avatarUrl.trim() ? form.avatarUrl.trim() : null,
       };
+      if (avatarUploadDataUrl) {
+        payload.avatarUrl = avatarUploadDataUrl;
+      }
 
       const updated = await patchProfileMe(payload, accessToken);
       setProfile(updated.profile);
       setVolunteerProfile(updated.volunteerProfile);
       setForm(toEditForm(updated.profile));
+      setAvatarUploadDataUrl(null);
+      setAvatarPreviewUrl(null);
+      setAvatarFeedback(null);
       setSaveNotice('Profile updated successfully.');
       setIsEditingProfile(false);
       await refreshProfile();
@@ -542,15 +643,13 @@ export function ProfileUiPage() {
                     </div>
 
                     <div className="vol-profile-form-span">
-                      <label className="field-label" htmlFor="editAvatarUrl">
-                        Avatar URL
-                      </label>
-                      <Input
-                        id="editAvatarUrl"
-                        onChange={(event) => setForm((current) => ({ ...current, avatarUrl: event.target.value }))}
-                        placeholder="https://..."
-                        value={form.avatarUrl}
-                      />
+                      <label className="field-label">Avatar</label>
+                      <div className="vol-profile-form-actions">
+                        <Button onClick={handleAvatarButtonClick} type="button" variant="secondary">
+                          <Camera size={14} />
+                          <span>Upload from device</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -561,6 +660,9 @@ export function ProfileUiPage() {
                     <Button
                       onClick={() => {
                         setForm(toEditForm(profile));
+                        setAvatarPreviewUrl(null);
+                        setAvatarUploadDataUrl(null);
+                        setAvatarFeedback(null);
                         setSaveError(null);
                         setSaveNotice(null);
                       }}

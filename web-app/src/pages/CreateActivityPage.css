@@ -328,6 +328,10 @@
   grid-template-columns: 1.4fr 1fr 1fr;
 }
 
+.activity-grid.logistics-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .activity-grid.two-cols.is-wide-first {
   grid-template-columns: 2fr 1fr;
 }
@@ -479,6 +483,42 @@
     0 0 0 1px rgba(139, 92, 246, 0.14);
 }
 
+.priority-toggle button.priority-low {
+  color: #166534;
+}
+
+.priority-toggle button.priority-low.is-selected {
+  background: #dcfce7;
+  color: #166534;
+  box-shadow:
+    0 1px 2px rgba(21, 128, 61, 0.15),
+    0 0 0 1px rgba(22, 101, 52, 0.18);
+}
+
+.priority-toggle button.priority-normal {
+  color: #a16207;
+}
+
+.priority-toggle button.priority-normal.is-selected {
+  background: #fef3c7;
+  color: #92400e;
+  box-shadow:
+    0 1px 2px rgba(146, 64, 14, 0.14),
+    0 0 0 1px rgba(146, 64, 14, 0.16);
+}
+
+.priority-toggle button.priority-urgent {
+  color: #b91c1c;
+}
+
+.priority-toggle button.priority-urgent.is-selected {
+  background: #fee2e2;
+  color: #991b1b;
+  box-shadow:
+    0 1px 2px rgba(153, 27, 27, 0.16),
+    0 0 0 1px rgba(153, 27, 27, 0.18);
+}
+
 .activity-map-preview-card {
   display: grid;
   gap: 0.9rem;
@@ -616,7 +656,113 @@
   font-size: 0.88rem;
 }
 
+.activity-timeline-item small {
+  color: #64748b;
+}
+
 .activity-timeline-item-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.activity-timeline-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.44);
+  backdrop-filter: blur(6px);
+}
+
+.activity-timeline-modal {
+  width: min(980px, 100%);
+  max-height: min(840px, 92vh);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 68px rgba(15, 23, 42, 0.26);
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.activity-timeline-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.activity-timeline-modal-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.activity-timeline-modal-head p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.activity-timeline-modal-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 0.9rem;
+}
+
+.activity-timeline-modal-list {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 0.7rem;
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.activity-timeline-modal-item {
+  border: 1px solid #dbe2ef;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0.58rem 0.65rem;
+  text-align: left;
+  display: grid;
+  gap: 0.18rem;
+  cursor: pointer;
+}
+
+.activity-timeline-modal-item strong {
+  color: #182033;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.activity-timeline-modal-item small {
+  color: #64748b;
+  font-size: 0.73rem;
+}
+
+.activity-timeline-modal-item.is-active {
+  border-color: rgba(139, 92, 246, 0.44);
+  background: #f4f0ff;
+}
+
+.activity-timeline-modal-editor {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 0.9rem;
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+}
+
+.activity-timeline-modal-editor-actions {
   display: flex;
   justify-content: flex-end;
 }
@@ -681,6 +827,7 @@
 
   .activity-grid.two-cols,
   .activity-grid.three-cols,
+  .activity-grid.logistics-grid,
   .activity-grid.location-grid,
   .activity-grid.two-cols.is-wide-first {
     grid-template-columns: 1fr;
@@ -718,6 +865,10 @@
   .activity-success-actions {
     width: 100%;
     display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .activity-timeline-modal-layout {
     grid-template-columns: 1fr;
   }
 

@@ -1,5 +1,7 @@
 .activity-location-map {
   position: relative;
+  z-index: 0;
+  isolation: isolate;
   height: 260px;
   min-height: 240px;
   border-radius: 18px;

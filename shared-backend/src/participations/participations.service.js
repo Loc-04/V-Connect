@@ -156,7 +156,12 @@ async function getParticipationHistoryForUser({ userId, role, limit = 50 }) {
     organizersById = new Map((organizers ?? []).map((user) => [user.id, user]));
   }
 
-  return participations.map((participation) => {
+  const visibleParticipations = participations.filter((participation) => {
+    const activity = activitiesById.get(participation.activity_id);
+    return Boolean(activity) && !activity.deleted_at;
+  });
+
+  return visibleParticipations.map((participation) => {
     const activity = activitiesById.get(participation.activity_id);
     const organizer = activity ? organizersById.get(activity.organizer_id) : null;
     const activityDeleted = Boolean(activity?.deleted_at);

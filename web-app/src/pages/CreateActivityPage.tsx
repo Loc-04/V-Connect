@@ -75,8 +75,10 @@ function getCurrentLocalDateTimeParts() {
   };
 }
 
-const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
+const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp']);
 const maxCoverImageBytes = 700 * 1024;
+const coverTargetWidth = 1280;
+const coverTargetHeight = 720;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['check_in', 'opening', 'session', 'break', 'closing', 'wrap_up', 'custom'];
 const priorityLevelOptions: ActivityPriorityLevel[] = ['low', 'normal', 'urgent'];
 
@@ -88,6 +90,32 @@ function formatTimelineTypeLabel(type: TimelineMilestoneType) {
   return type
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatRange(startLocalValue: string, endLocalValue: string) {
+  if (!startLocalValue || !endLocalValue) {
+    return 'Time not set';
+  }
+
+  const start = new Date(startLocalValue);
+  const end = new Date(endLocalValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 'Time not set';
+  }
+
+  const startLabel = start.toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const endLabel = end.toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${startLabel} - ${endLabel}`;
 }
 
 function createLocalDraftId() {
@@ -118,6 +146,79 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error('Failed to read selected image.'));
     reader.readAsDataURL(file);
   });
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to decode selected image.'));
+    image.src = source;
+  });
+}
+
+function estimateDataUrlSizeBytes(value: string) {
+  const base64Payload = value.split(',')[1] ?? '';
+  const paddingBytes = base64Payload.endsWith('==') ? 2 : base64Payload.endsWith('=') ? 1 : 0;
+  return Math.floor((base64Payload.length * 3) / 4) - paddingBytes;
+}
+
+async function normalizeCoverImage(file: File): Promise<string> {
+  const source = await readFileAsDataUrl(file);
+  const image = await loadImage(source);
+  const sourceWidth = Math.max(1, image.naturalWidth || image.width);
+  const sourceHeight = Math.max(1, image.naturalHeight || image.height);
+  const sourceAspect = sourceWidth / sourceHeight;
+  const targetAspect = coverTargetWidth / coverTargetHeight;
+
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+  let cropX = 0;
+  let cropY = 0;
+
+  if (sourceAspect > targetAspect) {
+    cropWidth = Math.round(sourceHeight * targetAspect);
+    cropX = Math.round((sourceWidth - cropWidth) / 2);
+  } else if (sourceAspect < targetAspect) {
+    cropHeight = Math.round(sourceWidth / targetAspect);
+    cropY = Math.round((sourceHeight - cropHeight) / 2);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = coverTargetWidth;
+  canvas.height = coverTargetHeight;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Image processing is not available in this browser.');
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    coverTargetWidth,
+    coverTargetHeight
+  );
+
+  const qualitySteps = [0.9, 0.84, 0.76, 0.68];
+  for (const quality of qualitySteps) {
+    const encoded = canvas.toDataURL('image/jpeg', quality);
+    if (estimateDataUrlSizeBytes(encoded) <= maxCoverImageBytes) {
+      return encoded;
+    }
+  }
+
+  const fallback = canvas.toDataURL('image/jpeg', 0.6);
+  if (estimateDataUrlSizeBytes(fallback) > maxCoverImageBytes) {
+    throw new Error('Cover image is too large after processing. Please choose another image.');
+  }
+  return fallback;
 }
 
 function getAddressValue(location: ActivityRecord['location']) {
@@ -185,9 +286,11 @@ export function CreateActivityPage() {
   const [streetAddress, setStreetAddress] = useState('');
   const [provinceCode, setProvinceCode] = useState('');
   const [wardCode, setWardCode] = useState('');
-  const [date, setDate] = useState('');
+  const [beginDate, setBeginDate] = useState('');
   const [startTime, setStartTime] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [endTimeManuallyChanged, setEndTimeManuallyChanged] = useState(false);
   const [capacity, setCapacity] = useState('10');
   const [skillRequirements, setSkillRequirements] = useState<SkillRequirementRow[]>(() => [createSkillRequirementRow()]);
   const [skillRequirementsError, setSkillRequirementsError] = useState<string | null>(null);
@@ -209,6 +312,8 @@ export function CreateActivityPage() {
   const [quickMilestones, setQuickMilestones] = useState<TimelineMilestoneDraft[]>([]);
   const [quickTimelineError, setQuickTimelineError] = useState<string | null>(null);
   const [quickTimelineWarning, setQuickTimelineWarning] = useState<string | null>(null);
+  const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+  const [activeTimelineDraftId, setActiveTimelineDraftId] = useState<string | null>(null);
   const reverseGeocodeRequestId = useRef(0);
 
   const role = normalizeRole(profile?.role);
@@ -221,16 +326,16 @@ export function CreateActivityPage() {
     (): TimelineMilestoneDraft => {
       let seedStart = '';
       let seedEnd = '';
-      if (date && startTime) {
+      if (beginDate && startTime) {
         try {
-          seedStart = combineDateAndTime(date, startTime);
+          seedStart = combineDateAndTime(beginDate, startTime);
         } catch {
           seedStart = '';
         }
       }
-      if (date && endTime) {
+      if (endDate && endTime) {
         try {
-          seedEnd = combineDateAndTime(date, endTime);
+          seedEnd = combineDateAndTime(endDate, endTime);
         } catch {
           seedEnd = '';
         }
@@ -246,7 +351,7 @@ export function CreateActivityPage() {
         status: 'upcoming',
       };
     },
-    [date, endTime, startTime]
+    [beginDate, endDate, endTime, startTime]
   );
 
   const selectedProvince = useMemo(
@@ -255,6 +360,20 @@ export function CreateActivityPage() {
   );
   const selectedWard = useMemo(() => wards.find((ward) => ward.code === wardCode) ?? null, [wardCode, wards]);
   const currentDateTime = getCurrentLocalDateTimeParts();
+  const activeTimelineDraft = useMemo(
+    () => quickMilestones.find((item) => item.id === activeTimelineDraftId) ?? null,
+    [activeTimelineDraftId, quickMilestones]
+  );
+  const sortedTimelineDrafts = useMemo(
+    () =>
+      sortTimelineByTime(
+        quickMilestones.map((milestone, milestoneIndex) => ({
+          ...milestone,
+          orderIndex: milestoneIndex,
+        }))
+      ),
+    [quickMilestones]
+  );
   const duplicateSkillRowIds = useMemo(() => {
     const seenRows = new Map<string, string>();
     const duplicates = new Set<string>();
@@ -324,6 +443,38 @@ export function CreateActivityPage() {
       ),
     [locationSummary, resolvedMapLocation, selectedProvince?.name, selectedWard?.name, streetAddress]
   );
+
+  useEffect(() => {
+    if (!beginDate) {
+      return;
+    }
+    if (!endDate || endDate < beginDate) {
+      setEndDate(beginDate);
+      if (!endTimeManuallyChanged) {
+        setEndTime('23:59');
+      }
+    }
+  }, [beginDate, endDate, endTimeManuallyChanged]);
+
+  useEffect(() => {
+    if (!endDate || endTimeManuallyChanged) {
+      return;
+    }
+    if (endTime !== '23:59') {
+      setEndTime('23:59');
+    }
+  }, [endDate, endTime, endTimeManuallyChanged]);
+
+  useEffect(() => {
+    if (quickMilestones.length === 0) {
+      setActiveTimelineDraftId(null);
+      return;
+    }
+    const hasActiveDraft = activeTimelineDraftId && quickMilestones.some((item) => item.id === activeTimelineDraftId);
+    if (!hasActiveDraft) {
+      setActiveTimelineDraftId(quickMilestones[0].id ?? null);
+    }
+  }, [activeTimelineDraftId, quickMilestones]);
 
   useEffect(() => {
     if (!session?.access_token) {
@@ -425,9 +576,11 @@ export function CreateActivityPage() {
           existingMapLocation ? buildLocationRequestKey(getAddressValue(activity.location), activity.province_code ?? '', activity.ward_code ?? '') : ''
         );
         setGeocodeError(null);
-        setDate(start.date);
+        setBeginDate(start.date);
         setStartTime(start.time);
+        setEndDate(end.date);
         setEndTime(end.time);
+        setEndTimeManuallyChanged(true);
         setCapacity(String(activity.capacity ?? 10));
         const requirementsFromActivity = (Array.isArray(activity.required_skills) ? activity.required_skills : [])
           .map((skill) => String(skill).trim())
@@ -714,14 +867,14 @@ export function CreateActivityPage() {
 
     try {
       if (!acceptedCoverImageMimeTypes.has(file.type)) {
-        throw new Error('Cover image must be PNG, JPG, or GIF.');
+        throw new Error('Cover image must be PNG, JPG, WEBP, GIF, or BMP.');
       }
 
-      if (file.size > maxCoverImageBytes) {
-        throw new Error('Cover image must be smaller than 700KB.');
+      if (file.size > 8 * 1024 * 1024) {
+        throw new Error('Cover image must be smaller than 8 MB before processing.');
       }
 
-      const encodedImage = await readFileAsDataUrl(file);
+      const encodedImage = await normalizeCoverImage(file);
       setCoverImageUrl(encodedImage);
       setError(null);
     } catch (imageError) {
@@ -732,7 +885,10 @@ export function CreateActivityPage() {
   };
 
   const handleAddQuickMilestone = () => {
-    setQuickMilestones((current) => [...current, createQuickMilestoneDraft()]);
+    const nextDraft = createQuickMilestoneDraft();
+    setQuickMilestones((current) => [...current, nextDraft]);
+    setActiveTimelineDraftId(nextDraft.id ?? null);
+    setIsTimelineModalOpen(true);
     setQuickTimelineError(null);
     setQuickTimelineWarning(null);
   };
@@ -760,6 +916,19 @@ export function CreateActivityPage() {
 
   const handleSkipQuickTimeline = () => {
     setQuickMilestones([]);
+    setActiveTimelineDraftId(null);
+    setIsTimelineModalOpen(false);
+    setQuickTimelineError(null);
+    setQuickTimelineWarning(null);
+  };
+
+  const handleOpenTimelineModal = () => {
+    if (quickMilestones.length === 0) {
+      const nextDraft = createQuickMilestoneDraft();
+      setQuickMilestones([nextDraft]);
+      setActiveTimelineDraftId(nextDraft.id ?? null);
+    }
+    setIsTimelineModalOpen(true);
     setQuickTimelineError(null);
     setQuickTimelineWarning(null);
   };
@@ -773,10 +942,10 @@ export function CreateActivityPage() {
 
     let activityStartValue: string | null = null;
     let activityEndValue: string | null = null;
-    if (date && startTime && endTime) {
+    if (beginDate && startTime && endDate && endTime) {
       try {
-        activityStartValue = combineDateAndTime(date, startTime);
-        activityEndValue = combineDateAndTime(date, endTime);
+        activityStartValue = combineDateAndTime(beginDate, startTime);
+        activityEndValue = combineDateAndTime(endDate, endTime);
       } catch {
         activityStartValue = null;
         activityEndValue = null;
@@ -856,12 +1025,12 @@ export function CreateActivityPage() {
         throw new Error('Please select a ward/commune.');
       }
 
-      if (!date || !startTime || !endTime) {
-        throw new Error('Date, start time, and end time are required.');
+      if (!beginDate || !startTime || !endDate || !endTime) {
+        throw new Error('Begin date, start time, end date, and end time are required.');
       }
 
-      const startIso = combineDateAndTime(date, startTime);
-      const endIso = combineDateAndTime(date, endTime);
+      const startIso = combineDateAndTime(beginDate, startTime);
+      const endIso = combineDateAndTime(endDate, endTime);
       if (new Date(endIso) <= new Date(startIso)) {
         throw new Error('End time must be later than start time.');
       }
@@ -1034,7 +1203,12 @@ export function CreateActivityPage() {
                     <img alt="Selected activity cover" src={coverImageUrl} />
                     <div className="activity-cover-preview__actions">
                       <label className="action-btn is-secondary activity-cover-upload-btn">
-                        <input accept="image/png,image/jpeg,image/gif" hidden onChange={(event) => void handleCoverImageSelection(event)} type="file" />
+                        <input
+                          accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+                          hidden
+                          onChange={(event) => void handleCoverImageSelection(event)}
+                          type="file"
+                        />
                         Change image
                       </label>
                       <button className="action-btn is-ghost" onClick={() => setCoverImageUrl(null)} type="button">
@@ -1050,9 +1224,9 @@ export function CreateActivityPage() {
                     </div>
                     <strong>Upload a file</strong>
                     <p>or drag and drop (click to browse)</p>
-                    <small>PNG, JPG, GIF up to 700KB</small>
+                    <small>PNG, JPG, WEBP, GIF, BMP up to 8MB (auto-optimized to fit)</small>
                     <input
-                      accept="image/png,image/jpeg,image/gif"
+                      accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
                       hidden
                       id="cover-image-upload"
                       onChange={(event) => void handleCoverImageSelection(event)}
@@ -1093,13 +1267,13 @@ export function CreateActivityPage() {
                         {priorityLevelOptions.map((option) => (
                           <button
                             aria-checked={requirement.priority === option}
-                            className={requirement.priority === option ? 'is-selected' : undefined}
+                            className={`priority-${option}${requirement.priority === option ? ' is-selected' : ''}`}
                             key={option}
                             onClick={() => handleUpdateSkillRequirement(requirement.id, 'priority', option)}
                             role="radio"
                             type="button"
                           >
-                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                            {option === 'normal' ? 'Medium' : option === 'urgent' ? 'High' : 'Low'}
                           </button>
                         ))}
                       </div>
@@ -1133,28 +1307,58 @@ export function CreateActivityPage() {
                 <h2>Logistics</h2>
               </div>
 
-              <div className="activity-grid three-cols">
+              <div className="activity-grid logistics-grid">
                 <label className="activity-field">
-                  <span>Date</span>
+                  <span>Begin Date</span>
                   <input
                     min={currentDateTime.date}
-                    onChange={(event) => setDate(event.target.value)}
+                    onChange={(event) => {
+                      const nextBeginDate = event.target.value;
+                      setBeginDate(nextBeginDate);
+                      if (!endDate || endDate < nextBeginDate) {
+                        setEndDate(nextBeginDate);
+                      }
+                      if (!endTimeManuallyChanged && nextBeginDate) {
+                        setEndTime('23:59');
+                      }
+                    }}
                     type="date"
-                    value={date}
+                    value={beginDate}
                   />
                 </label>
                 <label className="activity-field">
                   <span>Start Time</span>
                   <input
-                    min={date === currentDateTime.date ? currentDateTime.time : undefined}
+                    min={beginDate === currentDateTime.date ? currentDateTime.time : undefined}
                     onChange={(event) => setStartTime(event.target.value)}
                     type="time"
                     value={startTime}
                   />
                 </label>
                 <label className="activity-field">
+                  <span>End Date</span>
+                  <input
+                    min={beginDate || currentDateTime.date}
+                    onChange={(event) => {
+                      setEndDate(event.target.value);
+                      if (!endTimeManuallyChanged) {
+                        setEndTime('23:59');
+                      }
+                    }}
+                    type="date"
+                    value={endDate}
+                  />
+                </label>
+                <label className="activity-field">
                   <span>End Time</span>
-                  <input onChange={(event) => setEndTime(event.target.value)} type="time" value={endTime} />
+                  <input
+                    onChange={(event) => {
+                      setEndTime(event.target.value);
+                      setEndTimeManuallyChanged(true);
+                    }}
+                    type="time"
+                    value={endTime}
+                  />
                 </label>
               </div>
 
@@ -1315,12 +1519,12 @@ export function CreateActivityPage() {
                   <span className="activity-card__badge is-blue" aria-hidden="true">
                     <CalendarDays size={16} />
                   </span>
-                  <h2>Event Timeline (Quick Add)</h2>
+                  <h2>Event Timeline</h2>
                 </div>
 
                 <p className="muted">
-                  Optional: add a lightweight milestone plan now. You can manage detailed timeline after creating this
-                  activity.
+                  Add timeline milestones in a dedicated modal to create, edit, and reorder detailed event flow before
+                  publishing.
                 </p>
 
                 {timelineIntegrationMeta.pendingServerIntegration ? (
@@ -1331,8 +1535,8 @@ export function CreateActivityPage() {
                 {quickTimelineWarning ? <p className="activity-timeline-warning">{quickTimelineWarning}</p> : null}
 
                 <div className="activity-timeline-actions">
-                  <Button onClick={handleAddQuickMilestone} type="button" variant="secondary">
-                    + Add milestone
+                  <Button onClick={handleOpenTimelineModal} type="button" variant="secondary">
+                    Open Timeline Builder
                   </Button>
                   <Button disabled={quickMilestones.length === 0} onClick={handleSkipQuickTimeline} type="button" variant="secondary">
                     Skip for now
@@ -1342,91 +1546,145 @@ export function CreateActivityPage() {
                 {quickMilestones.length === 0 ? (
                   <div className="activity-timeline-empty">
                     <p>No milestone added yet.</p>
-                    <small>Try adding milestones like check-in, opening, session, break, and closing.</small>
+                    <small>Open the modal to add milestones like check-in, opening, session, break, and closing.</small>
                   </div>
                 ) : (
                   <div className="activity-timeline-list">
-                    {sortTimelineByTime(
-                      quickMilestones.map((milestone, milestoneIndex) => ({
-                        ...milestone,
-                        orderIndex: milestoneIndex,
-                      }))
-                    ).map((milestone, milestoneIndex) => (
+                    {sortedTimelineDrafts.map((milestone, milestoneIndex) => (
                       <article className="activity-timeline-item" key={milestone.id ?? `draft-${milestoneIndex}`}>
                         <div className="activity-timeline-item-head">
-                          <strong>Milestone {milestoneIndex + 1}</strong>
+                          <strong>{milestone.title?.trim() || `Milestone ${milestoneIndex + 1}`}</strong>
                           <TimelineStatusBadge status="upcoming" />
                         </div>
-
-                        <div className="activity-grid two-cols">
-                          <label className="activity-field">
-                            <span>Title</span>
-                            <input
-                              onChange={(event) => handleUpdateQuickMilestone(String(milestone.id), 'title', event.target.value)}
-                              placeholder="e.g., Welcome & Opening"
-                              type="text"
-                              value={milestone.title}
-                            />
-                          </label>
-
-                          <label className="activity-field">
-                            <span>Type</span>
-                            <select
-                              onChange={(event) =>
-                                handleUpdateQuickMilestone(String(milestone.id), 'type', event.target.value as TimelineMilestoneType)
-                              }
-                              value={milestone.type}
-                            >
-                              {quickTimelineTypeOptions.map((option) => (
-                                <option key={option} value={option}>
-                                  {formatTimelineTypeLabel(option)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-
-                        <div className="activity-grid two-cols">
-                          <label className="activity-field">
-                            <span>Start time</span>
-                            <input
-                              onChange={(event) => handleUpdateQuickMilestone(String(milestone.id), 'startTime', event.target.value)}
-                              type="datetime-local"
-                              value={toDateTimeLocalValue(milestone.startTime)}
-                            />
-                          </label>
-
-                          <label className="activity-field">
-                            <span>End time</span>
-                            <input
-                              onChange={(event) => handleUpdateQuickMilestone(String(milestone.id), 'endTime', event.target.value)}
-                              type="datetime-local"
-                              value={toDateTimeLocalValue(milestone.endTime)}
-                            />
-                          </label>
-                        </div>
-
-                        <label className="activity-field">
-                          <span>Description</span>
-                          <textarea
-                            onChange={(event) => handleUpdateQuickMilestone(String(milestone.id), 'description', event.target.value)}
-                            placeholder="Add organizer notes or instructions."
-                            rows={3}
-                            value={milestone.description}
-                          />
-                        </label>
-
-                        <div className="activity-timeline-item-actions">
-                          <Button onClick={() => handleRemoveQuickMilestone(String(milestone.id))} type="button" variant="danger">
-                            Remove milestone
-                          </Button>
-                        </div>
+                        <small>{formatRange(toDateTimeLocalValue(milestone.startTime), toDateTimeLocalValue(milestone.endTime))}</small>
                       </article>
                     ))}
                   </div>
                 )}
               </Card>
             )}
+
+            {!isEditing && isTimelineModalOpen ? (
+              <div className="activity-timeline-modal-backdrop" onClick={() => setIsTimelineModalOpen(false)} role="presentation">
+                <div className="activity-timeline-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+                  <div className="activity-timeline-modal-head">
+                    <div>
+                      <h3>Timeline Builder</h3>
+                      <p>Create and edit detailed timeline milestones.</p>
+                    </div>
+                    <Button onClick={() => setIsTimelineModalOpen(false)} type="button" variant="secondary">
+                      Close
+                    </Button>
+                  </div>
+
+                  <div className="activity-timeline-modal-layout">
+                    <aside className="activity-timeline-modal-list">
+                      <Button onClick={handleAddQuickMilestone} type="button" variant="secondary">
+                        + Add Event
+                      </Button>
+                      {sortedTimelineDrafts.map((milestone, milestoneIndex) => (
+                        <button
+                          className={activeTimelineDraftId === milestone.id ? 'activity-timeline-modal-item is-active' : 'activity-timeline-modal-item'}
+                          key={milestone.id ?? `modal-${milestoneIndex}`}
+                          onClick={() => setActiveTimelineDraftId(milestone.id ?? null)}
+                          type="button"
+                        >
+                          <strong>{milestone.title?.trim() || `Milestone ${milestoneIndex + 1}`}</strong>
+                          <small>{formatTimelineTypeLabel(milestone.type)}</small>
+                        </button>
+                      ))}
+                    </aside>
+
+                    <section className="activity-timeline-modal-editor">
+                      {activeTimelineDraft ? (
+                        <>
+                          <div className="activity-grid two-cols">
+                            <label className="activity-field">
+                              <span>Title</span>
+                              <input
+                                onChange={(event) =>
+                                  handleUpdateQuickMilestone(String(activeTimelineDraft.id), 'title', event.target.value)
+                                }
+                                placeholder="e.g., Welcome & Opening"
+                                type="text"
+                                value={activeTimelineDraft.title}
+                              />
+                            </label>
+
+                            <label className="activity-field">
+                              <span>Type</span>
+                              <select
+                                onChange={(event) =>
+                                  handleUpdateQuickMilestone(
+                                    String(activeTimelineDraft.id),
+                                    'type',
+                                    event.target.value as TimelineMilestoneType
+                                  )
+                                }
+                                value={activeTimelineDraft.type}
+                              >
+                                {quickTimelineTypeOptions.map((option) => (
+                                  <option key={option} value={option}>
+                                    {formatTimelineTypeLabel(option)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className="activity-grid two-cols">
+                            <label className="activity-field">
+                              <span>Start time</span>
+                              <input
+                                onChange={(event) =>
+                                  handleUpdateQuickMilestone(String(activeTimelineDraft.id), 'startTime', event.target.value)
+                                }
+                                type="datetime-local"
+                                value={toDateTimeLocalValue(activeTimelineDraft.startTime)}
+                              />
+                            </label>
+
+                            <label className="activity-field">
+                              <span>End time</span>
+                              <input
+                                onChange={(event) =>
+                                  handleUpdateQuickMilestone(String(activeTimelineDraft.id), 'endTime', event.target.value)
+                                }
+                                type="datetime-local"
+                                value={toDateTimeLocalValue(activeTimelineDraft.endTime)}
+                              />
+                            </label>
+                          </div>
+
+                          <label className="activity-field">
+                            <span>Description</span>
+                            <textarea
+                              onChange={(event) =>
+                                handleUpdateQuickMilestone(String(activeTimelineDraft.id), 'description', event.target.value)
+                              }
+                              placeholder="Add organizer notes or instructions."
+                              rows={4}
+                              value={activeTimelineDraft.description}
+                            />
+                          </label>
+
+                          <div className="activity-timeline-modal-editor-actions">
+                            <Button onClick={() => handleRemoveQuickMilestone(String(activeTimelineDraft.id))} type="button" variant="danger">
+                              Remove Event
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="activity-timeline-empty">
+                          <p>No event selected.</p>
+                          <small>Select an event on the left or add a new one.</small>
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="activity-action-bar">
               <button className="action-btn is-ghost" onClick={() => navigate(organizerHomePath)} type="button">

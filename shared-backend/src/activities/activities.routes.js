@@ -1045,6 +1045,19 @@ router.delete('/activities/:id', requireAuth, async (req, res) => {
     })
   );
 
+  if (role === 'admin' && existingActivity.organizer_id && existingActivity.organizer_id !== req.auth.user.id) {
+    await tryCreateNotification({
+      userId: existingActivity.organizer_id,
+      title: 'Activity Deleted by Admin',
+      message: `Your activity "${existingActivity.title}" has been deleted by an administrator.`,
+      type: 'message',
+      data: {
+        activityId,
+        deletedByAdmin: true,
+      },
+    });
+  }
+
   res.json({ success: true, message: 'Activity deleted successfully.' });
 });
 
