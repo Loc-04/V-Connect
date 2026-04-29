@@ -1,6 +1,8 @@
 export {
   approveRegistration,
   cancelActivityRegistration,
+  cancelOrganizerRegistration,
+  fetchOrganizerParticipations,
   fetchPendingRegistrationsForOrganizer,
   fetchMyParticipationForActivity,
   fetchMyParticipationStatusForActivity,
