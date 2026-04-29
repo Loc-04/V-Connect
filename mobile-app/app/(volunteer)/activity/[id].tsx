@@ -21,7 +21,6 @@ import {
 } from '@/src/features/organizer-activities';
 import type { ActivityRecord, ActivityTimelineEntry } from '@/src/features/organizer-activities';
 import {
-  cancelActivityRegistration,
   fetchActiveParticipationsForConflict,
   fetchMyParticipationStatusForActivity,
   findTimeConflict,
@@ -88,7 +87,6 @@ export default function VolunteerActivityDetailScreen() {
   const [participationLoading, setParticipationLoading] = useState(false);
   const [committedElsewhere, setCommittedElsewhere] = useState(false);
   const [registering, setRegistering] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
 
   const timeConflict = useMemo(() => {
     if (!activity || conflictCandidates.length === 0) return null;
@@ -236,35 +234,6 @@ export default function VolunteerActivityDetailScreen() {
     }
   }, [activityId, activity?.status, role, timeConflict, loadParticipation]);
 
-  const onCancelRegistration = useCallback(() => {
-    if (!activityId) return;
-    Alert.alert(
-      'Cancel registration',
-      'Cancel your registration for this activity?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, cancel',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              setCancelling(true);
-              try {
-                const res = await cancelActivityRegistration(activityId);
-                Alert.alert('Cancelled', res.message ?? 'Your registration was cancelled.');
-                await loadParticipation();
-              } catch (err) {
-                Alert.alert('Error', err instanceof Error ? err.message : 'Could not cancel.');
-              } finally {
-                setCancelling(false);
-              }
-            })();
-          },
-        },
-      ],
-    );
-  }, [activityId, loadParticipation]);
-
   if (loadState === 'loading' || loadState === 'error') {
     return (
       <>
@@ -328,8 +297,6 @@ export default function VolunteerActivityDetailScreen() {
     }
   })();
   const hasActiveRegistration = participation != null && isActiveParticipationStatus(participation.status);
-  const canCancel =
-    hasActiveRegistration && String(participation?.status ?? '').toLowerCase() !== 'checked_in';
   const registerBlockedByOtherApproval =
     committedElsewhere && !hasActiveRegistration && canRegisterRole(role) && activity.status === 'published';
   const registerBlockedByConflict =
@@ -337,7 +304,6 @@ export default function VolunteerActivityDetailScreen() {
 
   const registerDisabled =
     registering ||
-    cancelling ||
     activity.status !== 'published' ||
     !canRegisterRole(role) ||
     hasActiveRegistration ||
@@ -494,20 +460,6 @@ export default function VolunteerActivityDetailScreen() {
                   Your status: {formatParticipationStatus(participation.status)}
                 </ThemedText>
               </View>
-              {canCancel ? (
-                <Pressable
-                  style={[styles.cancelBtn, cancelling && styles.footerBtnDisabled]}
-                  disabled={cancelling || registering}
-                  onPress={onCancelRegistration}>
-                  {cancelling ? (
-                    <ActivityIndicator color="#b91c1c" />
-                  ) : (
-                    <ThemedText type="defaultSemiBold" style={styles.cancelBtnText}>
-                      Cancel registration
-                    </ThemedText>
-                  )}
-                </Pressable>
-              ) : null}
             </>
           ) : (
             <>
