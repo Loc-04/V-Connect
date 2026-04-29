@@ -8,6 +8,10 @@ import { createNotificationRecord } from '../notifications/notifications.service
 import { attachActivitySummaries, attachVolunteerSummaries } from '../participations/participations.service.js';
 import { getProfileByUserId } from '../users/users.service.js';
 import { recommend as aiRecommend } from '../ai/ai.router.js';
+import {
+  tryLogRecommendationInteraction,
+  tryPersistRecommendationServingItems,
+} from './recommendation.logging.js';
 
 const router = Router();
 const assignmentStatuses = new Set(['assigned', 'approved', 'rejected', 'cancelled']);
@@ -15,6 +19,167 @@ const assignmentStatuses = new Set(['assigned', 'approved', 'rejected', 'cancell
 function getRequestedLimit(rawValue, fallback = 10, max = 50) {
   const requestedLimit = Number(rawValue ?? fallback);
   return Number.isFinite(requestedLimit) ? Math.min(Math.max(Math.trunc(requestedLimit), 1), max) : fallback;
+}
+
+function asUuidOrNull(value) {
+  const raw = String(value ?? '').trim();
+  return isUuid(raw) ? raw : null;
+}
+
+function buildServingKey({ rankPosition, candidateActivityId, candidateVolunteerId }) {
+  return `${rankPosition}::${candidateActivityId ?? '-'}::${candidateVolunteerId ?? '-'}`;
+}
+
+async function persistServingForUserResult({ result, requesterUserId, targetUserId }) {
+  const activities = Array.isArray(result?.activities) ? result.activities : null;
+  const volunteers = Array.isArray(result?.volunteers) ? result.volunteers : null;
+
+  let rows = [];
+  if (activities) {
+    rows = activities.map((item, index) => ({
+      scope: 'volunteer_to_activity',
+      requester_user_id: requesterUserId,
+      target_user_id: targetUserId,
+      target_activity_id: null,
+      candidate_type: 'activity',
+      candidate_activity_id: item?.activityId ?? null,
+      candidate_volunteer_id: null,
+      rank_position: index + 1,
+      predicted_score: Number(item?.matchScore ?? 0),
+      model_version: item?.model_version ?? null,
+      provider: item?.provider ?? 'internal',
+      feature_snapshot: item?.feature_snapshot ?? null,
+      prediction_snapshot: item?.prediction_snapshot ?? null,
+    }));
+  } else if (volunteers) {
+    rows = volunteers
+      .map((item, index) => ({
+        scope: 'activity_to_volunteer',
+        requester_user_id: requesterUserId,
+        target_user_id: null,
+        target_activity_id: asUuidOrNull(item?.matchedActivityId),
+        candidate_type: 'volunteer',
+        candidate_activity_id: null,
+        candidate_volunteer_id: item?.userId ?? null,
+        rank_position: index + 1,
+        predicted_score: Number(item?.matchScore ?? 0),
+        model_version: item?.model_version ?? null,
+        provider: item?.provider ?? 'internal',
+        feature_snapshot: item?.feature_snapshot ?? null,
+        prediction_snapshot: item?.prediction_snapshot ?? null,
+      }))
+      .filter((row) => row.target_activity_id);
+  }
+
+  if (rows.length === 0) {
+    return result;
+  }
+
+  const inserted = await tryPersistRecommendationServingItems(rows, 'recommendations.user.serving');
+  if (!Array.isArray(inserted) || inserted.length === 0) {
+    return result;
+  }
+
+  const insertedByKey = new Map(
+    inserted.map((row) => [
+      buildServingKey({
+        rankPosition: Number(row.rank_position ?? 0),
+        candidateActivityId: asUuidOrNull(row.candidate_activity_id),
+        candidateVolunteerId: asUuidOrNull(row.candidate_volunteer_id),
+      }),
+      row.id,
+    ])
+  );
+
+  if (activities) {
+    return {
+      ...result,
+      activities: activities.map((item, index) => ({
+        ...item,
+        recommendation_item_id:
+          insertedByKey.get(
+            buildServingKey({
+              rankPosition: index + 1,
+              candidateActivityId: asUuidOrNull(item?.activityId),
+              candidateVolunteerId: null,
+            })
+          ) ?? null,
+      })),
+    };
+  }
+
+  if (volunteers) {
+    return {
+      ...result,
+      volunteers: volunteers.map((item, index) => ({
+        ...item,
+        recommendation_item_id:
+          insertedByKey.get(
+            buildServingKey({
+              rankPosition: index + 1,
+              candidateActivityId: null,
+              candidateVolunteerId: asUuidOrNull(item?.userId),
+            })
+          ) ?? null,
+      })),
+    };
+  }
+
+  return result;
+}
+
+async function persistServingForActivityResult({ result, requesterUserId, targetActivityId }) {
+  const volunteers = Array.isArray(result?.volunteers) ? result.volunteers : [];
+  if (volunteers.length === 0) {
+    return result;
+  }
+
+  const rows = volunteers.map((item, index) => ({
+    scope: 'activity_to_volunteer',
+    requester_user_id: requesterUserId,
+    target_user_id: null,
+    target_activity_id: targetActivityId,
+    candidate_type: 'volunteer',
+    candidate_activity_id: null,
+    candidate_volunteer_id: item?.userId ?? null,
+    rank_position: index + 1,
+    predicted_score: Number(item?.matchScore ?? 0),
+    model_version: item?.model_version ?? null,
+    provider: item?.provider ?? 'internal',
+    feature_snapshot: item?.feature_snapshot ?? null,
+    prediction_snapshot: item?.prediction_snapshot ?? null,
+  }));
+
+  const inserted = await tryPersistRecommendationServingItems(rows, 'recommendations.activity.serving');
+  if (!Array.isArray(inserted) || inserted.length === 0) {
+    return result;
+  }
+
+  const insertedByKey = new Map(
+    inserted.map((row) => [
+      buildServingKey({
+        rankPosition: Number(row.rank_position ?? 0),
+        candidateActivityId: null,
+        candidateVolunteerId: asUuidOrNull(row.candidate_volunteer_id),
+      }),
+      row.id,
+    ])
+  );
+
+  return {
+    ...result,
+    volunteers: volunteers.map((item, index) => ({
+      ...item,
+      recommendation_item_id:
+        insertedByKey.get(
+          buildServingKey({
+            rankPosition: index + 1,
+            candidateActivityId: null,
+            candidateVolunteerId: asUuidOrNull(item?.userId),
+          })
+        ) ?? null,
+    })),
+  };
 }
 
 async function tryCreateNotification(payload) {
@@ -226,7 +391,12 @@ router.get('/recommendations/:userId', requireAuth, async (req, res) => {
       userId,
       limit: getRequestedLimit(req.query.limit),
     });
-    res.json(result);
+    const withServingLog = await persistServingForUserResult({
+      result,
+      requesterUserId: requesterId,
+      targetUserId: userId,
+    });
+    res.json(withServingLog);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load recommendations.';
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
@@ -264,12 +434,51 @@ router.get('/recommendations/activity/:id', requireAuth, async (req, res) => {
       activityId,
       limit: getRequestedLimit(req.query.limit),
     });
-    res.json(result);
+    const withServingLog = await persistServingForActivityResult({
+      result,
+      requesterUserId: req.auth.user.id,
+      targetActivityId: activityId,
+    });
+    res.json(withServingLog);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load activity recommendations.';
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
     res.status(statusCode).json({ message });
   }
+});
+
+router.post('/recommendations/interactions', requireAuth, async (req, res) => {
+  const eventType = typeof req.body?.event_type === 'string' ? req.body.event_type.trim().toLowerCase() : '';
+  if (!['detail_open', 'register', 'approved', 'rejected', 'checked_in', 'cancelled'].includes(eventType)) {
+    res.status(400).json({ message: 'Invalid event_type.' });
+    return;
+  }
+
+  const servingItemId = asUuidOrNull(req.body?.serving_item_id);
+  const activityId = asUuidOrNull(req.body?.activity_id);
+  const volunteerId = asUuidOrNull(req.body?.volunteer_id);
+  const participationId = asUuidOrNull(req.body?.participation_id);
+  const sourceSurface = typeof req.body?.source_surface === 'string' ? req.body.source_surface.trim() : 'web';
+  const metadata =
+    req.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
+      ? req.body.metadata
+      : null;
+
+  await tryLogRecommendationInteraction(
+    {
+      event_type: eventType,
+      serving_item_id: servingItemId,
+      actor_user_id: req.auth.user.id,
+      activity_id: activityId,
+      volunteer_id: volunteerId ?? req.auth.user.id,
+      participation_id: participationId,
+      source_surface: sourceSurface || 'web',
+      metadata,
+    },
+    'recommendations.interactions.route'
+  );
+
+  res.status(202).json({ ok: true });
 });
 
 router.post('/recommendations/activity/:id/assignments', requireAuth, async (req, res) => {
@@ -297,6 +506,8 @@ router.post('/recommendations/activity/:id/assignments', requireAuth, async (req
     return;
   }
 
+  const recommendationItemId = asUuidOrNull(req.body?.recommendation_item_id);
+
   try {
     const [activity] = await Promise.all([
       assertOrganizerActivityAccess(activityId, req.auth),
@@ -318,8 +529,29 @@ router.post('/recommendations/activity/:id/assignments', requireAuth, async (req
     }
 
     if (existingAssignment && ['assigned', 'pending', 'approved', 'checked_in'].includes(String(existingAssignment.status ?? ''))) {
+      let assignmentSnapshot = existingAssignment;
+      if (
+        String(existingAssignment.registration_source ?? '').trim().toLowerCase() !== 'organizer_assignment' ||
+        recommendationItemId
+      ) {
+        const reassociateResult = await supabaseAdmin
+          .from('activity_participations')
+          .update({
+            registration_source: 'organizer_assignment',
+            recommendation_item_id: recommendationItemId ?? existingAssignment.recommendation_item_id ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingAssignment.id)
+          .select(participationColumns)
+          .maybeSingle();
+
+        if (!reassociateResult.error && reassociateResult.data) {
+          assignmentSnapshot = reassociateResult.data;
+        }
+      }
+
       res.status(200).json({
-        assignment: await enrichAssignment(existingAssignment),
+        assignment: await enrichAssignment(assignmentSnapshot),
         created: false,
         message: 'Volunteer is already linked to this activity.',
       });
@@ -346,6 +578,8 @@ router.post('/recommendations/activity/:id/assignments', requireAuth, async (req
         .update({
           status: 'assigned',
           ai_match_score: typeof match.matchRatio === 'number' ? match.matchRatio : null,
+          recommendation_item_id: recommendationItemId,
+          registration_source: 'organizer_assignment',
           updated_at: now,
         })
         .eq('id', existingAssignment.id)
@@ -372,6 +606,8 @@ router.post('/recommendations/activity/:id/assignments', requireAuth, async (req
           volunteer_id: volunteerId,
           status: 'assigned',
           ai_match_score: typeof match.matchRatio === 'number' ? match.matchRatio : null,
+          recommendation_item_id: recommendationItemId,
+          registration_source: 'organizer_assignment',
           updated_at: now,
         })
         .select(participationColumns)
@@ -483,6 +719,18 @@ router.put('/recommendations/assignments/:id/status', requireAuth, async (req, r
       assignmentId: assignment.id,
       status: nextStatus,
     });
+    await tryLogRecommendationInteraction(
+      {
+        event_type: nextStatus,
+        serving_item_id: data?.recommendation_item_id ?? assignment?.recommendation_item_id ?? null,
+        actor_user_id: req.auth.user.id,
+        activity_id: data?.activity_id ?? assignment.activity_id,
+        volunteer_id: data?.volunteer_id ?? assignment.volunteer_id,
+        participation_id: data?.id ?? assignment.id,
+        source_surface: 'web',
+      },
+      'recommendations.assignment.status'
+    );
 
     res.json({
       assignment: await enrichAssignment(data),
@@ -546,6 +794,18 @@ router.delete('/recommendations/assignments/:id', requireAuth, async (req, res) 
       assignmentId: assignment.id,
       status: 'cancelled',
     });
+    await tryLogRecommendationInteraction(
+      {
+        event_type: 'cancelled',
+        serving_item_id: data?.recommendation_item_id ?? assignment?.recommendation_item_id ?? null,
+        actor_user_id: req.auth.user.id,
+        activity_id: data?.activity_id ?? assignment.activity_id,
+        volunteer_id: data?.volunteer_id ?? assignment.volunteer_id,
+        participation_id: data?.id ?? assignment.id,
+        source_surface: 'web',
+      },
+      'recommendations.assignment.cancel'
+    );
 
     res.json({
       assignment: await enrichAssignment(data),

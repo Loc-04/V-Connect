@@ -19,44 +19,7 @@ function asDate(value: string | null | undefined) {
   return parsed;
 }
 
-function asOrderIndex(value: unknown) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return null;
-  }
-  return value;
-}
-
 function compareByStartTime<T extends TimelineMilestoneDraft | TimelineMilestone>(left: T, right: T) {
-  const leftOrderIndex = asOrderIndex(left.orderIndex);
-  const rightOrderIndex = asOrderIndex(right.orderIndex);
-  if (leftOrderIndex !== null || rightOrderIndex !== null) {
-    if (leftOrderIndex === null) {
-      return 1;
-    }
-    if (rightOrderIndex === null) {
-      return -1;
-    }
-    if (leftOrderIndex !== rightOrderIndex) {
-      return leftOrderIndex - rightOrderIndex;
-    }
-  }
-
-  const leftDate = asDate(left.startTime)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-  const rightDate = asDate(right.startTime)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-  if (leftDate !== rightDate) {
-    return leftDate - rightDate;
-  }
-
-  const leftEnd = asDate(left.endTime)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-  const rightEnd = asDate(right.endTime)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-  if (leftEnd !== rightEnd) {
-    return leftEnd - rightEnd;
-  }
-
-  return String(left.title ?? '').localeCompare(String(right.title ?? ''));
-}
-
-function compareByClockTime<T extends TimelineMilestoneDraft | TimelineMilestone>(left: T, right: T) {
   const leftDate = asDate(left.startTime)?.getTime() ?? Number.MAX_SAFE_INTEGER;
   const rightDate = asDate(right.startTime)?.getTime() ?? Number.MAX_SAFE_INTEGER;
   if (leftDate !== rightDate) {
@@ -104,7 +67,6 @@ export function validateTimelineDrafts(
   const activityStart = asDate(context.activityStartTime ?? null);
   const activityEnd = asDate(context.activityEndTime ?? null);
   const orderedDrafts = normalizeOrder(drafts);
-  const overlapOrderedDrafts = [...drafts].sort(compareByClockTime);
 
   orderedDrafts.forEach((draft, index) => {
     const draftId = draft.id ?? `draft-${index}`;
@@ -175,15 +137,15 @@ export function validateTimelineDrafts(
     }
   });
 
-  for (let index = 1; index < overlapOrderedDrafts.length; index += 1) {
-    const previous = overlapOrderedDrafts[index - 1];
-    const current = overlapOrderedDrafts[index];
+  for (let index = 1; index < orderedDrafts.length; index += 1) {
+    const previous = orderedDrafts[index - 1];
+    const current = orderedDrafts[index];
     if (hasOverlap(previous, current)) {
       issues.push({
         milestoneId: current.id ?? `draft-${index}`,
         field: 'overlap',
         level: 'warning',
-        message: 'This milestone overlaps another milestone in time.',
+        message: 'This milestone overlaps with the previous one.',
       });
     }
   }

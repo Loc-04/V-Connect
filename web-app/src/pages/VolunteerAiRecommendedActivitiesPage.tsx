@@ -7,7 +7,7 @@ import { Badge, Button, Card, Select } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { createParticipation } from '../lib/participations';
-import { getRecommendedActivitiesForVolunteer } from '../lib/recommendations';
+import { getRecommendedActivitiesForVolunteer, logRecommendationInteraction } from '../lib/recommendations';
 import type { ActivityLocation } from '../types/activity';
 import type {
   RecommendationFeatureContribution,
@@ -21,6 +21,7 @@ type SortMode = 'best-match' | 'soonest';
 
 interface RecommendationViewModel {
   activityId: string;
+  recommendationItemId: string | null;
   title: string;
   organizerName: string;
   matchScore: number;
@@ -154,6 +155,7 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
 
   return {
     activityId: record.activityId,
+    recommendationItemId: typeof record.recommendation_item_id === 'string' ? record.recommendation_item_id : null,
     title: record.title,
     organizerName: record.organizerName || 'Organizer',
     matchScore: Math.max(0, Math.min(100, Math.round(record.matchScore))),
@@ -307,11 +309,25 @@ export function VolunteerAiRecommendedActivitiesPage() {
     }
   }, [selectedActivityId, selectedRecommendation]);
 
-  const handleViewDetails = (activityId: string) => {
-    navigate(`/volunteer/activity/${activityId}`);
+  const handleViewDetails = (activityId: string, recommendationItemId: string | null) => {
+    if (session?.access_token && recommendationItemId) {
+      void logRecommendationInteraction(
+        {
+          eventType: 'detail_open',
+          servingItemId: recommendationItemId,
+          activityId,
+          sourceSurface: 'web',
+        },
+        session.access_token
+      ).catch(() => {
+        // Best-effort analytics logging only.
+      });
+    }
+    const query = recommendationItemId ? `?recommendationItemId=${encodeURIComponent(recommendationItemId)}` : '';
+    navigate(`/volunteer/activity/${activityId}${query}`);
   };
 
-  const handleJoin = async (activityId: string) => {
+  const handleJoin = async (activityId: string, recommendationItemId: string | null) => {
     if (!session?.access_token) {
       setError('No active session token.');
       setMessage(null);
@@ -323,7 +339,9 @@ export function VolunteerAiRecommendedActivitiesPage() {
     setMessage(null);
 
     try {
-      const result = await createParticipation(activityId, session.access_token);
+      const result = await createParticipation(activityId, session.access_token, {
+        recommendationItemId,
+      });
       setRecommendations((current) => current.filter((item) => item.activityId !== activityId));
       setMessage(result.message ?? (result.created ? 'Registration submitted successfully.' : 'You are already registered.'));
     } catch (joinError) {
@@ -497,7 +515,12 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   <div className="ai-reco-cta-row">
                     <Button
                       className="ai-reco-view-btn"
-                      onClick={() => handleViewDetails(selectedRecommendation.activityId)}
+                      onClick={() =>
+                        handleViewDetails(
+                          selectedRecommendation.activityId,
+                          selectedRecommendation.recommendationItemId
+                        )
+                      }
                       type="button"
                     >
                       View details
@@ -505,7 +528,12 @@ export function VolunteerAiRecommendedActivitiesPage() {
                     <Button
                       className="ai-reco-join-btn"
                       disabled={joiningActivityId === selectedRecommendation.activityId}
-                      onClick={() => void handleJoin(selectedRecommendation.activityId)}
+                      onClick={() =>
+                        void handleJoin(
+                          selectedRecommendation.activityId,
+                          selectedRecommendation.recommendationItemId
+                        )
+                      }
                       type="button"
                       variant="secondary"
                     >

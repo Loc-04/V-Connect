@@ -17,8 +17,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
 import { Button, Card, Input, Select, Table } from '../components/ui';
+import { apiRequest } from '../lib/api';
 import { checkInParticipationWithCode, listParticipations } from '../lib/participations';
 import { approveRegistration, rejectRegistration } from '../lib/registrations';
+import type { UserRecord } from '../types/domain';
 import type { ParticipationRecord } from '../types/participation';
 import './AdminParticipationsPage.css';
 
@@ -47,6 +49,10 @@ interface NoticeState {
   tone: CheckInResultTone;
   title: string;
   description?: string;
+}
+
+interface AdminUsersResponse {
+  users: UserRecord[];
 }
 
 function normalizeStatus(value: string | null | undefined) {
@@ -129,11 +135,13 @@ function canCheckIn(status: string) {
   return status === 'approved';
 }
 
-function buildViewModel(participation: ParticipationRecord): ParticipationViewModel {
+function buildViewModel(participation: ParticipationRecord, volunteerEmailById: Map<string, string>): ParticipationViewModel {
   const id = getParticipationId(participation);
   const activityId = getActivityId(participation);
   const volunteerName = participation.volunteer?.full_name?.trim() || 'Volunteer unavailable';
-  const volunteerMeta = participation.volunteer?.phone?.trim() || formatShortId(participation.volunteer_id);
+  const directVolunteerEmail = String(participation.volunteer?.email ?? '').trim();
+  const mappedVolunteerEmail = participation.volunteer_id ? volunteerEmailById.get(participation.volunteer_id) || '' : '';
+  const volunteerMeta = directVolunteerEmail || mappedVolunteerEmail || 'No email';
   const activityName = participation.activityName || 'Activity unavailable';
   const organizerName = participation.organization || 'Organizer unavailable';
   const status = normalizeStatus(participation.status);
@@ -178,6 +186,7 @@ export function AdminParticipationsPage() {
   const accessToken = session?.access_token ?? null;
 
   const [participations, setParticipations] = useState<ParticipationRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -205,18 +214,32 @@ export function AdminParticipationsPage() {
     setMessage(null);
     setNotice(null);
 
-    try {
-      const rows = await listParticipations({
+    const [participationsResult, usersResult] = await Promise.allSettled([
+      listParticipations({
         accessToken,
         status: 'all',
         limit: 300,
-      });
-      setParticipations(rows);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load participations.');
-    } finally {
+      }),
+      apiRequest<AdminUsersResponse>('/admin/users', {
+        accessToken,
+      }),
+    ]);
+
+    if (participationsResult.status === 'rejected') {
+      setError(participationsResult.reason instanceof Error ? participationsResult.reason.message : 'Failed to load participations.');
       setLoading(false);
+      return;
     }
+
+    setParticipations(participationsResult.value);
+
+    if (usersResult.status === 'fulfilled') {
+      setUsers(usersResult.value.users);
+    } else {
+      setUsers([]);
+    }
+
+    setLoading(false);
   }, [accessToken]);
 
   useEffect(() => {
@@ -241,7 +264,19 @@ export function AdminParticipationsPage() {
     };
   }, []);
 
-  const rows = useMemo(() => participations.map(buildViewModel), [participations]);
+  const volunteerEmailById = useMemo(() => {
+    return new Map(
+      users.map((user) => {
+        const email = String(user.email ?? '').trim();
+        return [user.id, email];
+      })
+    );
+  }, [users]);
+
+  const rows = useMemo(
+    () => participations.map((participation) => buildViewModel(participation, volunteerEmailById)),
+    [participations, volunteerEmailById]
+  );
 
   const metrics = useMemo(
     () => ({
@@ -304,7 +339,7 @@ export function AdminParticipationsPage() {
       if (!current || current.id !== updatedId) {
         return current;
       }
-      return buildViewModel(updated);
+      return buildViewModel(updated, volunteerEmailById);
     });
   };
 
@@ -475,7 +510,7 @@ export function AdminParticipationsPage() {
         <div className="admin-participations-filter-head">
           <div>
             <h3>Find records</h3>
-            <p className="muted">Search volunteer, activity, organizer, or record id. Filters are applied client-side to loaded records.</p>
+            <p className="muted">Search volunteer, volunteer email, activity, organizer, or record id. Filters are applied client-side to loaded records.</p>
           </div>
           {hasActiveFilters ? (
             <Button onClick={clearFilters} type="button" variant="secondary">
@@ -493,7 +528,7 @@ export function AdminParticipationsPage() {
               <Input
                 aria-label="Search participations"
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search volunteer, activity, organizer, record id..."
+                placeholder="Search volunteer, email, activity, organizer, record id..."
                 value={searchTerm}
               />
             </div>
