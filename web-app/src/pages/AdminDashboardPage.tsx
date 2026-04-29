@@ -9,7 +9,6 @@ import {
   FileText,
   LineChart,
   PieChart,
-  PlusCircle,
   RefreshCw,
   Sparkles,
   TriangleAlert,
@@ -934,10 +933,6 @@ export function AdminDashboardPage() {
           </div>
 
           <div className="dashboard-quick-actions" role="group" aria-label="Quick actions">
-            <Button className="dashboard-action-btn" onClick={() => navigate('/activities/create')} type="button">
-              <PlusCircle size={16} />
-              Create Activity
-            </Button>
             <Button className="dashboard-action-btn" onClick={() => navigate('/admin/participations')} type="button" variant="secondary">
               <Sparkles size={16} />
               View Approvals

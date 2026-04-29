@@ -234,6 +234,12 @@
   border-bottom: 0;
 }
 
+.admin-activities-table thead th:first-child,
+.admin-activities-table tbody td:first-child {
+  width: 56px;
+  text-align: center;
+}
+
 .admin-activities-title-cell {
   display: grid;
   gap: 0.18rem;
@@ -260,21 +266,32 @@
   white-space: nowrap;
 }
 
-.admin-activities-muted-cell {
+.admin-activities-organizer-cell {
   display: grid;
-  gap: 0.12rem;
+  gap: 0.18rem;
+  min-width: 190px;
 }
 
-.admin-activities-muted-cell span {
-  color: #94a3b8;
-  font-size: 0.66rem;
-  font-weight: 800;
-  text-transform: uppercase;
+.admin-activities-organizer-cell strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+  line-height: 1.25;
 }
 
-.admin-activities-muted-cell strong {
-  color: #475569;
-  font-size: 0.78rem;
+.admin-activities-organizer-cell small {
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.admin-activities-organizer-cell a,
+.admin-activity-detail-grid a {
+  color: #4c1d95;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-decoration: underline;
+  word-break: break-word;
 }
 
 .admin-activities-muted-cell small,
@@ -289,7 +306,7 @@
   align-items: flex-start;
   gap: 0.34rem;
   min-width: 160px;
-  max-width: 220px;
+  max-width: 360px;
 }
 
 .admin-activities-location-cell svg {
@@ -347,17 +364,7 @@
 }
 
 .admin-activities-status-submenu {
-  display: grid;
-  gap: 0.12rem;
-  margin: 0.12rem 0;
-  padding: 0.24rem 0;
-  border-top: 1px solid #eef2f7;
-  border-bottom: 1px solid #eef2f7;
-}
-
-.admin-activities-status-submenu .row-action-item.is-current-status {
-  background: rgba(99, 102, 241, 0.1);
-  color: #312e81;
+  display: none;
 }
 
 .admin-activities-state {
@@ -451,6 +458,13 @@
   color: #0f172a;
   font-size: 0.84rem;
   line-height: 1.35;
+}
+
+.admin-activity-detail-grid small {
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .admin-activity-detail-section {

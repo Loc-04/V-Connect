@@ -127,8 +127,53 @@
   line-height: 1.5;
 }
 
+.org-settings-avatar-file-input {
+  display: none;
+}
+
 .org-settings-field-span {
   grid-column: 1 / -1;
+}
+
+.org-settings-avatar-uploader {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 0.9rem;
+}
+
+.org-settings-avatar-preview {
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #e6eaf2;
+  display: grid;
+  place-items: center;
+  color: #475569;
+  font-size: 1.25rem;
+  font-weight: 800;
+  flex: none;
+}
+
+.org-settings-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.org-settings-avatar-uploader-actions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.org-settings-avatar-uploader-actions small {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .org-settings-form-actions {

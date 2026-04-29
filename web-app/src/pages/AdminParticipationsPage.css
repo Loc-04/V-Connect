@@ -233,6 +233,25 @@
   border-bottom: 0;
 }
 
+.admin-participations-data-row {
+  cursor: pointer;
+}
+
+.admin-participations-data-row:hover td {
+  background: #f8fafc;
+}
+
+.admin-participations-data-row:focus-visible {
+  outline: 2px solid rgba(124, 58, 237, 0.35);
+  outline-offset: -2px;
+}
+
+.admin-participations-table thead th:first-child,
+.admin-participations-table tbody td:first-child {
+  width: 56px;
+  text-align: center;
+}
+
 .admin-participations-volunteer-cell {
   display: inline-flex;
   align-items: center;

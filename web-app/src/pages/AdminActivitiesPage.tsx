@@ -5,17 +5,15 @@ import {
   FilterX,
   MapPin,
   MoreVertical,
-  Pencil,
-  PlusCircle,
   RefreshCw,
   Search,
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select, Table, type BadgeTone } from '../components/ui';
+import { apiRequest } from '../lib/api';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
 import { apiRequest } from '../lib/api';
@@ -115,6 +113,37 @@ function getLocationLabel(location: ActivityRecord['location']) {
   return label && label !== 'Location TBD' ? label : 'Location not set';
 }
 
+function getOrganizerName(activity: ActivityRecord, organizer: UserRecord | null | undefined) {
+  const fullName = String(organizer?.full_name ?? '').trim();
+  if (fullName) {
+    return fullName;
+  }
+  return `Organizer ${formatShortId(activity.organizer_id)}`;
+}
+
+function getOrganizerContact(organizer: UserRecord | null | undefined) {
+  const email = String(organizer?.email ?? '').trim();
+  if (email) {
+    return {
+      label: email,
+      href: `mailto:${email}`,
+    };
+  }
+
+  const phone = String(organizer?.phone ?? '').trim();
+  if (phone) {
+    return {
+      label: phone,
+      href: `tel:${phone}`,
+    };
+  }
+
+  return {
+    label: '--',
+    href: null,
+  };
+}
+
 function getActivitySkills(activity: ActivityRecord) {
   return Array.isArray(activity.required_skills) ? activity.required_skills.filter(Boolean) : [];
 }
@@ -164,7 +193,6 @@ function buildCapacityText(capacity: number | null | undefined) {
 }
 
 export function AdminActivitiesPage() {
-  const navigate = useNavigate();
   const { session } = useAuth();
   const accessToken = session?.access_token ?? null;
 
@@ -179,10 +207,10 @@ export function AdminActivitiesPage() {
   const [statusFilter, setStatusFilter] = useState<ActivityStatusFilter>('all');
   const [dateFilter, setDateFilter] = useState<ActivityDateFilter>('all');
   const [openMenuActivityId, setOpenMenuActivityId] = useState<string | null>(null);
-  const [openStatusPickerActivityId, setOpenStatusPickerActivityId] = useState<string | null>(null);
   const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
   const [savingActivityId, setSavingActivityId] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
+  const [organizerDirectory, setOrganizerDirectory] = useState<Map<string, UserRecord>>(new Map());
 
   const loadData = useCallback(async () => {
     if (!accessToken) {
@@ -251,7 +279,6 @@ export function AdminActivitiesPage() {
       }
 
       setOpenMenuActivityId(null);
-      setOpenStatusPickerActivityId(null);
     };
 
     window.addEventListener('click', handleWindowClick);
@@ -323,30 +350,8 @@ export function AdminActivitiesPage() {
 
   const hasActiveFilters = searchTerm.trim().length > 0 || statusFilter !== 'all' || dateFilter !== 'all';
   const isBlockingError = Boolean(error && !loading && activities.length === 0);
-
-  const handleChangeStatus = async (activityId: string, status: ActivityStatus) => {
-    if (!accessToken) {
-      setError('No active session token.');
-      return;
-    }
-
-    setSavingActivityId(activityId);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const updated = await updateActivity(activityId, { status }, accessToken);
-      setActivities((current) => current.map((activity) => (activity.id === updated.id ? updated : activity)));
-      setSelectedActivity((current) => (current?.id === updated.id ? updated : current));
-      setMessage(`Activity status changed to ${toTitleCase(status)}.`);
-      setOpenMenuActivityId(null);
-      setOpenStatusPickerActivityId(null);
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : 'Failed to update activity status.');
-    } finally {
-      setSavingActivityId(null);
-    }
-  };
+  const selectedOrganizer = selectedActivity ? organizerDirectory.get(selectedActivity.organizer_id) ?? null : null;
+  const selectedOrganizerContact = getOrganizerContact(selectedOrganizer);
 
   const handleDelete = async (activityId: string) => {
     if (!accessToken) {
@@ -370,7 +375,6 @@ export function AdminActivitiesPage() {
       setSelectedActivity((current) => (current?.id === activityId ? null : current));
       setMessage('Activity deleted.');
       setOpenMenuActivityId(null);
-      setOpenStatusPickerActivityId(null);
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete activity.');
     } finally {
@@ -397,10 +401,6 @@ export function AdminActivitiesPage() {
           <Button disabled={loading || Boolean(savingActivityId)} onClick={() => void loadData()} type="button" variant="secondary">
             <RefreshCw size={16} />
             Refresh
-          </Button>
-          <Button onClick={() => navigate('/activities/create')} type="button">
-            <PlusCircle size={16} />
-            Create Activity
           </Button>
         </div>
       </div>
@@ -531,9 +531,6 @@ export function AdminActivitiesPage() {
           <div className="admin-activities-state">
             <h3>No activities found</h3>
             <p>Activities created by organizers or admins will appear here.</p>
-            <Button onClick={() => navigate('/activities/create')} type="button">
-              Create Activity
-            </Button>
           </div>
         ) : null}
 
@@ -541,6 +538,7 @@ export function AdminActivitiesPage() {
           <Table className="admin-activities-table" wrapperClassName="admin-activities-table-wrap">
             <thead>
               <tr>
+                <th>No.</th>
                 <th>Activity</th>
                 <th>Organizer</th>
                 <th>Date / Time</th>
@@ -553,7 +551,7 @@ export function AdminActivitiesPage() {
             <tbody>
               {filteredActivities.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <div className="admin-activities-state admin-activities-state--compact">
                       <h3>No matching activities</h3>
                       <p>Adjust search or filters to see more results.</p>
@@ -566,9 +564,11 @@ export function AdminActivitiesPage() {
                   </td>
                 </tr>
               ) : (
-                filteredActivities.map((activity) => {
+                filteredActivities.map((activity, rowIndex) => {
                   const status = String(activity.status ?? 'draft').toLowerCase();
                   const skills = getActivitySkills(activity);
+                  const organizer = organizerDirectory.get(activity.organizer_id) ?? null;
+                  const organizerContact = getOrganizerContact(organizer);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
                   const organizer = organizerById.get(activity.organizer_id) ?? null;
                   const organizerName = String(organizer?.full_name ?? '').trim() || String(organizer?.email ?? '').trim() || 'Organizer unavailable';
@@ -581,6 +581,7 @@ export function AdminActivitiesPage() {
 
                   return (
                     <tr key={activity.id}>
+                      <td>{rowIndex + 1}</td>
                       <td>
                         <div className="admin-activities-title-cell">
                           <strong>{activity.title}</strong>
@@ -637,7 +638,6 @@ export function AdminActivitiesPage() {
 
                               setMenuPlacement(shouldOpenUp ? 'up' : 'down');
                               setOpenMenuActivityId((current) => (current === activity.id ? null : activity.id));
-                              setOpenStatusPickerActivityId(null);
                             }}
                             type="button"
                           >
@@ -659,51 +659,12 @@ export function AdminActivitiesPage() {
                                 onClick={() => {
                                   setSelectedActivity(activity);
                                   setOpenMenuActivityId(null);
-                                  setOpenStatusPickerActivityId(null);
                                 }}
                                 type="button"
                               >
                                 <Eye size={14} />
-                                View Details
+                                View Detail
                               </button>
-
-                              <button
-                                className="row-action-item"
-                                onClick={() => {
-                                  navigate(`/activities/${activity.id}/edit`);
-                                  setOpenMenuActivityId(null);
-                                  setOpenStatusPickerActivityId(null);
-                                }}
-                                type="button"
-                              >
-                                <Pencil size={14} />
-                                Edit Activity
-                              </button>
-
-                              <button
-                                aria-expanded={openStatusPickerActivityId === activity.id}
-                                className="row-action-item"
-                                onClick={() => setOpenStatusPickerActivityId((current) => (current === activity.id ? null : activity.id))}
-                                type="button"
-                              >
-                                Change Status
-                              </button>
-
-                              {openStatusPickerActivityId === activity.id ? (
-                                <div className="admin-activities-status-submenu">
-                                  {ACTIVITY_STATUSES.map((statusOption) => (
-                                    <button
-                                      className={status === statusOption ? 'row-action-item is-current-status' : 'row-action-item'}
-                                      disabled={savingActivityId === activity.id || status === statusOption}
-                                      key={statusOption}
-                                      onClick={() => void handleChangeStatus(activity.id, statusOption)}
-                                      type="button"
-                                    >
-                                      {toTitleCase(statusOption)}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : null}
 
                               <button
                                 className="row-action-item danger"
@@ -798,9 +759,6 @@ export function AdminActivitiesPage() {
             </div>
 
             <div className="admin-activity-detail-actions">
-              <Button onClick={() => navigate(`/activities/${selectedActivity.id}/edit`)} type="button">
-                Edit Activity
-              </Button>
               <Button onClick={() => setSelectedActivity(null)} type="button" variant="secondary">
                 Close
               </Button>
