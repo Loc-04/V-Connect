@@ -16,7 +16,6 @@ import { Badge, Button, Card, Input, Select, Table, type BadgeTone } from '../co
 import { apiRequest } from '../lib/api';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
-import { apiRequest } from '../lib/api';
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { UserRecord } from '../types/domain';
@@ -113,37 +112,6 @@ function getLocationLabel(location: ActivityRecord['location']) {
   return label && label !== 'Location TBD' ? label : 'Location not set';
 }
 
-function getOrganizerName(activity: ActivityRecord, organizer: UserRecord | null | undefined) {
-  const fullName = String(organizer?.full_name ?? '').trim();
-  if (fullName) {
-    return fullName;
-  }
-  return `Organizer ${formatShortId(activity.organizer_id)}`;
-}
-
-function getOrganizerContact(organizer: UserRecord | null | undefined) {
-  const email = String(organizer?.email ?? '').trim();
-  if (email) {
-    return {
-      label: email,
-      href: `mailto:${email}`,
-    };
-  }
-
-  const phone = String(organizer?.phone ?? '').trim();
-  if (phone) {
-    return {
-      label: phone,
-      href: `tel:${phone}`,
-    };
-  }
-
-  return {
-    label: '--',
-    href: null,
-  };
-}
-
 function getActivitySkills(activity: ActivityRecord) {
   return Array.isArray(activity.required_skills) ? activity.required_skills.filter(Boolean) : [];
 }
@@ -210,7 +178,6 @@ export function AdminActivitiesPage() {
   const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
   const [savingActivityId, setSavingActivityId] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
-  const [organizerDirectory, setOrganizerDirectory] = useState<Map<string, UserRecord>>(new Map());
 
   const loadData = useCallback(async () => {
     if (!accessToken) {
@@ -350,8 +317,10 @@ export function AdminActivitiesPage() {
 
   const hasActiveFilters = searchTerm.trim().length > 0 || statusFilter !== 'all' || dateFilter !== 'all';
   const isBlockingError = Boolean(error && !loading && activities.length === 0);
-  const selectedOrganizer = selectedActivity ? organizerDirectory.get(selectedActivity.organizer_id) ?? null : null;
-  const selectedOrganizerContact = getOrganizerContact(selectedOrganizer);
+  const selectedOrganizer = selectedActivity ? organizerById.get(selectedActivity.organizer_id) ?? null : null;
+  const selectedOrganizerName =
+    String(selectedOrganizer?.full_name ?? '').trim() || String(selectedOrganizer?.email ?? '').trim() || 'Organizer unavailable';
+  const selectedOrganizerEmail = String(selectedOrganizer?.email ?? '').trim();
 
   const handleDelete = async (activityId: string) => {
     if (!accessToken) {
@@ -567,8 +536,6 @@ export function AdminActivitiesPage() {
                 filteredActivities.map((activity, rowIndex) => {
                   const status = String(activity.status ?? 'draft').toLowerCase();
                   const skills = getActivitySkills(activity);
-                  const organizer = organizerDirectory.get(activity.organizer_id) ?? null;
-                  const organizerContact = getOrganizerContact(organizer);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
                   const organizer = organizerById.get(activity.organizer_id) ?? null;
                   const organizerName = String(organizer?.full_name ?? '').trim() || String(organizer?.email ?? '').trim() || 'Organizer unavailable';
@@ -712,16 +679,9 @@ export function AdminActivitiesPage() {
             <div className="admin-activity-detail-grid">
               <div>
                 <span>Organizer</span>
-                <strong>
-                  {String(organizerById.get(selectedActivity.organizer_id)?.full_name ?? '').trim() ||
-                    String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() ||
-                    'Organizer unavailable'}
-                </strong>
-                {String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() &&
-                String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() !==
-                  (String(organizerById.get(selectedActivity.organizer_id)?.full_name ?? '').trim() ||
-                    String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim()) ? (
-                  <small className="muted">{String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim()}</small>
+                <strong>{selectedOrganizerName}</strong>
+                {selectedOrganizerEmail && selectedOrganizerEmail !== selectedOrganizerName ? (
+                  <small className="muted">{selectedOrganizerEmail}</small>
                 ) : null}
               </div>
               <div>
