@@ -197,6 +197,15 @@ Environment variables for the geocoding provider:
   - Organizer/admin only.
   - Body: `{ "checkInCode": "<code>" }`
   - Resolves the matching registration by code inside the selected activity, then checks in.
+- `GET /activities/:activityId/registrations/by-volunteer/:volunteerId`
+  - Organizer/admin only; must own the activity (or admin).
+  - Returns `{ "participation": null }` if the volunteer has no registration for this activity, otherwise an enriched participation object (same shape as other participation responses) including `status` and `volunteer` summary.
+  - Use this after scanning a volunteer QR that encodes the volunteer user id (see QR payload contract below).
+- `POST /activities/:activityId/check-in-by-volunteer/:volunteerId`
+  - Organizer/admin only; must own the activity (or admin).
+  - No body. Finds the registration for `(activityId, volunteerId)` and runs the same check-in rules as code-based check-in (`performCheckIn`: same calendar date as `activity.start_time`, `approved` only, not already `checked_in`).
+  - Response: `{ "participation": ... }` on success.
+  - **QR payload contract (volunteer-facing):** encode a stable **volunteer user id** (UUID) as plain text, or JSON such as `{ "volunteerId": "<uuid>" }`, so the organizer app can call the lookup and check-in routes. This path does not use the salted 5-digit code; it trusts an authenticated organizer scanning in person.
 
 ### Sprint 3 Registration API
 

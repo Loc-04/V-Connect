@@ -477,6 +477,71 @@ async function cancelRegistration({ activityId, volunteerId }) {
   };
 }
 
+async function cancelParticipationByOrganizer({ participationId, auth }) {
+  const { participation, activity } = await getRegistrationWithActivityForAccess(participationId, auth);
+  const currentStatus = String(participation.status ?? '');
+
+  if (currentStatus === 'checked_in') {
+    const error = new Error('Checked-in registration cannot be cancelled.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (currentStatus === 'cancelled') {
+    return {
+      registration: await enrichParticipation(participation),
+      message: 'Registration already cancelled.',
+    };
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('activity_participations')
+    .update({
+      status: 'cancelled',
+      updated_at: now,
+    })
+    .eq('id', participationId)
+    .select(participationColumns)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await tryCreateNotification({
+    userId: participation.volunteer_id,
+    title: 'Registration Cancelled',
+    message: activity
+      ? `Your registration for "${activity.title}" has been cancelled.`
+      : 'Your registration has been cancelled.',
+    type: 'message',
+    data: {
+      activityId: activity?.id ?? participation.activity_id,
+      registrationId: participationId,
+      status: 'cancelled',
+    },
+  });
+
+  await tryLogRecommendationInteraction(
+    {
+      event_type: 'cancelled',
+      serving_item_id: data?.recommendation_item_id ?? participation?.recommendation_item_id ?? null,
+      actor_user_id: auth.user.id,
+      activity_id: activity?.id ?? participation.activity_id,
+      volunteer_id: participation.volunteer_id,
+      participation_id: participationId,
+      source_surface: 'web',
+    },
+    'participations.cancel',
+  );
+
+  return {
+    registration: await enrichParticipation(data),
+    message: 'Registration cancelled successfully.',
+  };
+}
+
 async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
   const { participation, activity } = await getRegistrationWithActivityForAccess(participationId, auth);
 
@@ -806,6 +871,32 @@ router.delete('/activities/:id/register', requireAuth, async (req, res) => {
   }
 });
 
+router.delete('/registrations/:id', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'organizer' && role !== 'admin') {
+    res.status(403).json({ message: 'Organizer/admin role required to cancel registrations.' });
+    return;
+  }
+
+  const participationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!isUuid(participationId)) {
+    res.status(400).json({ message: 'Registration id must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    const result = await cancelParticipationByOrganizer({
+      participationId,
+      auth: req.auth,
+    });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to cancel registration.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
 router.get('/registrations/:id', requireAuth, async (req, res) => {
   const participationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
   if (!isUuid(participationId)) {
@@ -1121,6 +1212,100 @@ router.post('/activities/:id/check-in-by-code', requireAuth, async (req, res) =>
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to check in by code.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.get('/activities/:activityId/registrations/by-volunteer/:volunteerId', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'organizer' && role !== 'admin') {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  const activityId = typeof req.params.activityId === 'string' ? req.params.activityId.trim() : '';
+  const volunteerId = asUuidOrNull(req.params.volunteerId);
+  if (!isUuid(activityId)) {
+    res.status(400).json({ message: 'Activity id must be a valid UUID.' });
+    return;
+  }
+  if (!volunteerId) {
+    res.status(400).json({ message: 'Volunteer id must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    await assertActivityAccessForOrganizerOrAdmin(activityId, req.auth);
+
+    const { data, error } = await supabaseAdmin
+      .from('activity_participations')
+      .select(participationColumns)
+      .eq('activity_id', activityId)
+      .eq('volunteer_id', volunteerId)
+      .maybeSingle();
+
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
+
+    if (!data) {
+      res.json({ participation: null });
+      return;
+    }
+
+    const enriched = await enrichParticipation(data);
+    res.json({ participation: enriched });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load registration.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.post('/activities/:activityId/check-in-by-volunteer/:volunteerId', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'organizer' && role !== 'admin') {
+    res.status(403).json({ message: 'Organizer or admin role required.' });
+    return;
+  }
+
+  const activityId = typeof req.params.activityId === 'string' ? req.params.activityId.trim() : '';
+  const volunteerId = asUuidOrNull(req.params.volunteerId);
+  if (!isUuid(activityId)) {
+    res.status(400).json({ message: 'Activity id must be a valid UUID.' });
+    return;
+  }
+  if (!volunteerId) {
+    res.status(400).json({ message: 'Volunteer id must be a valid UUID.' });
+    return;
+  }
+
+  try {
+    const activity = await assertActivityAccessForOrganizerOrAdmin(activityId, req.auth);
+
+    const { data: participation, error } = await supabaseAdmin
+      .from('activity_participations')
+      .select(participationColumns)
+      .eq('activity_id', activityId)
+      .eq('volunteer_id', volunteerId)
+      .maybeSingle();
+
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
+
+    if (!participation) {
+      res.status(404).json({ message: 'No registration for this volunteer on this activity.' });
+      return;
+    }
+
+    const result = await performCheckIn({ participation, activity, actorUserId: req.auth.user.id });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to check in volunteer.';
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
     res.status(statusCode).json({ message });
   }

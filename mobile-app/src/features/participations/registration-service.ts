@@ -101,6 +101,17 @@ export async function fetchPendingRegistrationsForOrganizer(limit = 100): Promis
   return res.participations ?? [];
 }
 
+export async function fetchOrganizerParticipations(limit = 300): Promise<OrganizerRegistrationItem[]> {
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 300) : 300;
+  const params = new URLSearchParams({
+    mine: 'true',
+    limit: String(safeLimit),
+  });
+  // status omitted => backend defaults to "all"
+  const res = await apiRequest<OrganizerRegistrationsResponse>(`/participations?${params.toString()}`);
+  return res.participations ?? [];
+}
+
 export async function approveRegistration(participationId: string): Promise<RegistrationActionResponse> {
   return apiRequest<RegistrationActionResponse>(`/registrations/${participationId}/approve`, {
     method: 'PUT',
@@ -111,4 +122,8 @@ export async function rejectRegistration(participationId: string): Promise<Regis
   return apiRequest<RegistrationActionResponse>(`/registrations/${participationId}/reject`, {
     method: 'PUT',
   });
+}
+
+export async function cancelOrganizerRegistration(participationId: string): Promise<RegistrationActionResponse> {
+  return apiRequest<RegistrationActionResponse>(`/registrations/${participationId}`, { method: 'DELETE' });
 }
