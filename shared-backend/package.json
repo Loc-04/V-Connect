@@ -10,7 +10,10 @@
     "migrate:profiles": "node scripts/migrateProfiles.js",
     "db:apply": "node scripts/applySql.js",
     "db:notifications": "node scripts/applySql.js",
-    "verify:ai:internal": "node scripts/verifyInternalAi.js"
+    "verify:ai:internal": "node scripts/verifyInternalAi.js",
+    "train:recommendation:mlv1": "node scripts/trainRecommendationMlV1.js",
+    "seed:recommendation:ml-demo": "node scripts/seedRecommendationMlDemoData.js",
+    "seed:recommendation:ml-demo:reset": "node scripts/seedRecommendationMlDemoData.js"
   },
   "keywords": [],
   "author": "",

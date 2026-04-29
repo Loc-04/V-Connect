@@ -230,6 +230,11 @@ export function ActivityDetailPage() {
   const [timelineIntegrationMessage, setTimelineIntegrationMessage] = useState<string | null>(null);
   const registrationPanelRef = useRef<HTMLDivElement | null>(null);
   const canRegister = profile?.role === 'volunteer';
+  const recommendationItemIdFromQuery = useMemo(() => {
+    const raw = searchParams.get('recommendationItemId');
+    const value = String(raw ?? '').trim();
+    return value || null;
+  }, [searchParams]);
   const guestIntent = useMemo(
     () => readGuestIntent(searchParams.get(getGuestIntentParamName())),
     [searchParams]
@@ -664,6 +669,7 @@ export function ActivityDetailPage() {
                       activityId={activity.id}
                       canRegister={canSubmitRegistration}
                       className="activity-detail-registration-action"
+                      recommendationItemId={recommendationItemIdFromQuery}
                       currentStatus={participation?.status ?? 'none'}
                       confirmCancelMessage="Cancel this registration for the activity?"
                       registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}

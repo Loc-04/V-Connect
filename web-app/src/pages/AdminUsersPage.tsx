@@ -77,14 +77,18 @@ function getInitials(fullName: string | null, fallbackId: string): string {
   return fallbackId.slice(0, 2).toUpperCase();
 }
 
-function getEmailDisplay(user: UserRecord): string {
-  const email = String(user.email ?? '').trim();
-  return email.length > 0 ? email : '--';
-}
-
 function getPhoneDisplay(user: UserRecord): string {
   const phone = String(user.phone ?? '').trim();
-  return phone.length > 0 ? phone : '--';
+  if (phone.length > 0) {
+    return phone;
+  }
+
+  return 'No phone';
+}
+
+function getEmailDisplay(user: UserRecord): string {
+  const email = String(user.email ?? '').trim();
+  return email.length > 0 ? email : 'No email';
 }
 
 function tokenOf(value: string): string {
@@ -535,8 +539,8 @@ export function AdminUsersPage() {
                 <tr>
                   <th />
                   <th>User</th>
+                  <th>Phone</th>
                   <th>Email</th>
-                  <th>Phone Number</th>
                   <th>Role</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -567,8 +571,8 @@ export function AdminUsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td>{getEmailDisplay(user)}</td>
                       <td>{getPhoneDisplay(user)}</td>
+                      <td>{getEmailDisplay(user)}</td>
                       <td>
                         {isEditing ? (
                           <div className="users-cell-edit">

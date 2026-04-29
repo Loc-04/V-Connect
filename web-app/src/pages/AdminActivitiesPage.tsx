@@ -15,7 +15,8 @@ import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select, Table, type BadgeTone } from '../components/ui';
 import { apiRequest } from '../lib/api';
 import { formatActivityLocation } from '../lib/activityLocation';
-import { deleteActivity, listActivities } from '../lib/activities';
+import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
+import { apiRequest } from '../lib/api';
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { UserRecord } from '../types/domain';
@@ -147,17 +148,12 @@ function getActivitySkills(activity: ActivityRecord) {
   return Array.isArray(activity.required_skills) ? activity.required_skills.filter(Boolean) : [];
 }
 
-function getFilterSearchText(activity: ActivityRecord, organizer: UserRecord | null | undefined) {
-  const organizerName = String(organizer?.full_name ?? '').trim();
-  const organizerEmail = String(organizer?.email ?? '').trim();
-  const organizerPhone = String(organizer?.phone ?? '').trim();
+function getFilterSearchText(activity: ActivityRecord, organizerName: string, organizerEmail: string) {
   return [
     activity.title,
     activity.description ?? '',
-    activity.organizer_id ?? '',
     organizerName,
     organizerEmail,
-    organizerPhone,
     getLocationLabel(activity.location),
     ...getActivitySkills(activity),
   ]
@@ -202,6 +198,7 @@ export function AdminActivitiesPage() {
 
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [participations, setParticipations] = useState<ParticipationRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -259,15 +256,9 @@ export function AdminActivitiesPage() {
     }
 
     if (usersResult.status === 'fulfilled') {
-      const nextOrganizerDirectory = new Map<string, UserRecord>();
-      for (const user of usersResult.value.users ?? []) {
-        if (user?.id) {
-          nextOrganizerDirectory.set(user.id, user);
-        }
-      }
-      setOrganizerDirectory(nextOrganizerDirectory);
+      setUsers(usersResult.value.users);
     } else {
-      setOrganizerDirectory(new Map());
+      setUsers([]);
     }
 
     setLoading(false);
@@ -324,6 +315,10 @@ export function AdminActivitiesPage() {
     return map;
   }, [participations]);
 
+  const organizerById = useMemo(() => {
+    return new Map(users.map((user) => [user.id, user]));
+  }, [users]);
+
   const metrics = useMemo(
     () => ({
       total: activities.length,
@@ -342,14 +337,16 @@ export function AdminActivitiesPage() {
 
     return activities.filter((activity) => {
       const status = String(activity.status ?? 'draft').toLowerCase();
-      const organizer = organizerDirectory.get(activity.organizer_id) ?? null;
-      const matchesSearch = !keyword || getFilterSearchText(activity, organizer).includes(keyword);
+      const organizer = organizerById.get(activity.organizer_id) ?? null;
+      const organizerName = String(organizer?.full_name ?? '').trim();
+      const organizerEmail = String(organizer?.email ?? '').trim();
+      const matchesSearch = !keyword || getFilterSearchText(activity, organizerName, organizerEmail).includes(keyword);
       const matchesStatus = statusFilter === 'all' || status === statusFilter;
       const matchesDate = matchesDateFilter(activity, dateFilter);
 
       return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [activities, dateFilter, organizerDirectory, searchTerm, statusFilter]);
+  }, [activities, dateFilter, organizerById, searchTerm, statusFilter]);
 
   const hasActiveFilters = searchTerm.trim().length > 0 || statusFilter !== 'all' || dateFilter !== 'all';
   const isBlockingError = Boolean(error && !loading && activities.length === 0);
@@ -443,7 +440,7 @@ export function AdminActivitiesPage() {
         <div className="admin-activities-filter-head">
           <div>
             <h3>Find activities</h3>
-            <p className="muted">Search title, skill, location, or organizer contact. Filters are client-side for the first 100 API rows.</p>
+            <p className="muted">Search title, skill, location, or organizer email. Filters are client-side for the first 100 API rows.</p>
           </div>
           {hasActiveFilters ? (
             <Button onClick={clearFilters} type="button" variant="secondary">
@@ -461,7 +458,7 @@ export function AdminActivitiesPage() {
               <Input
                 aria-label="Search activities"
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by title, skill, location, organizer name/email/phone..."
+                placeholder="Search by title, skill, location, organizer email..."
                 value={searchTerm}
               />
             </div>
@@ -573,6 +570,9 @@ export function AdminActivitiesPage() {
                   const organizer = organizerDirectory.get(activity.organizer_id) ?? null;
                   const organizerContact = getOrganizerContact(organizer);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
+                  const organizer = organizerById.get(activity.organizer_id) ?? null;
+                  const organizerName = String(organizer?.full_name ?? '').trim() || String(organizer?.email ?? '').trim() || 'Organizer unavailable';
+                  const organizerEmail = String(organizer?.email ?? '').trim();
                   const capacity = Number(activity.capacity ?? 0);
                   const capacityValue = buildCapacityText(capacity);
                   const registeredCount = registrationStats ? registrationStats.registered : 0;
@@ -594,13 +594,9 @@ export function AdminActivitiesPage() {
                         </div>
                       </td>
                       <td>
-                        <div className="admin-activities-organizer-cell">
-                          <strong>{getOrganizerName(activity, organizer)}</strong>
-                          {organizerContact.href ? (
-                            <a href={organizerContact.href}>{organizerContact.label}</a>
-                          ) : (
-                            <small>{organizerContact.label}</small>
-                          )}
+                        <div className="admin-activities-muted-cell">
+                          <strong>{organizerName}</strong>
+                          {organizerEmail && organizerEmail !== organizerName ? <small className="muted">{organizerEmail}</small> : null}
                         </div>
                       </td>
                       <td>{formatDateRange(activity.start_time, activity.end_time)}</td>
@@ -716,12 +712,17 @@ export function AdminActivitiesPage() {
             <div className="admin-activity-detail-grid">
               <div>
                 <span>Organizer</span>
-                <strong>{getOrganizerName(selectedActivity, selectedOrganizer)}</strong>
-                {selectedOrganizerContact.href ? (
-                  <a href={selectedOrganizerContact.href}>{selectedOrganizerContact.label}</a>
-                ) : (
-                  <small>{selectedOrganizerContact.label}</small>
-                )}
+                <strong>
+                  {String(organizerById.get(selectedActivity.organizer_id)?.full_name ?? '').trim() ||
+                    String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() ||
+                    'Organizer unavailable'}
+                </strong>
+                {String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() &&
+                String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() !==
+                  (String(organizerById.get(selectedActivity.organizer_id)?.full_name ?? '').trim() ||
+                    String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim()) ? (
+                  <small className="muted">{String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim()}</small>
+                ) : null}
               </div>
               <div>
                 <span>Date / Time</span>

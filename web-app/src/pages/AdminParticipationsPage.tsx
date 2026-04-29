@@ -13,7 +13,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
 import { AttendanceStatusBadge } from '../components/attendance';
 import { Button, Card, Input, Select, Table } from '../components/ui';
-import { listParticipations } from '../lib/participations';
+import { apiRequest } from '../lib/api';
+import { checkInParticipationWithCode, listParticipations } from '../lib/participations';
+import { approveRegistration, rejectRegistration } from '../lib/registrations';
+import type { UserRecord } from '../types/domain';
 import type { ParticipationRecord } from '../types/participation';
 import './AdminParticipationsPage.css';
 
@@ -36,6 +39,16 @@ interface ParticipationViewModel {
   matchScore: number | null;
   hours: number | null;
   searchText: string;
+}
+
+interface NoticeState {
+  tone: CheckInResultTone;
+  title: string;
+  description?: string;
+}
+
+interface AdminUsersResponse {
+  users: UserRecord[];
 }
 
 function normalizeStatus(value: string | null | undefined) {
@@ -110,11 +123,21 @@ function getActivityId(participation: ParticipationRecord) {
   return participation.activityId ?? participation.activity_id ?? null;
 }
 
-function buildViewModel(participation: ParticipationRecord): ParticipationViewModel {
+function canApproveOrReject(status: string) {
+  return status === 'pending';
+}
+
+function canCheckIn(status: string) {
+  return status === 'approved';
+}
+
+function buildViewModel(participation: ParticipationRecord, volunteerEmailById: Map<string, string>): ParticipationViewModel {
   const id = getParticipationId(participation);
   const activityId = getActivityId(participation);
   const volunteerName = participation.volunteer?.full_name?.trim() || 'Volunteer unavailable';
-  const volunteerMeta = participation.volunteer?.phone?.trim() || formatShortId(participation.volunteer_id);
+  const directVolunteerEmail = String(participation.volunteer?.email ?? '').trim();
+  const mappedVolunteerEmail = participation.volunteer_id ? volunteerEmailById.get(participation.volunteer_id) || '' : '';
+  const volunteerMeta = directVolunteerEmail || mappedVolunteerEmail || 'No email';
   const activityName = participation.activityName || 'Activity unavailable';
   const organizerName = participation.organization || 'Organizer unavailable';
   const status = normalizeStatus(participation.status);
@@ -158,6 +181,7 @@ export function AdminParticipationsPage() {
   const accessToken = session?.access_token ?? null;
 
   const [participations, setParticipations] = useState<ParticipationRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -177,25 +201,69 @@ export function AdminParticipationsPage() {
     setLoading(true);
     setError(null);
 
-    try {
-      const rows = await listParticipations({
+    const [participationsResult, usersResult] = await Promise.allSettled([
+      listParticipations({
         accessToken,
         status: 'all',
         limit: 300,
-      });
-      setParticipations(rows);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load participations.');
-    } finally {
+      }),
+      apiRequest<AdminUsersResponse>('/admin/users', {
+        accessToken,
+      }),
+    ]);
+
+    if (participationsResult.status === 'rejected') {
+      setError(participationsResult.reason instanceof Error ? participationsResult.reason.message : 'Failed to load participations.');
       setLoading(false);
+      return;
     }
+
+    setParticipations(participationsResult.value);
+
+    if (usersResult.status === 'fulfilled') {
+      setUsers(usersResult.value.users);
+    } else {
+      setUsers([]);
+    }
+
+    setLoading(false);
   }, [accessToken]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  const rows = useMemo(() => participations.map(buildViewModel), [participations]);
+  useEffect(() => {
+    const handleWindowClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      if (target.closest('.row-action-wrap')) {
+        return;
+      }
+      setOpenMenuParticipationId(null);
+    };
+
+    window.addEventListener('click', handleWindowClick);
+    return () => {
+      window.removeEventListener('click', handleWindowClick);
+    };
+  }, []);
+
+  const volunteerEmailById = useMemo(() => {
+    return new Map(
+      users.map((user) => {
+        const email = String(user.email ?? '').trim();
+        return [user.id, email];
+      })
+    );
+  }, [users]);
+
+  const rows = useMemo(
+    () => participations.map((participation) => buildViewModel(participation, volunteerEmailById)),
+    [participations, volunteerEmailById]
+  );
 
   const metrics = useMemo(
     () => ({
@@ -250,6 +318,108 @@ export function AdminParticipationsPage() {
     attendanceFilter !== 'all' ||
     activityFilter !== 'all' ||
     organizerFilter !== 'all';
+
+  const syncUpdatedParticipation = (updated: ParticipationRecord) => {
+    const updatedId = getParticipationId(updated);
+    setParticipations((current) => current.map((item) => (getParticipationId(item) === updatedId ? updated : item)));
+    setSelectedParticipation((current) => {
+      if (!current || current.id !== updatedId) {
+        return current;
+      }
+      return buildViewModel(updated, volunteerEmailById);
+    });
+  };
+
+  const handleApprove = async (row: ParticipationViewModel) => {
+    if (!accessToken) {
+      setError('No active session token.');
+      return;
+    }
+
+    setUpdatingId(row.id);
+    setError(null);
+    setMessage(null);
+    setNotice(null);
+
+    try {
+      const result = await approveRegistration(row.id, accessToken);
+      syncUpdatedParticipation(result.registration);
+      setMessage(result.message ?? 'Registration approved successfully.');
+      setOpenMenuParticipationId(null);
+    } catch (approveError) {
+      setError(approveError instanceof Error ? approveError.message : 'Failed to approve registration.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleReject = async (row: ParticipationViewModel) => {
+    if (!accessToken) {
+      setError('No active session token.');
+      return;
+    }
+
+    setUpdatingId(row.id);
+    setError(null);
+    setMessage(null);
+    setNotice(null);
+
+    try {
+      const result = await rejectRegistration(row.id, accessToken);
+      syncUpdatedParticipation(result.registration);
+      setMessage(result.message ?? 'Registration rejected successfully.');
+      setOpenMenuParticipationId(null);
+    } catch (rejectError) {
+      setError(rejectError instanceof Error ? rejectError.message : 'Failed to reject registration.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleCheckIn = async (row: ParticipationViewModel) => {
+    if (!accessToken) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'No active session token.',
+      });
+      return;
+    }
+
+    const normalizedCode = checkInCode.trim();
+    if (!/^\d{5}$/.test(normalizedCode)) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Check-in code must be exactly 5 digits.',
+      });
+      return;
+    }
+
+    setUpdatingId(row.id);
+    setError(null);
+    setMessage(null);
+    setNotice(null);
+
+    try {
+      const updated = await checkInParticipationWithCode(row.id, accessToken, normalizedCode);
+      syncUpdatedParticipation(updated);
+      setCheckInCode('');
+      setNotice({
+        tone: 'success',
+        title: 'Check-in successful',
+        description: `${row.volunteerName} was checked in for ${row.activityName}.`,
+      });
+    } catch (checkInError) {
+      setNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: checkInError instanceof Error ? checkInError.message : 'Failed to check in participant.',
+      });
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -324,7 +494,7 @@ export function AdminParticipationsPage() {
         <div className="admin-participations-filter-head">
           <div>
             <h3>Find records</h3>
-            <p className="muted">Search volunteer, activity, organizer, or record id. Filters are applied client-side to loaded records.</p>
+            <p className="muted">Search volunteer, volunteer email, activity, organizer, or record id. Filters are applied client-side to loaded records.</p>
           </div>
           {hasActiveFilters ? (
             <Button onClick={clearFilters} type="button" variant="secondary">
@@ -342,7 +512,7 @@ export function AdminParticipationsPage() {
               <Input
                 aria-label="Search participations"
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search volunteer, activity, organizer, record id..."
+                placeholder="Search volunteer, email, activity, organizer, record id..."
                 value={searchTerm}
               />
             </div>

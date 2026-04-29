@@ -294,6 +294,13 @@
   word-break: break-word;
 }
 
+.admin-activities-muted-cell small,
+.admin-activity-detail-grid small {
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .admin-activities-location-cell {
   display: flex;
   align-items: flex-start;
