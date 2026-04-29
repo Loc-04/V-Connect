@@ -301,19 +301,29 @@
 }
 
 .admin-participations-checkin-cell {
-  display: grid;
-  gap: 0.32rem;
-  min-width: 150px;
+  min-width: 90px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.admin-participations-checkin-cell > span {
-  color: #475569;
-  line-height: 1.35;
+.admin-participations-checkin-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 24px;
+  line-height: 1;
 }
 
-.admin-participations-checkin-badge.ui-badge {
-  justify-self: start;
-  font-size: 0.66rem;
+.admin-participations-checkin-mark.is-checked {
+  color: #16a34a;
+}
+
+.admin-participations-checkin-mark.is-empty {
+  color: #94a3b8;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .admin-participations-row-menu {
