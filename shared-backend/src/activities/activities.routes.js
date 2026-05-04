@@ -609,6 +609,15 @@ function normalizeTimelineItems(input) {
     }));
 }
 
+function mapTimelineConstraintMessage(message) {
+  const normalized = String(message ?? '').trim().toLowerCase();
+  if (normalized.includes('timelinechoice cannot be in the past')) {
+    return 'That time has already passed. Please choose a future time.';
+  }
+
+  return message;
+}
+
 async function getTimelineActivity(activityId) {
   return getActivityById(activityId);
 }
@@ -631,6 +640,15 @@ function canEditTimeline(activity, role, userId) {
     return false;
   }
   return activity.organizer_id === userId;
+}
+
+function hasActivityEnded(activity) {
+  const endTime = new Date(activity?.end_time);
+  if (Number.isNaN(endTime.getTime())) {
+    return false;
+  }
+
+  return endTime.getTime() <= Date.now();
 }
 
 async function handleActivityDetail(req, res) {
@@ -741,7 +759,7 @@ router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
 
   if (error) {
     if (error.code === '23514' || error.code === '22P02' || error.code === '23502') {
-      res.status(400).json({ message: error.message });
+      res.status(400).json({ message: mapTimelineConstraintMessage(error.message) });
       return;
     }
     res.status(500).json({ message: error.message });
@@ -776,12 +794,46 @@ router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, re
     return;
   }
 
+  const { data: existingMilestoneRow, error: existingMilestoneError } = await supabaseAdmin
+    .from('activities_timeline')
+    .select(timelineColumns)
+    .eq('id', timelineId)
+    .eq('activity_id', activityId)
+    .maybeSingle();
+
+  if (existingMilestoneError) {
+    res.status(500).json({ message: existingMilestoneError.message });
+    return;
+  }
+
+  if (!existingMilestoneRow) {
+    res.status(404).json({ message: 'Timeline milestone not found.' });
+    return;
+  }
+
   let payload;
   try {
     payload = normalizeTimelinePayload(req.body, { partial: true });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
     return;
+  }
+
+  if (hasActivityEnded(activity)) {
+    const existingMilestone = normalizeTimelineItem(existingMilestoneRow, 0);
+    const descriptionMeta = normalizeTimelineDescriptionMeta(payload.description ?? null) ?? {};
+    const nextStartTime = payload.timeline_choice ?? existingMilestone.startTime;
+    const nextEndTime =
+      normalizeTimelineIsoString(descriptionMeta.endTime ?? descriptionMeta.end_time) || existingMilestone.endTime;
+    const hasTimelineTimeChange =
+      nextStartTime !== existingMilestone.startTime || nextEndTime !== existingMilestone.endTime;
+
+    if (hasTimelineTimeChange) {
+      res.status(400).json({
+        message: 'Cannot edit timeline milestone time for activities that have already ended.',
+      });
+      return;
+    }
   }
 
   const { data, error } = await supabaseAdmin
@@ -794,15 +846,10 @@ router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, re
 
   if (error) {
     if (error.code === '23514' || error.code === '22P02' || error.code === '23502') {
-      res.status(400).json({ message: error.message });
+      res.status(400).json({ message: mapTimelineConstraintMessage(error.message) });
       return;
     }
     res.status(500).json({ message: error.message });
-    return;
-  }
-
-  if (!data) {
-    res.status(404).json({ message: 'Timeline milestone not found.' });
     return;
   }
 

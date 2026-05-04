@@ -106,6 +106,18 @@ export function EventTimelineEditor({
   const [notice, setNotice] = useState<string | null>(null);
   const [busyMilestoneId, setBusyMilestoneId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const isPastActivity = useMemo(() => {
+    if (!activityEndTime) {
+      return false;
+    }
+
+    const parsed = new Date(activityEndTime);
+    if (Number.isNaN(parsed.getTime())) {
+      return false;
+    }
+
+    return parsed.getTime() <= nowMs;
+  }, [activityEndTime, nowMs]);
 
   const resetForm = useCallback(() => {
     setEditingMilestoneId(null);
@@ -237,6 +249,14 @@ export function EventTimelineEditor({
       status: formDraft.status === 'cancelled' ? 'cancelled' : undefined,
     };
 
+    if (editingMilestoneId && isPastActivity) {
+      const original = orderedMilestones.find((item) => item.id === editingMilestoneId) ?? null;
+      if (original && (payload.startTime !== original.startTime || payload.endTime !== original.endTime)) {
+        setFormErrorMessages(['Cannot edit milestone time for activities that have already ended.']);
+        return;
+      }
+    }
+
     try {
       if (editingMilestoneId) {
         const result = await updateTimelineMilestone(activityId, editingMilestoneId, payload, accessToken);
@@ -308,6 +328,7 @@ export function EventTimelineEditor({
   const startFieldError = getInlineFieldError(formErrorMessages, 'start time');
   const endFieldError = getInlineFieldError(formErrorMessages, 'end time');
   const timeRangeError = getInlineFieldError(formErrorMessages, 'end time must be later');
+  const pastActivityTimeError = getInlineFieldError(formErrorMessages, 'already ended');
   const activeDraftStatus = resolveTimelineMilestoneStatus(formDraft, nowMs);
 
   return (
@@ -358,6 +379,7 @@ export function EventTimelineEditor({
           <label>
             <span>Start time</span>
             <Input
+              disabled={Boolean(editingMilestoneId && isPastActivity)}
               onChange={(event) => handleDraftChange('startTime', toIsoDateTime(event.target.value))}
               type="datetime-local"
               value={toInputDateTimeValue(formDraft.startTime)}
@@ -368,6 +390,7 @@ export function EventTimelineEditor({
           <label>
             <span>End time</span>
             <Input
+              disabled={Boolean(editingMilestoneId && isPastActivity)}
               onChange={(event) => handleDraftChange('endTime', toIsoDateTime(event.target.value))}
               type="datetime-local"
               value={toInputDateTimeValue(formDraft.endTime)}
@@ -387,8 +410,12 @@ export function EventTimelineEditor({
           />
         </label>
         {timeRangeError ? <small className="form-error">{timeRangeError}</small> : null}
+        {pastActivityTimeError ? <small className="form-error">{pastActivityTimeError}</small> : null}
+        {editingMilestoneId && isPastActivity ? (
+          <p className="muted">This activity has ended, so milestone start/end time cannot be changed.</p>
+        ) : null}
         <p className="muted">
-          Status updates automatically from milestone time range. Manual override is available only for Cancelled.
+          Status updates automatically based on the timeline. You can only manually set it to Cancelled.
         </p>
         <TimelineStatusBadge status={activeDraftStatus} />
 
@@ -405,7 +432,7 @@ export function EventTimelineEditor({
             <Button
               onClick={() => {
                 resetForm();
-                setNotice('New milestone form is ready.');
+                setNotice('Ready to add a new milestone!');
               }}
               type="button"
               variant="secondary"
