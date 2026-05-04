@@ -865,20 +865,21 @@ export function OrganizerReportSummaryPage() {
                 </div>
               </Card>
 
-            {shouldShowTimeline ? (
-              <Card as="section" className="org-report-lower-card org-report-timeline-summary-card">
-                <div className="org-report-card-head">
-                  <h3>Activity Timeline</h3>
-                </div>
-                <EventTimelineReadOnly
-                  compact
-                  emptyDescription="No organizer-managed milestones are linked to this activity yet."
-                  milestones={timelineMilestones}
-                  loading={timelineLoading}
-                  error={timelineError}
-                />
-              </Card>
-            ) : null}
+              {shouldShowTimeline ? (
+                <Card as="section" className="org-report-lower-card org-report-timeline-summary-card">
+                  <div className="org-report-card-head">
+                    <h3>Activity Timeline</h3>
+                  </div>
+                  <EventTimelineReadOnly
+                    compact
+                    emptyDescription="No organizer-managed milestones are linked to this activity yet."
+                    milestones={timelineMilestones}
+                    loading={timelineLoading}
+                    error={timelineError}
+                  />
+                </Card>
+              ) : null}
+            </div>
           </>
         ) : (
           <section className="card org-report-lower-card org-report-empty-card">
