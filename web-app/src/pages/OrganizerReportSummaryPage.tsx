@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { EmptyLoadingErrorState } from '../components/feedback';
+import { EmptyLoadingErrorState, IssueBadge } from '../components/feedback';
 import { EventTimelineReadOnly } from '../components/timeline';
 import { Badge, Button, Card, Select } from '../components/ui';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
@@ -330,9 +330,7 @@ export function OrganizerReportSummaryPage() {
                 {issueHighlights.length > 0 && (
                   <div className="org-report-inline-tags">
                     {issueHighlights.map((item) => (
-                      <Badge key={item.id} tone={item.priority === 'high' ? 'danger' : 'info'}>
-                        {item.label} ({item.count})
-                      </Badge>
+                      <IssueBadge key={item.id} label={`${item.label} (${item.count})`} priority={item.priority} />
                     ))}
                   </div>
                 )}

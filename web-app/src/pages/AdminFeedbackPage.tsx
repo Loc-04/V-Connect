@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { IssueBadge } from '../components/feedback';
 import { Badge, Button, Card, Input, Select } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listFeedbackReview, updateFeedbackAiLabel } from '../lib/feedback';
@@ -20,6 +21,7 @@ type SemanticLabel = 'incident' | 'positive' | 'negative' | 'neutral' | 'low_sig
 type IncidentLabel = 'incident' | 'none';
 type TextQualityLabel = 'informative' | 'low_signal' | 'uninformative';
 type FeedbackBucket = 'spam' | 'low_signal' | 'valid';
+type IssuePriority = 'high' | 'medium' | 'low';
 
 interface FeedbackViewModel {
   id: string;
@@ -94,6 +96,14 @@ const emptyFeedbackInsights: FeedbackInsights = {
     message: 'Not enough high-quality feedback to generate reliable insights yet.',
   },
 };
+
+function normalizeIssuePriority(value: string): IssuePriority {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'high' || normalized === 'medium' || normalized === 'low') {
+    return normalized;
+  }
+  return 'medium';
+}
 
 interface ExcelStyleCell {
   font?: Record<string, unknown>;
@@ -1690,9 +1700,11 @@ export function AdminFeedbackPage() {
               ) : (
                 <div className="feedback-review-ai-tags">
                   {feedbackInsights.repeatedIssues.map((issue) => (
-                    <Badge key={`repeated-${issue.tag}`} tone={issue.priority === 'high' ? 'danger' : 'info'}>
-                      {issue.label} ({issue.count})
-                    </Badge>
+                    <IssueBadge
+                      key={`repeated-${issue.tag}`}
+                      label={`${issue.label} (${issue.count})`}
+                      priority={normalizeIssuePriority(issue.priority)}
+                    />
                   ))}
                 </div>
               )}

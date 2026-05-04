@@ -17,6 +17,7 @@ export interface ActivityLocation {
   geocodeConfidence?: number | null;
   lat?: number | null;
   lng?: number | null;
+  skillPriorities?: Record<string, ActivityPriorityLevel | string> | null;
 }
 
 export interface ActivityRecord {

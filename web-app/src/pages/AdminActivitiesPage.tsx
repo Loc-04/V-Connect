@@ -15,16 +15,7 @@ import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select, Table, type BadgeTone } from '../components/ui';
 import { apiRequest } from '../lib/api';
 import { formatActivityLocation } from '../lib/activityLocation';
-<<<<<<< HEAD
-<<<<<<< HEAD
-import { deleteActivity, listActivities } from '../lib/activities';
-=======
 import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
-import { apiRequest } from '../lib/api';
->>>>>>> parent of 01d4950 (fix loi trung code dan den khong chay duoc)
-=======
-import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
->>>>>>> parent of 7aeb55f (Merge branch 'main' into be_build_api_Kien)
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { UserRecord } from '../types/domain';
@@ -218,7 +209,6 @@ export function AdminActivitiesPage() {
   const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
   const [savingActivityId, setSavingActivityId] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
-  const [organizerDirectory, setOrganizerDirectory] = useState<Map<string, UserRecord>>(new Map());
 
   const loadData = useCallback(async () => {
     if (!accessToken) {
@@ -358,28 +348,10 @@ export function AdminActivitiesPage() {
 
   const hasActiveFilters = searchTerm.trim().length > 0 || statusFilter !== 'all' || dateFilter !== 'all';
   const isBlockingError = Boolean(error && !loading && activities.length === 0);
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, statusFilter, dateFilter]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-=======
-  const selectedOrganizer = selectedActivity ? organizerDirectory.get(selectedActivity.organizer_id) ?? null : null;
-  const selectedOrganizerContact = getOrganizerContact(selectedOrganizer);
->>>>>>> parent of 01d4950 (fix loi trung code dan den khong chay duoc)
-=======
   const selectedOrganizer = selectedActivity ? organizerById.get(selectedActivity.organizer_id) ?? null : null;
   const selectedOrganizerName =
     String(selectedOrganizer?.full_name ?? '').trim() || String(selectedOrganizer?.email ?? '').trim() || 'Organizer unavailable';
   const selectedOrganizerEmail = String(selectedOrganizer?.email ?? '').trim();
->>>>>>> parent of 7aeb55f (Merge branch 'main' into be_build_api_Kien)
 
   const handleDelete = async (activityId: string) => {
     if (!accessToken) {
@@ -595,8 +567,6 @@ export function AdminActivitiesPage() {
                 filteredActivities.map((activity, rowIndex) => {
                   const status = String(activity.status ?? 'draft').toLowerCase();
                   const skills = getActivitySkills(activity);
-                  const organizer = organizerDirectory.get(activity.organizer_id) ?? null;
-                  const organizerContact = getOrganizerContact(organizer);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
                   const organizer = organizerById.get(activity.organizer_id) ?? null;
                   const organizerName = String(organizer?.full_name ?? '').trim() || String(organizer?.email ?? '').trim() || 'Organizer unavailable';

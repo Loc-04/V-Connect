@@ -192,6 +192,7 @@ export function EventTimelineEditor({
       activityStartTime,
       activityEndTime,
       enforceActivityWindow: false,
+      disallowPastStart: !editingMilestoneId,
     });
 
     const errorMessages = issues.filter((issue) => issue.level === 'error').map((issue) => issue.message);
@@ -213,11 +214,11 @@ export function EventTimelineEditor({
       if (editingMilestoneId) {
         const result = await updateTimelineMilestone(activityId, editingMilestoneId, payload);
         setMilestones(result.milestones);
-        setNotice('Milestone updated in frontend session.');
+        setNotice('Milestone updated.');
       } else {
         const result = await createTimelineMilestone(activityId, payload);
         setMilestones(result.milestones);
-        setNotice('Milestone added in frontend session.');
+        setNotice('Milestone added.');
       }
       resetForm();
     } catch (saveError) {
@@ -235,7 +236,7 @@ export function EventTimelineEditor({
     try {
       const result = await deleteTimelineMilestone(activityId, milestoneId);
       setMilestones(result.milestones);
-      setNotice('Milestone removed from frontend session.');
+      setNotice('Milestone removed.');
       if (editingMilestoneId === milestoneId) {
         resetForm();
       }
@@ -264,7 +265,7 @@ export function EventTimelineEditor({
     try {
       const result = await updateTimelineMilestoneStatus(activityId, milestoneId, status);
       setMilestones(result.milestones);
-      setNotice('Milestone status updated in frontend session.');
+      setNotice('Milestone status updated.');
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : 'Failed to update milestone status.');
     } finally {

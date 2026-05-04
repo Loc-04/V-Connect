@@ -21,7 +21,7 @@ import { cancelParticipation, listParticipations } from '../lib/participations';
 import { getMockActivityDetailById } from '../lib/participationMocks';
 import { listActivityTimeline } from '../lib/timeline';
 import type { ActivityDetailMock } from '../lib/participationMocks';
-import type { ActivityRecord } from '../types/activity';
+import type { ActivityPriorityLevel, ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import type { TimelineMilestone } from '../types/timeline';
 import './ActivityDetailPage.css';
@@ -44,6 +44,7 @@ interface ActivityDetailViewModel {
   level: string;
   categories: string[];
   requirements: string[];
+  skillPriorities: Record<string, ActivityPriorityLevel>;
   heroImageUrl: string;
   locationCoordinates: ActivityCoordinates | null;
   mapUrl: string | null;
@@ -117,6 +118,43 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
+function normalizeSkillPriority(value: unknown): ActivityPriorityLevel {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'low' || normalized === 'normal' || normalized === 'urgent') {
+    return normalized;
+  }
+  return 'normal';
+}
+
+function getSkillPriorityMapFromLocation(location: ActivityRecord['location']): Record<string, ActivityPriorityLevel> {
+  if (!location || typeof location !== 'object' || Array.isArray(location)) {
+    return {};
+  }
+
+  const rawMap = location.skillPriorities;
+  if (!rawMap || typeof rawMap !== 'object' || Array.isArray(rawMap)) {
+    return {};
+  }
+
+  const normalized: Record<string, ActivityPriorityLevel> = {};
+  for (const [skill, priority] of Object.entries(rawMap)) {
+    const key = String(skill ?? '').trim();
+    if (!key) continue;
+    normalized[key] = normalizeSkillPriority(priority);
+  }
+
+  return normalized;
+}
+
+function getSkillPriorityClass(skill: string, priorities: Record<string, ActivityPriorityLevel>) {
+  const direct = priorities[skill];
+  if (direct) {
+    return `is-priority-${direct}`;
+  }
+  const fallback = Object.entries(priorities).find(([name]) => name.toLowerCase() === skill.toLowerCase())?.[1];
+  return fallback ? `is-priority-${fallback}` : 'is-priority-normal';
+}
+
 function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
   const { dateLabel, timeLabel } = formatDateAndTime(mock.startTime, mock.endTime);
   return {
@@ -135,6 +173,7 @@ function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
     level: mock.level,
     categories: mock.categories,
     requirements: mock.requirements,
+    skillPriorities: {},
     heroImageUrl: mock.heroImageUrl,
     locationCoordinates: null,
     mapUrl: mock.locationAddress
@@ -149,6 +188,7 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
   const categories = skills.length > 0 ? skills.slice(0, 2).map(titleCase) : fallback?.categories ?? ['Community'];
   const requirements = skills.length > 0 ? skills.slice(0, 3).map(titleCase) : fallback?.requirements ?? ['Teamwork'];
   const maxParticipants = Number(activity.capacity ?? fallback?.maxParticipants ?? 0);
+  const skillPriorities = getSkillPriorityMapFromLocation(activity.location);
 
   return {
     id: activity.id,
@@ -169,6 +209,7 @@ function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | nul
     level: fallback?.level || 'Open to all levels',
     categories,
     requirements,
+    skillPriorities,
     heroImageUrl: String(activity.cover_image_url ?? '').trim(),
     locationCoordinates: getActivityCoordinates(activity.location),
     mapUrl: buildActivityMapUrl(activity.location),
@@ -186,7 +227,7 @@ function getStatusTone(status: ViewStatus) {
     return 'danger' as const;
   }
   if (status === 'published') {
-    return 'accent' as const;
+    return 'info' as const;
   }
   return 'info' as const;
 }
@@ -545,11 +586,15 @@ export function ActivityDetailPage() {
                 <img alt={activity.title} className="activity-detail-hero-image" src={activity.heroImageUrl} />
 
                 <div className="activity-detail-tags">
-                  <Badge className="activity-detail-tag" tone={getStatusTone(activity.status)}>
+                  <Badge className="activity-detail-status-tag" tone={getStatusTone(activity.status)}>
                     {titleCase(activity.status)}
                   </Badge>
                   {activity.categories.map((category) => (
-                    <Badge className="activity-detail-tag" key={category} tone="accent">
+                    <Badge
+                      className={`activity-detail-skill-tag ${getSkillPriorityClass(category, activity.skillPriorities)}`}
+                      key={category}
+                      tone="neutral"
+                    >
                       {category}
                     </Badge>
                   ))}
@@ -601,7 +646,11 @@ export function ActivityDetailPage() {
                   <h3>Volunteer Requirements</h3>
                   <div>
                     {activity.requirements.map((requirement) => (
-                      <Badge className="activity-detail-pill" key={requirement} tone="neutral">
+                      <Badge
+                        className={`activity-detail-skill-tag activity-detail-pill ${getSkillPriorityClass(requirement, activity.skillPriorities)}`}
+                        key={requirement}
+                        tone="neutral"
+                      >
                         {requirement}
                       </Badge>
                     ))}
