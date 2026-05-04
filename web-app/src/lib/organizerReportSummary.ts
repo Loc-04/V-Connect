@@ -52,7 +52,7 @@ export interface OrganizerReportSummaryData {
   participationTrend: string;
   participationTrendLabel: string;
   participationBreakdown: ReportParticipationBreakdownItem[];
-  feedbackRating: number;
+  feedbackRating: number | null;
   feedbackQuote: string;
   sentimentChips: ReportSentimentChip[];
   issues: ReportIssueHighlight[];
@@ -60,6 +60,12 @@ export interface OrganizerReportSummaryData {
   strengths?: string[];
   weaknesses?: string[];
   issueHighlights?: ReportIssueTagHighlight[];
+  feedbackStats?: {
+    totalCount: number;
+    validCount: number;
+    spamCount: number;
+    averageRating: number | null;
+  };
   modelVersion?: string;
 }
 
@@ -121,5 +127,11 @@ export const organizerReportSummaryMock: OrganizerReportSummaryData = {
   issueHighlights: [
     { id: 'feedback-issue-logistics', tag: 'logistics', label: 'Logistics', count: 12, priority: 'medium' },
   ],
+  feedbackStats: {
+    totalCount: 420,
+    validCount: 420,
+    spamCount: 0,
+    averageRating: 4.5,
+  },
   modelVersion: 'deterministic-facts-v2-2026-04',
 };

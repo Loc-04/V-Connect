@@ -24,6 +24,7 @@ import './AdminActivitiesPage.css';
 
 const ACTIVITY_STATUSES: ActivityStatus[] = ['draft', 'published', 'completed', 'cancelled'];
 const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in', 'upcoming', 'completed']);
+const ACTIVITIES_PAGE_SIZE = 5;
 
 type ActivityStatusFilter = 'all' | ActivityStatus;
 type ActivityDateFilter = 'all' | 'upcoming' | 'past';
@@ -205,6 +206,7 @@ export function AdminActivitiesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ActivityStatusFilter>('all');
   const [dateFilter, setDateFilter] = useState<ActivityDateFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [openMenuActivityId, setOpenMenuActivityId] = useState<string | null>(null);
   const [menuPlacement, setMenuPlacement] = useState<'down' | 'up'>('down');
   const [savingActivityId, setSavingActivityId] = useState<string | null>(null);
@@ -345,9 +347,27 @@ export function AdminActivitiesPage() {
       return matchesSearch && matchesStatus && matchesDate;
     });
   }, [activities, dateFilter, organizerById, searchTerm, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredActivities.length / ACTIVITIES_PAGE_SIZE));
+  const paginatedActivities = useMemo(() => {
+    const offset = (currentPage - 1) * ACTIVITIES_PAGE_SIZE;
+    return filteredActivities.slice(offset, offset + ACTIVITIES_PAGE_SIZE);
+  }, [currentPage, filteredActivities]);
+  const visibleRangeStart = filteredActivities.length === 0 ? 0 : (currentPage - 1) * ACTIVITIES_PAGE_SIZE + 1;
+  const visibleRangeEnd = Math.min(currentPage * ACTIVITIES_PAGE_SIZE, filteredActivities.length);
 
   const hasActiveFilters = searchTerm.trim().length > 0 || statusFilter !== 'all' || dateFilter !== 'all';
   const isBlockingError = Boolean(error && !loading && activities.length === 0);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, dateFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const selectedOrganizer = selectedActivity ? organizerById.get(selectedActivity.organizer_id) ?? null : null;
   const selectedOrganizerName =
     String(selectedOrganizer?.full_name ?? '').trim() || String(selectedOrganizer?.email ?? '').trim() || 'Organizer unavailable';
@@ -500,7 +520,7 @@ export function AdminActivitiesPage() {
           <div>
             <h3>Activities</h3>
             <p className="muted">
-              Showing {filteredActivities.length} of {activities.length} activities.
+              Showing {visibleRangeStart}-{visibleRangeEnd} of {filteredActivities.length} filtered activities ({activities.length} total).
             </p>
           </div>
           {participationsWarning ? <span className="admin-activities-warning-pill">Registration counts unavailable</span> : null}
@@ -564,7 +584,7 @@ export function AdminActivitiesPage() {
                   </td>
                 </tr>
               ) : (
-                filteredActivities.map((activity, rowIndex) => {
+                paginatedActivities.map((activity, rowIndex) => {
                   const status = String(activity.status ?? 'draft').toLowerCase();
                   const skills = getActivitySkills(activity);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
@@ -579,7 +599,7 @@ export function AdminActivitiesPage() {
 
                   return (
                     <tr key={activity.id}>
-                      <td>{rowIndex + 1}</td>
+                      <td>{visibleRangeStart + rowIndex}</td>
                       <td>
                         <div className="admin-activities-title-cell">
                           <strong>{activity.title}</strong>
@@ -684,6 +704,30 @@ export function AdminActivitiesPage() {
             </tbody>
           </Table>
         ) : null}
+
+        {!isBlockingError && !loading && filteredActivities.length > ACTIVITIES_PAGE_SIZE ? (
+          <div className="admin-activities-pagination">
+            <Button
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              type="button"
+              variant="secondary"
+            >
+              Previous
+            </Button>
+            <span className="admin-activities-pagination-meta">
+              Page {currentPage} / {totalPages}
+            </span>
+            <Button
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              type="button"
+              variant="secondary"
+            >
+              Next
+            </Button>
+          </div>
+        ) : null}
       </Card>
 
       {selectedActivity ? (
@@ -710,9 +754,16 @@ export function AdminActivitiesPage() {
             <div className="admin-activity-detail-grid">
               <div>
                 <span>Organizer</span>
-                <strong>{selectedOrganizerName}</strong>
-                {selectedOrganizerEmail && selectedOrganizerEmail !== selectedOrganizerName ? (
-                  <small className="muted">{selectedOrganizerEmail}</small>
+                <strong>
+                  {String(organizerById.get(selectedActivity.organizer_id)?.full_name ?? '').trim() ||
+                    String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() ||
+                    'Organizer unavailable'}
+                </strong>
+                {String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() &&
+                String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim() !==
+                  (String(organizerById.get(selectedActivity.organizer_id)?.full_name ?? '').trim() ||
+                    String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim()) ? (
+                  <small className="muted">{String(organizerById.get(selectedActivity.organizer_id)?.email ?? '').trim()}</small>
                 ) : null}
               </div>
               <div>

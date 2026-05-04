@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { IssueBadge } from '../components/feedback';
+import { IssueBadge, ReviewStatusTag } from '../components/feedback';
 import { Badge, Button, Card, Input, Select } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listFeedbackReview, updateFeedbackAiLabel } from '../lib/feedback';
@@ -15,6 +15,7 @@ import './AdminFeedbackPage.css';
 type PeriodFilter = '30' | '90' | 'all';
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
 type FeedbackSentiment = 'positive' | 'neutral' | 'negative';
+type FinalFeedbackLabel = 'Neu' | 'Pos' | 'Neg' | 'Spam';
 type SpamLabel = 'spam' | 'not_spam';
 type ManualSpamLabel = 'spam' | 'not_spam' | 'auto';
 type SemanticLabel = 'incident' | 'positive' | 'negative' | 'neutral' | 'low_signal';
@@ -37,6 +38,7 @@ interface FeedbackViewModel {
   submittedAt: string | null;
   categoryLabel: string;
   sentiment: FeedbackSentiment | null;
+  finalLabel: FinalFeedbackLabel;
   feedbackBucket: FeedbackBucket;
   flaggedIssue: boolean;
   reviewStatus: string;
@@ -329,105 +331,255 @@ function normalizeSemanticReasons(rawValue: string[] | string | null | undefined
     .filter((value) => value.length > 0);
 }
 
-function toAiBadgeTone(label: SpamLabel): 'danger' | 'success' {
-  return label === 'spam' ? 'danger' : 'success';
+
+function normalizeFinalLabel(rawValue: string | null | undefined): FinalFeedbackLabel {
+  const normalized = String(rawValue ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return 'Neu';
+  }
+
+  if (
+    normalized === 'spam' ||
+    normalized.includes('spam') ||
+    normalized.includes('abusive') ||
+    normalized.includes('irrelevant') ||
+    normalized.includes('duplicate') ||
+    normalized.includes('meaningless') ||
+    normalized.includes('toxic')
+  ) {
+    return 'Spam';
+  }
+
+  if (
+    normalized === 'pos' ||
+    normalized === 'positive' ||
+    normalized.includes('good') ||
+    normalized.includes('satisfied') ||
+    normalized.includes('compliment')
+  ) {
+    return 'Pos';
+  }
+
+  if (
+    normalized === 'neg' ||
+    normalized === 'negative' ||
+    normalized.includes('bad') ||
+    normalized.includes('complaint') ||
+    normalized.includes('issue') ||
+    normalized.includes('dissatisfied') ||
+    normalized.includes('problem')
+  ) {
+    return 'Neg';
+  }
+
+  return 'Neu';
 }
 
-function toAiBadgeLabel(label: SpamLabel, hasClassifierData: boolean): string {
-  if (!hasClassifierData && label === 'not_spam') {
-    return 'Spam Check: Clear';
-  }
-  if (!hasClassifierData) {
-    return label === 'spam' ? 'Spam Check: Flagged' : 'Spam Check: Clear';
-  }
-  return label === 'spam' ? 'Spam Check: Flagged' : 'Spam Check: Clear';
+const spamSignalPattern = /\b(spam|abusive|irrelevant|duplicate|meaningless|toxic|scam|ads?)\b/i;
+const urlOrShortLinkPattern = /(https?:\/\/|www\.|bit\.ly|t\.me|discord\.gg|tinyurl\.com)/i;
+const onlyNumberSymbolPattern = /^[\d\s\W_]+$/;
+const repeatedSingleCharPattern = /^(.)(\1{4,})$/;
+const repeatedDigitGroupPattern = /^(\d{1,3})\1{2,}$/;
+const randomKeyboardPattern = /(asdf|qwer|qweqwe|zxcv|zxczxc|hjkl)/i;
+const positiveKeywordPattern = /\b(positive|good|great|satisfied|compliment|helpful|thank|love|excellent)\b/i;
+const negativeKeywordPattern = /\b(negative|bad|problem|issue|complaint|disappointed|poor|late|confusing)\b/i;
+const testDataPattern = /\b(test|testing|sample|demo|dummy)\b/i;
+
+function tokenizeForContentCheck(comment: string): string[] {
+  return comment.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 }
 
-function toSemanticBadgeTone(label: SemanticLabel | null): 'danger' | 'success' | 'info' | 'neutral' {
-  if (label === 'incident' || label === 'negative') {
-    return 'danger';
+function isInvalidFeedbackContent(comment: string | null | undefined): boolean {
+  const normalized = String(comment ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return true;
   }
-  if (label === 'positive') {
-    return 'success';
+
+  const compact = normalized.replace(/\s+/g, '');
+  const tokens = tokenizeForContentCheck(normalized);
+  const meaningfulAlphaTokens = tokens.filter(
+    (token) =>
+      /[a-z]/.test(token) && token.length >= 3 && !['test', 'testing', 'sample', 'demo', 'dummy'].includes(token)
+  );
+
+  if (urlOrShortLinkPattern.test(normalized)) {
+    const nonLinkTokens = tokens.filter(
+      (token) => !/^(https?|www|bit|ly|t|me|discord|gg|tinyurl|com|net|org)$/.test(token)
+    );
+    if (nonLinkTokens.length === 0 || testDataPattern.test(normalized)) {
+      return true;
+    }
   }
-  if (label === 'neutral' || label === 'low_signal') {
-    return 'info';
+
+  if (onlyNumberSymbolPattern.test(normalized)) {
+    return true;
   }
-  return 'neutral';
+
+  if (compact && repeatedSingleCharPattern.test(compact)) {
+    return true;
+  }
+
+  const digitsOnly = compact.replace(/[^\d]/g, '');
+  if (digitsOnly.length >= 6 && repeatedDigitGroupPattern.test(digitsOnly)) {
+    return true;
+  }
+
+  if (randomKeyboardPattern.test(compact)) {
+    return true;
+  }
+
+  if (testDataPattern.test(normalized) && meaningfulAlphaTokens.length === 0) {
+    return true;
+  }
+
+  if (compact.length <= 2 && compact !== 'ok') {
+    return true;
+  }
+
+  if (tokens.length > 0 && meaningfulAlphaTokens.length === 0) {
+    const hasOnlyDigitsOrNoise = tokens.every((token) => /^\d+$/.test(token) || token.length <= 2);
+    if (hasOnlyDigitsOrNoise) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
-function toTextQualityBadgeTone(label: TextQualityLabel | null, isLowSignal: boolean): 'danger' | 'info' | 'neutral' {
-  if (label === 'uninformative') {
-    return 'danger';
+function hasSpamSignalInList(values: string[] | null | undefined): boolean {
+  if (!Array.isArray(values)) {
+    return false;
   }
-  if (isLowSignal || label === 'low_signal') {
-    return 'info';
-  }
-  return 'neutral';
+  return values.some((value) => spamSignalPattern.test(String(value ?? '')));
 }
 
-function toSentimentBadgeTone(label: FeedbackSentiment | null): 'danger' | 'success' | 'info' | 'neutral' {
-  if (label === 'negative') {
-    return 'danger';
+function isSpamFeedback(item: {
+  comment: string | null;
+  aiLabel: SpamLabel;
+  isSpam: boolean;
+  feedbackBucket: FeedbackBucket;
+  finalLabelRaw?: string | null;
+  aiIssueTags?: string[] | null;
+  aiSpamReasons?: string[] | null;
+  aiModerationLabels?: string[] | null;
+  aiSemanticLabels?: string[] | null;
+  aiSemanticLabel?: string | null;
+  aiTextQualityLabel?: string | null;
+  aiTextQualityIsLowSignal?: boolean;
+}): boolean {
+  if (isInvalidFeedbackContent(item.comment)) {
+    return true;
   }
-  if (label === 'positive') {
-    return 'success';
+
+  const normalizedFromPayload = normalizeFinalLabel(item.finalLabelRaw);
+  if (normalizedFromPayload === 'Spam') {
+    return true;
   }
-  if (label === 'neutral') {
-    return 'info';
+
+  if (item.aiLabel === 'spam' || item.isSpam || item.feedbackBucket === 'spam') {
+    return true;
   }
-  return 'neutral';
+
+  if (item.aiTextQualityIsLowSignal === true || item.aiTextQualityLabel === 'low_signal' || item.aiTextQualityLabel === 'uninformative') {
+    return true;
+  }
+
+  if (item.aiSemanticLabel && spamSignalPattern.test(item.aiSemanticLabel)) {
+    return true;
+  }
+
+  return (
+    hasSpamSignalInList(item.aiIssueTags) ||
+    hasSpamSignalInList(item.aiSpamReasons) ||
+    hasSpamSignalInList(item.aiModerationLabels) ||
+    hasSpamSignalInList(item.aiSemanticLabels)
+  );
 }
 
-function toIncidentBadgeTone(label: IncidentLabel | null): 'danger' | 'success' | 'neutral' {
-  if (label === 'incident') {
-    return 'danger';
+function pickDisplayFeedbackLabel(item: {
+  comment: string | null;
+  aiLabel: SpamLabel;
+  isSpam: boolean;
+  feedbackBucket: FeedbackBucket;
+  sentiment: FeedbackSentiment | null;
+  aiSentimentLabel: FeedbackSentiment | null;
+  aiSemanticLabel: SemanticLabel | null;
+  finalLabelRaw?: string | null;
+  aiIssueTags?: string[] | null;
+  aiSpamReasons?: string[] | null;
+  aiModerationLabels?: string[] | null;
+  aiSemanticLabels?: string[] | null;
+  aiTextQualityIsLowSignal?: boolean;
+  aiTextQualityLabel?: string | null;
+  aiConfidence?: {
+    sentiment: number;
+    incident: number;
+    semantic: number;
+  } | null;
+}): FinalFeedbackLabel {
+  if (isSpamFeedback(item)) {
+    return 'Spam';
   }
-  if (label === 'none') {
-    return 'success';
+
+  const normalizedFromPayload = normalizeFinalLabel(item.finalLabelRaw);
+
+  const signals = [item.sentiment, item.aiSentimentLabel, item.aiSemanticLabel]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const extraSignals = [
+    ...(item.aiIssueTags ?? []),
+    ...(item.aiSpamReasons ?? []),
+    ...(item.aiModerationLabels ?? []),
+    ...(item.aiSemanticLabels ?? []),
+    String(item.comment ?? ''),
+  ]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const merged = [...signals, ...extraSignals];
+
+  if (
+    merged.some((value) =>
+      ['spam', 'abusive', 'irrelevant', 'duplicate', 'meaningless', 'toxic'].some(
+        (token) => value === token || value.includes(token)
+      )
+    )
+  ) {
+    return 'Spam';
   }
-  return 'neutral';
+
+  const hasPositive = merged.some((value) => positiveKeywordPattern.test(value) || value === 'positive' || value === 'pos');
+  const hasNegative = merged.some((value) => negativeKeywordPattern.test(value) || value === 'negative' || value === 'neg');
+
+  const sentimentConfidence = Number(item.aiConfidence?.sentiment ?? 0);
+  const semanticConfidence = Number(item.aiConfidence?.semantic ?? 0);
+  const positiveScore = (item.sentiment === 'positive' || item.aiSentimentLabel === 'positive' ? 1 : 0) + sentimentConfidence;
+  const negativeScore = (item.sentiment === 'negative' || item.aiSentimentLabel === 'negative' ? 1 : 0) + semanticConfidence;
+
+  if (hasPositive && hasNegative) {
+    if (positiveScore > negativeScore) {
+      return 'Pos';
+    }
+    if (negativeScore > positiveScore) {
+      return 'Neg';
+    }
+    return 'Neu';
+  }
+  if (hasPositive) {
+    return 'Pos';
+  }
+  if (hasNegative) {
+    return 'Neg';
+  }
+
+  if (normalizedFromPayload === 'Pos' || normalizedFromPayload === 'Neg') {
+    return normalizedFromPayload;
+  }
+
+  return 'Neu';
 }
 
-function formatSemanticLabel(label: SemanticLabel): string {
-  if (label === 'incident') {
-    return 'Incident';
-  }
-  if (label === 'positive') {
-    return 'Positive';
-  }
-  if (label === 'negative') {
-    return 'Negative';
-  }
-  if (label === 'low_signal') {
-    return 'Low Signal';
-  }
-  return 'Neutral';
-}
-
-function formatTextQualityLabel(label: TextQualityLabel | null, isLowSignal: boolean): string {
-  if (label === 'uninformative') {
-    return 'Uninformative';
-  }
-  if (label === 'low_signal' || isLowSignal) {
-    return 'Low Signal';
-  }
-  return 'Informative';
-}
-
-function formatSentimentLabel(label: FeedbackSentiment): string {
-  if (label === 'positive') {
-    return 'Positive';
-  }
-  if (label === 'negative') {
-    return 'Negative';
-  }
-  return 'Neutral';
-}
-
-function formatIncidentLabel(label: IncidentLabel): string {
-  return label === 'incident' ? 'Incident' : 'None';
-}
 
 const aiReasonLabelByKey: Record<string, string> = {
   high_rating_signal: 'High rating',
@@ -486,41 +638,6 @@ function formatAiReasonsForUi(reasons: string[]): string[] {
         .filter((reason) => reason.length > 0)
     )
   );
-}
-
-function hasAiModerationSemanticConflict(isSpam: boolean, semanticLabel: SemanticLabel | null): boolean {
-  if (!isSpam || !semanticLabel) {
-    return false;
-  }
-
-  return semanticLabel === 'positive' || semanticLabel === 'neutral';
-}
-
-function normalizeTagKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-}
-
-function getDisplayIssueTags(issueTags: string[], semanticLabel: SemanticLabel | null, limit = 3): string[] {
-  const semanticKey = semanticLabel ? normalizeTagKey(semanticLabel) : '';
-  const seen = new Set<string>();
-  const next: string[] = [];
-
-  issueTags.forEach((tag) => {
-    const normalized = normalizeTagKey(tag);
-    if (!normalized) {
-      return;
-    }
-    if (semanticKey && normalized === semanticKey) {
-      return;
-    }
-    if (seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    next.push(normalized);
-  });
-
-  return next.slice(0, Math.max(0, limit));
 }
 
 function toManualLabelValue(rawValue: string): ManualSpamLabel {
@@ -609,6 +726,23 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
       submittedAt: feedback.created_at ?? null,
       categoryLabel: toCategoryLabel(activityTitle),
       sentiment: resolvedSentiment,
+      finalLabel: pickDisplayFeedbackLabel({
+        comment,
+        aiLabel,
+        isSpam: typeof feedback.is_spam === 'boolean' ? feedback.is_spam : aiLabel === 'spam',
+        feedbackBucket,
+        sentiment: resolvedSentiment,
+        aiSentimentLabel,
+        aiSemanticLabel,
+        finalLabelRaw: feedback.finalLabel ?? feedback.final_label ?? null,
+        aiIssueTags,
+        aiSpamReasons,
+        aiModerationLabels,
+        aiSemanticLabels,
+        aiTextQualityIsLowSignal,
+        aiTextQualityLabel,
+        aiConfidence,
+      }),
       feedbackBucket,
       flaggedIssue: toFlaggedIssue(rating, comment, feedback.is_flagged),
       aiLabel,
@@ -855,7 +989,7 @@ export function AdminFeedbackPage() {
   const [activityIdFilter, setActivityIdFilter] = useState(requestedActivityId);
   const [activityDropdownOpen, setActivityDropdownOpen] = useState(false);
   const [activityHighlightedIndex, setActivityHighlightedIndex] = useState(-1);
-  const [sentimentFilter, setSentimentFilter] = useState<'all' | FeedbackSentiment>('all');
+  const [labelFilter, setLabelFilter] = useState<'all' | FinalFeedbackLabel>('all');
   const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
   const [manualLabel, setManualLabel] = useState<ManualSpamLabel>('auto');
   const [updatingLabel, setUpdatingLabel] = useState(false);
@@ -1133,7 +1267,7 @@ export function AdminFeedbackPage() {
         return false;
       }
 
-      if (sentimentFilter !== 'all' && item.sentiment !== sentimentFilter) {
+      if (labelFilter !== 'all' && item.finalLabel !== labelFilter) {
         return false;
       }
 
@@ -1164,7 +1298,7 @@ export function AdminFeedbackPage() {
     ratingFilter,
     reviewStatusFilter,
     searchTerm,
-    sentimentFilter,
+    labelFilter,
   ]);
 
   const activityIdFilterLabel = useMemo(() => {
@@ -1202,11 +1336,6 @@ export function AdminFeedbackPage() {
     () => filteredItems.find((item) => item.id === selectedFeedbackId) ?? null,
     [filteredItems, selectedFeedbackId]
   );
-  const selectedFeedbackIssueTags = useMemo(
-    () => (selectedFeedback ? getDisplayIssueTags(selectedFeedback.aiIssueTags, selectedFeedback.aiSemanticLabel, 6) : []),
-    [selectedFeedback]
-  );
-
   const insightsMinValidCount = Number(feedbackInsights.reliability?.min_valid_feedback_count ?? 3);
   const validFeedbackCount = Number(feedbackInsights.totals.valid_feedback_count ?? 0);
   const lowSignalFeedbackCount = Number(feedbackInsights.totals.low_signal_count ?? 0);
@@ -1321,6 +1450,23 @@ export function AdminFeedbackPage() {
           nextTextQualityReasons.length > 0 ||
           nextTextQualityLabel
       );
+      const nextFinalLabel = pickDisplayFeedbackLabel({
+        comment: String(updated.comment ?? selectedFeedback.comment ?? ''),
+        aiLabel: nextLabel,
+        isSpam: nextIsSpam,
+        feedbackBucket: nextFeedbackBucket,
+        sentiment: nextResolvedSentiment,
+        aiSentimentLabel: nextSentimentLabel,
+        aiSemanticLabel: nextSemanticLabel,
+        finalLabelRaw: updated.finalLabel ?? updated.final_label ?? null,
+        aiIssueTags: nextIssueTags,
+        aiSpamReasons: nextReasons,
+        aiModerationLabels: nextModerationLabels,
+        aiSemanticLabels: nextSemanticLabels,
+        aiTextQualityIsLowSignal: nextTextQualityIsLowSignal,
+        aiTextQualityLabel: nextTextQualityLabel,
+        aiConfidence: nextConfidence,
+      });
 
       setItems((previous) =>
         previous.map((item) =>
@@ -1344,6 +1490,7 @@ export function AdminFeedbackPage() {
                 aiConfidence: nextConfidence,
                 aiSemanticReasons: nextSemanticReasons,
                 hasClassifierData: nextHasClassifierData,
+                finalLabel: nextFinalLabel,
               }
             : item
         )
@@ -1365,7 +1512,7 @@ export function AdminFeedbackPage() {
     Number(Boolean(organizerFilterQuery.trim())) +
     Number(Boolean(activityIdFilter.trim())) +
     Number(Boolean(activityFilterQuery.trim())) +
-    Number(sentimentFilter !== 'all');
+    Number(labelFilter !== 'all');
 
   const handleClearAllFilters = () => {
     setSearchTerm('');
@@ -1376,7 +1523,7 @@ export function AdminFeedbackPage() {
     setOrganizerFilterQuery('');
     clearActivityIdFilter();
     setActivityFilterQuery('');
-    setSentimentFilter('all');
+    setLabelFilter('all');
     setShowMoreFilters(false);
   };
 
@@ -1438,11 +1585,11 @@ export function AdminFeedbackPage() {
       onRemove: () => setActivityFilterQuery(''),
     });
   }
-  if (sentimentFilter !== 'all') {
+  if (labelFilter !== 'all') {
     appliedFilterChips.push({
-      key: 'sentiment',
-      label: `Sentiment: ${sentimentFilter.charAt(0).toUpperCase()}${sentimentFilter.slice(1)}`,
-      onRemove: () => setSentimentFilter('all'),
+      key: 'label',
+      label: `Label: ${labelFilter}`,
+      onRemove: () => setLabelFilter('all'),
     });
   }
 
@@ -1612,14 +1759,15 @@ export function AdminFeedbackPage() {
 
             <Select
               className="feedback-review-filter-select"
-              onChange={(event) => setSentimentFilter(event.target.value as 'all' | FeedbackSentiment)}
+              onChange={(event) => setLabelFilter(event.target.value as 'all' | FinalFeedbackLabel)}
               sizeMode="small"
-              value={sentimentFilter}
+              value={labelFilter}
             >
-              <option value="all">All Sentiments</option>
-              <option value="positive">Positive</option>
-              <option value="neutral">Neutral</option>
-              <option value="negative">Negative</option>
+              <option value="all">All Labels</option>
+              <option value="Spam">Spam</option>
+              <option value="Pos">Pos</option>
+              <option value="Neg">Neg</option>
+              <option value="Neu">Neu</option>
             </Select>
           </div>
         )}
@@ -1750,20 +1898,7 @@ export function AdminFeedbackPage() {
           </div>
         ) : (
           <div className="feedback-review-list">
-            {filteredItems.map((item) => {
-              const hasConflict = hasAiModerationSemanticConflict(item.isSpam, item.aiSemanticLabel);
-              const hasSemanticLabel = Boolean(item.aiSemanticLabel);
-              const displayIssueTags = getDisplayIssueTags(item.aiIssueTags, item.aiSemanticLabel, 2);
-              const showSentimentDetail =
-                Boolean(item.aiSentimentLabel) &&
-                (!hasSemanticLabel || item.aiSentimentLabel !== item.aiSemanticLabel) &&
-                !item.aiTextQualityIsLowSignal;
-              const incidentLabelForDetail = item.aiIncidentLabel === 'incident' ? item.aiIncidentLabel : null;
-              const showIncidentDetail = Boolean(incidentLabelForDetail);
-              const showTextQualityDetail = item.aiTextQualityIsLowSignal || item.aiTextQualityReasons.length > 0;
-              const showSecondaryRow = showSentimentDetail || showIncidentDetail || showTextQualityDetail || hasConflict;
-
-              return (
+            {filteredItems.map((item) => (
                 <article className="feedback-review-item" key={item.id}>
                   <div className="feedback-review-item-head">
                     <div className="feedback-review-volunteer">
@@ -1784,61 +1919,12 @@ export function AdminFeedbackPage() {
                   <div className="feedback-review-item-meta">
                     <Badge tone="info">{item.categoryLabel}</Badge>
                     <RatingStars rating={item.rating} />
-                    <Badge tone={toAiBadgeTone(item.aiLabel)}>{toAiBadgeLabel(item.aiLabel, item.hasClassifierData)}</Badge>
-                    {item.aiSemanticLabel && (
-                      <Badge tone={toSemanticBadgeTone(item.aiSemanticLabel)}>Semantic: {formatSemanticLabel(item.aiSemanticLabel)}</Badge>
-                    )}
-                    {item.aiTextQualityIsLowSignal && (
-                      <Badge tone={toTextQualityBadgeTone(item.aiTextQualityLabel, item.aiTextQualityIsLowSignal)}>
-                        Needs Review: {formatTextQualityLabel(item.aiTextQualityLabel, item.aiTextQualityIsLowSignal)}
-                      </Badge>
-                    )}
-                    {displayIssueTags.map((tag) => (
-                      <Badge key={`${item.id}-${tag}`} tone="neutral">
-                        Issue: {humanizeAiReason(tag)}
-                      </Badge>
-                    ))}
-                    {hasConflict && <Badge tone="danger">Moderation Priority</Badge>}
-                    {item.flaggedIssue && (
-                      <Badge tone="danger">
-                        <AlertTriangle size={12} />
-                        <span>Needs Attention</span>
-                      </Badge>
-                    )}
+                    <ReviewStatusTag status={item.finalLabel} />
                   </div>
 
                   <p className="feedback-review-comment">{item.comment}</p>
-
-                  {showSecondaryRow && (
-                    <div className="feedback-review-ai-secondary">
-                      <div className="feedback-review-ai-summary">
-                        {showSentimentDetail && item.aiSentimentLabel && (
-                          <Badge tone={toSentimentBadgeTone(item.aiSentimentLabel)}>
-                            Sentiment AI: {formatSentimentLabel(item.aiSentimentLabel)}
-                          </Badge>
-                        )}
-                        {incidentLabelForDetail && (
-                          <Badge tone={toIncidentBadgeTone(incidentLabelForDetail)}>
-                            Incident AI: {formatIncidentLabel(incidentLabelForDetail)}
-                          </Badge>
-                        )}
-                      </div>
-                      {showTextQualityDetail && (
-                        <p className="feedback-review-ai-reason-text">
-                          Text quality:{' '}
-                          {formatAiReasonsForUi(
-                            item.aiTextQualityReasons.length > 0
-                              ? item.aiTextQualityReasons
-                              : [item.aiTextQualityLabel || 'low_signal']
-                          ).join(', ')}
-                        </p>
-                      )}
-                      {hasConflict && <p className="feedback-review-ai-warning">Moderation prioritized due to spam.</p>}
-                    </div>
-                  )}
                 </article>
-              );
-            })}
+              ))}
           </div>
         )}
 
@@ -1917,10 +2003,8 @@ export function AdminFeedbackPage() {
 
             <section className="feedback-review-ai-panel">
               <div className="feedback-review-ai-head">
-                <small>{selectedFeedback.hasClassifierData ? 'AI Moderation Label' : 'Moderation Label'}</small>
-                <Badge tone={toAiBadgeTone(selectedFeedback.aiLabel)}>
-                  {toAiBadgeLabel(selectedFeedback.aiLabel, selectedFeedback.hasClassifierData)}
-                </Badge>
+                <small>Final Feedback Label</small>
+                <ReviewStatusTag status={selectedFeedback.finalLabel} />
               </div>
               {selectedFeedback.aiSpamReasons.length > 0 ? (
                 <p className="feedback-review-ai-reasons">
@@ -1929,48 +2013,6 @@ export function AdminFeedbackPage() {
               ) : (
                 <p className="feedback-review-ai-reasons">No spam signals detected by backend classifier.</p>
               )}
-
-              <div className="feedback-review-ai-head">
-                <small>AI Semantic Analysis</small>
-              </div>
-              <div className="feedback-review-ai-tags">
-                {selectedFeedback.aiSemanticLabel ? (
-                  <Badge tone={toSemanticBadgeTone(selectedFeedback.aiSemanticLabel)}>
-                    Semantic: {formatSemanticLabel(selectedFeedback.aiSemanticLabel)}
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral">Semantic AI: Not available</Badge>
-                )}
-                {selectedFeedback.aiSentimentLabel && !selectedFeedback.aiTextQualityIsLowSignal ? (
-                  <Badge tone={toSentimentBadgeTone(selectedFeedback.aiSentimentLabel)}>
-                    Sentiment: {formatSentimentLabel(selectedFeedback.aiSentimentLabel)}
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral">Sentiment: Not available</Badge>
-                )}
-                {selectedFeedback.aiIncidentLabel ? (
-                  <Badge tone={toIncidentBadgeTone(selectedFeedback.aiIncidentLabel)}>
-                    Incident: {formatIncidentLabel(selectedFeedback.aiIncidentLabel)}
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral">Incident: Not available</Badge>
-                )}
-                {selectedFeedback.aiModerationLabels.map((label) => (
-                  <Badge key={`${selectedFeedback.id}-mod-${label}`} tone="info">
-                    Moderation tag: {humanizeAiReason(label)}
-                  </Badge>
-                ))}
-                {selectedFeedback.aiTextQualityIsLowSignal && (
-                  <Badge tone={toTextQualityBadgeTone(selectedFeedback.aiTextQualityLabel, selectedFeedback.aiTextQualityIsLowSignal)}>
-                    Text quality: {formatTextQualityLabel(selectedFeedback.aiTextQualityLabel, selectedFeedback.aiTextQualityIsLowSignal)}
-                  </Badge>
-                )}
-                {selectedFeedbackIssueTags.map((label) => (
-                  <Badge key={`${selectedFeedback.id}-issue-${label}`} tone="neutral">
-                    Issue tag: {humanizeAiReason(label)}
-                  </Badge>
-                ))}
-              </div>
               {selectedFeedback.aiTextQualityReasons.length > 0 && (
                 <p className="feedback-review-ai-reasons">
                   Text quality signals: {formatAiReasonsForUi(selectedFeedback.aiTextQualityReasons).join(', ')}
@@ -1984,9 +2026,6 @@ export function AdminFeedbackPage() {
                     </span>
                   ))}
                 </div>
-              )}
-              {hasAiModerationSemanticConflict(selectedFeedback.isSpam, selectedFeedback.aiSemanticLabel) && (
-                <p className="feedback-review-ai-warning">Marked as spam. Moderation signal is prioritized for review.</p>
               )}
               {selectedFeedback.aiConfidence && (
                 <p className="feedback-review-ai-reasons">
@@ -2021,7 +2060,6 @@ export function AdminFeedbackPage() {
 
             <div className="feedback-review-modal-foot">
               <Badge tone="info">{selectedFeedback.categoryLabel}</Badge>
-              {selectedFeedback.flaggedIssue && <Badge tone="danger">Flagged from current data</Badge>}
             </div>
           </Card>
         </div>

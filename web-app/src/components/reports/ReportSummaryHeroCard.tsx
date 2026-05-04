@@ -35,11 +35,13 @@ export function ReportSummaryHeroCard({
       <h2>{title}</h2>
       <p>{summary}</p>
 
-      <div className="org-report-mini-metric-grid">
-        {metrics.map((metric) => (
-          <ReportMiniMetricCard key={metric.label} label={metric.label} value={metric.value} />
-        ))}
-      </div>
+      {metrics.length > 0 ? (
+        <div className="org-report-mini-metric-grid">
+          {metrics.map((metric) => (
+            <ReportMiniMetricCard key={metric.label} label={metric.label} value={metric.value} />
+          ))}
+        </div>
+      ) : null}
     </Card>
   );
 }

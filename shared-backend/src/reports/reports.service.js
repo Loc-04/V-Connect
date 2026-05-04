@@ -1,10 +1,14 @@
 import { supabaseAdmin } from '../database/supabase.js';
 import { classifyFeedbackSemantics } from '../feedback/feedback.classification.js';
 import { classifyFeedbackSpam } from '../feedback/feedback.spam.js';
+import { pickFinalFeedbackLabel } from '../feedback/feedback.final-label.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in']);
 const REPORT_SUMMARY_MODEL_VERSION = 'deterministic-facts-v2-2026-04';
+const DEBUG_REPORT_FEEDBACK =
+  String(process.env.REPORT_DEBUG_FEEDBACK ?? '').trim().toLowerCase() === 'true' &&
+  String(process.env.NODE_ENV ?? '').trim().toLowerCase() !== 'production';
 
 function asDate(value) {
   if (!value) {
@@ -109,14 +113,20 @@ function createEmptyReportSummary() {
       { label: 'Checked In', value: 0, progress: 0, tone: 'success' },
       { label: 'Pending Approval', value: 0, progress: 0, tone: 'muted' },
     ],
-    feedbackRating: 0,
-    feedbackQuote: 'Feedback will appear after volunteers submit responses.',
+    feedbackRating: null,
+    feedbackQuote: 'No valid feedback available yet.',
     sentimentChips: [{ label: 'No feedback yet', tone: 'neutral' }],
     issues: [],
     analyticsFacts: [],
     strengths: [],
     weaknesses: [],
     issueHighlights: [],
+    feedbackStats: {
+      totalCount: 0,
+      validCount: 0,
+      spamCount: 0,
+      averageRating: null,
+    },
     modelVersion: REPORT_SUMMARY_MODEL_VERSION,
   };
 }
@@ -224,17 +234,40 @@ function summarizeFeedbackSignals(feedbacks) {
   const issueCounts = new Map();
   let spamCount = 0;
   let incidentCount = 0;
+  const classified = [];
 
   for (const feedback of feedbacks) {
     const rating = Number(feedback.rating ?? 0);
     const comment = String(feedback.comment ?? '');
     const semantic = classifyFeedbackSemantics({ comment, rating });
     const spam = classifyFeedbackSpam(comment);
+    const finalLabel = pickFinalFeedbackLabel({
+      comment,
+      sentimentLabel: semantic.sentimentLabel,
+      semanticLabels: semantic.issueTags,
+      issueTags: semantic.issueTags,
+      semanticReasons: semantic.reasons,
+      reasons: spam.reasons,
+      isSpam: spam.isSpam,
+      semanticLabel: semantic.textQualityLabel,
+      textQualityLabel: semantic.textQualityLabel,
+    });
 
-    const sentimentLabel = String(semantic.sentimentLabel ?? 'neutral').toLowerCase();
-    if (sentimentLabel === 'positive') {
+    classified.push({
+      feedback,
+      semantic,
+      spam,
+      finalLabel,
+    });
+
+    if (finalLabel === 'Spam') {
+      spamCount += 1;
+      continue;
+    }
+
+    if (finalLabel === 'Pos') {
       sentiment.positive += 1;
-    } else if (sentimentLabel === 'negative') {
+    } else if (finalLabel === 'Neg') {
       sentiment.negative += 1;
     } else {
       sentiment.neutral += 1;
@@ -253,10 +286,23 @@ function summarizeFeedbackSignals(feedbacks) {
       }
     }
 
-    if (spam.isSpam) {
-      spamCount += 1;
-      issueCounts.set('spam', (issueCounts.get('spam') ?? 0) + 1);
-    }
+  }
+
+  if (DEBUG_REPORT_FEEDBACK && classified.length > 0) {
+    const sample = classified.slice(0, 12).map((row) => ({
+      id: row.feedback?.id ?? null,
+      comment: String(row.feedback?.comment ?? '').slice(0, 120),
+      rawRating: Number(row.feedback?.rating ?? 0),
+      rawSentiment: row.semantic?.sentimentLabel ?? null,
+      rawTextQuality: row.semantic?.textQualityLabel ?? null,
+      rawIssueTags: Array.isArray(row.semantic?.issueTags) ? row.semantic.issueTags : [],
+      spamReasons: Array.isArray(row.spam?.reasons) ? row.spam.reasons : [],
+      finalLabel: row.finalLabel,
+      includedInAverageRating: row.finalLabel !== 'Spam',
+      includedInInsights: row.finalLabel !== 'Spam',
+      includedInActionNeeded: row.finalLabel !== 'Spam',
+    }));
+    console.info('[report.summary.feedback.debug] classified feedback sample', sample);
   }
 
   const repeatedIssues = Array.from(issueCounts.entries())
@@ -274,11 +320,12 @@ function summarizeFeedbackSignals(feedbacks) {
     repeatedIssues,
     spamCount,
     incidentCount,
+    classified,
   };
 }
 
-function buildSentimentChipsFromSignals(feedbacks, signals) {
-  if (feedbacks.length === 0) {
+function buildSentimentChipsFromSignals(totalFeedbackCount, signals) {
+  if (totalFeedbackCount === 0) {
     return [{ label: 'No feedback yet', tone: 'neutral' }];
   }
 
@@ -292,6 +339,9 @@ function buildSentimentChipsFromSignals(feedbacks, signals) {
   if ((signals?.sentiment?.negative ?? 0) > 0) {
     chips.push({ label: `Negative (${signals.sentiment.negative})`, tone: 'danger' });
   }
+  if ((signals?.spamCount ?? 0) > 0) {
+    chips.push({ label: `Spam (${signals.spamCount})`, tone: 'danger' });
+  }
   return chips.length > 0 ? chips : [{ label: 'No feedback yet', tone: 'neutral' }];
 }
 
@@ -301,6 +351,8 @@ function buildAnalyticsFacts({
   checkedInCount,
   pendingCount,
   feedbackCount,
+  totalFeedbackCount,
+  spamCount,
   averageRating,
   completionRate,
   capacityFilled,
@@ -312,7 +364,9 @@ function buildAnalyticsFacts({
     { key: 'active_registrations', label: 'Active registrations', value: String(activeCount) },
     { key: 'checkins', label: 'Check-ins', value: String(checkedInCount) },
     { key: 'pending', label: 'Pending approvals', value: String(pendingCount) },
-    { key: 'feedback_count', label: 'Feedback submissions', value: String(feedbackCount) },
+    { key: 'feedback_count', label: 'Valid feedback submissions', value: String(feedbackCount) },
+    { key: 'feedback_total_count', label: 'Total feedback submissions', value: String(totalFeedbackCount) },
+    { key: 'feedback_spam_count', label: 'Spam feedback submissions', value: String(spamCount) },
     { key: 'average_rating', label: 'Average rating', value: feedbackCount > 0 ? `${averageRating.toFixed(1)}/5` : 'N/A' },
     { key: 'completion_rate', label: 'Completion rate', value: formatPercent(completionRate) },
     { key: 'capacity_fill', label: 'Capacity filled', value: formatPercent(capacityFilled) },
@@ -330,6 +384,7 @@ function buildGroundedSummary({
   activeCount,
   checkedInCount,
   feedbackCount,
+  totalFeedbackCount,
   averageRating,
   signals,
   repeatedIssues,
@@ -340,8 +395,10 @@ function buildGroundedSummary({
   const feedbackLine =
     feedbackCount > 0
       ? `Feedback coverage is ${formatNumber(feedbackCount)} responses with an average rating of ${averageRating.toFixed(1)}/5.`
-      : 'No feedback responses have been submitted yet.';
-  const sentimentLine = `Sentiment mix is positive ${signals.sentiment.positive}, neutral ${signals.sentiment.neutral}, negative ${signals.sentiment.negative}.`;
+      : totalFeedbackCount > 0
+        ? 'All submitted feedback is currently marked as spam or low-signal.'
+        : 'No feedback responses have been submitted yet.';
+  const sentimentLine = `Sentiment mix is positive ${signals.sentiment.positive}, neutral ${signals.sentiment.neutral}, negative ${signals.sentiment.negative}, spam ${signals.spamCount}.`;
   const issueLine =
     repeatedIssues.length > 0
       ? `Top repeated issue: ${repeatedIssues[0].label} (${repeatedIssues[0].count} reports).`
@@ -502,6 +559,12 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
   const participations = await listActivityParticipations(selectedActivity.id);
   const participationIds = participations.map((participation) => participation.id).filter(Boolean);
   const feedbacks = await listFeedbackByParticipationIds(participationIds);
+  const feedbackSignals = summarizeFeedbackSignals(feedbacks);
+  const nonSpamFeedbacks = feedbackSignals.classified
+    .filter((item) => item.finalLabel !== 'Spam')
+    .map((item) => item.feedback);
+  const totalFeedbackCount = feedbacks.length;
+  const validFeedbackCount = nonSpamFeedbacks.length;
 
   const statusCounts = summarizeStatuses(participations);
   const pendingCount = statusCounts.pending ?? 0;
@@ -513,12 +576,11 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
   const totalParticipations = participations.length;
   const capacity = Number(selectedActivity.capacity ?? 0);
 
-  const ratingSum = feedbacks.reduce((sum, feedback) => sum + Number(feedback.rating ?? 0), 0);
-  const averageRating = feedbacks.length > 0 ? ratingSum / feedbacks.length : 0;
-  const latestFeedbackWithComment = feedbacks.find(
+  const ratingSum = nonSpamFeedbacks.reduce((sum, feedback) => sum + Number(feedback.rating ?? 0), 0);
+  const averageRating = validFeedbackCount > 0 ? ratingSum / validFeedbackCount : null;
+  const latestFeedbackWithComment = nonSpamFeedbacks.find(
     (feedback) => String(feedback.comment ?? '').trim().length > 0
   );
-  const feedbackSignals = summarizeFeedbackSignals(feedbacks);
 
   const startDate = asDate(selectedActivity.start_time);
   const endDate = asDate(selectedActivity.end_time);
@@ -555,8 +617,10 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
     activeCount,
     checkedInCount,
     pendingCount,
-    feedbackCount: feedbacks.length,
-    averageRating,
+    feedbackCount: validFeedbackCount,
+    totalFeedbackCount,
+    spamCount: feedbackSignals.spamCount,
+    averageRating: averageRating ?? 0,
     completionRate,
     capacityFilled,
     trendPercent,
@@ -566,14 +630,15 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
     totalParticipations,
     activeCount,
     checkedInCount,
-    feedbackCount: feedbacks.length,
-    averageRating,
+    feedbackCount: validFeedbackCount,
+    totalFeedbackCount,
+    averageRating: averageRating ?? 0,
     signals: feedbackSignals,
     repeatedIssues: feedbackSignals.repeatedIssues,
   });
   const { strengths, weaknesses } = buildStrengthsAndWeaknesses({
-    averageRating,
-    feedbackCount: feedbacks.length,
+    averageRating: averageRating ?? 0,
+    feedbackCount: validFeedbackCount,
     checkedInCount,
     activeCount,
     pendingCount,
@@ -592,7 +657,7 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
       { label: 'Completion Rate', value: formatPercent(completionRate) },
       {
         label: 'Avg. Feedback Rating',
-        value: feedbacks.length > 0 ? `${averageRating.toFixed(1)}/5` : 'N/A',
+        value: validFeedbackCount > 0 && averageRating !== null ? `${averageRating.toFixed(1)}/5` : 'N/A',
       },
       { label: 'Capacity Filled', value: capacity > 0 ? formatPercent(capacityFilled) : 'N/A' },
     ],
@@ -619,17 +684,19 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
         tone: 'muted',
       },
     ],
-    feedbackRating: Number(averageRating.toFixed(1)),
+    feedbackRating: validFeedbackCount > 0 && averageRating !== null ? Number(averageRating.toFixed(1)) : null,
     feedbackQuote: latestFeedbackWithComment
       ? truncateText(latestFeedbackWithComment.comment)
-      : 'No written feedback has been submitted for this activity yet.',
-    sentimentChips: buildSentimentChipsFromSignals(feedbacks, feedbackSignals),
+      : totalFeedbackCount > 0
+        ? 'No valid feedback available yet.'
+        : 'No written feedback has been submitted for this activity yet.',
+    sentimentChips: buildSentimentChipsFromSignals(totalFeedbackCount, feedbackSignals),
     issues: buildIssues({
       pendingCount,
       checkedInCount,
       activeCount,
       capacity,
-      feedbacks,
+      feedbacks: nonSpamFeedbacks,
       activityStatus: selectedActivity.status,
       repeatedIssues: feedbackSignals.repeatedIssues,
     }),
@@ -637,6 +704,12 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
     strengths,
     weaknesses,
     issueHighlights,
+    feedbackStats: {
+      totalCount: totalFeedbackCount,
+      validCount: validFeedbackCount,
+      spamCount: feedbackSignals.spamCount,
+      averageRating: validFeedbackCount > 0 && averageRating !== null ? Number(averageRating.toFixed(2)) : null,
+    },
     modelVersion: REPORT_SUMMARY_MODEL_VERSION,
   };
 
