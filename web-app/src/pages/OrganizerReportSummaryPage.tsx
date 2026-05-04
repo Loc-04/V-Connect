@@ -1314,6 +1314,66 @@ export function OrganizerReportSummaryPage() {
                   error={timelineError}
                 />
               </Card>
+<<<<<<< HEAD
+=======
+
+              <FeedbackOverviewCard
+                ariaLabel="Open feedback review"
+                onClick={() => {
+                  const nextActivityId = selectedActivityId || requestedActivityId;
+                  navigate(nextActivityId ? `/feedback?activityId=${encodeURIComponent(nextActivityId)}` : '/feedback');
+                }}
+                quote={report.feedbackQuote}
+                rating={report.feedbackRating}
+                sentiments={report.sentimentChips}
+              />
+
+              <Card as="section" className="org-report-lower-card org-report-facts-card">
+                <div className="org-report-card-head">
+                  <h3>Strengths and Weaknesses</h3>
+                </div>
+                <div className="org-report-strength-grid">
+                  <div>
+                    <h4>Strengths</h4>
+                    {strengths.length > 0 ? (
+                      <ul className="org-report-list">
+                        {strengths.map((item) => (
+                          <li key={`strength-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">No explicit strengths detected yet.</p>
+                    )}
+                  </div>
+                  <div>
+                    <h4>Weaknesses</h4>
+                    {weaknesses.length > 0 ? (
+                      <ul className="org-report-list">
+                        {weaknesses.map((item) => (
+                          <li key={`weakness-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">No explicit weaknesses detected yet.</p>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+            {shouldShowTimeline ? (
+              <Card as="section" className="org-report-lower-card org-report-timeline-summary-card">
+                <div className="org-report-card-head">
+                  <h3>Activity Timeline</h3>
+                </div>
+                <EventTimelineReadOnly
+                  compact
+                  emptyDescription="No organizer-managed milestones are linked to this activity yet."
+                  milestones={timelineMilestones}
+                  loading={timelineLoading}
+                  error={timelineError}
+                />
+              </Card>
+>>>>>>> parent of a0f558a (fix label)
             ) : null}
           </>
         ) : (
