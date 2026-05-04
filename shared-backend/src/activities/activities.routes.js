@@ -1109,6 +1109,12 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
     return;
   }
 
+  const existingActivityEndTime = new Date(existingActivity.end_time);
+  if (!Number.isNaN(existingActivityEndTime.getTime()) && existingActivityEndTime.getTime() <= Date.now()) {
+    res.status(400).json({ message: 'Cannot edit an activity that has already ended.' });
+    return;
+  }
+
   let payload;
   try {
     payload = normalizeActivityPayload(req.body, { partial: true });

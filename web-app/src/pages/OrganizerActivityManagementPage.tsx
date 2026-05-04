@@ -63,6 +63,15 @@ function getActivityStatusTone(status: string) {
   return 'neutral' as const;
 }
 
+function hasActivityEnded(endTime: string) {
+  const parsed = new Date(endTime);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return parsed.getTime() <= Date.now();
+}
+
 interface AttendanceNoticeState {
   tone: CheckInResultTone;
   title: string;
@@ -552,6 +561,7 @@ export function OrganizerActivityManagementPage() {
                   const capacity = Math.max(1, Number(activity.capacity ?? 0));
                   const progress = Math.min(100, Math.round((participationStats.joined / capacity) * 100));
                   const status = String(activity.status ?? 'draft').toLowerCase();
+                  const isActivityEnded = hasActivityEnded(activity.end_time);
 
                   return (
                     <tr key={activity.id}>
@@ -645,12 +655,17 @@ export function OrganizerActivityManagementPage() {
 
                               <button
                                 className="row-action-item"
+                                disabled={isActivityEnded}
                                 onClick={() => {
+                                  if (isActivityEnded) {
+                                    return;
+                                  }
                                   navigate(`/activities/${activity.id}/edit`);
                                   setOpenMenuActivityId(null);
                                   setOpenStatusPickerActivityId(null);
                                 }}
                                 type="button"
+                                title={isActivityEnded ? 'This activity has ended and cannot be edited.' : undefined}
                               >
                                 Edit Activity
                               </button>

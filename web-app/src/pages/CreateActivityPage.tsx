@@ -69,7 +69,7 @@ function toIsoFromDateTimeLocal(value: string) {
 }
 
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
-const maxCoverImageBytes = 10 * 1024 * 1024;
+const maxCoverImageBytes = 700 * 1024;
 const coverTargetWidth = 1280;
 const coverTargetHeight = 720;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['opening', 'session', 'break', 'closing', 'other'];
@@ -314,12 +314,14 @@ export function CreateActivityPage() {
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [activeTimelineDraftId, setActiveTimelineDraftId] = useState<string | null>(null);
   const [timelineNowMs, setTimelineNowMs] = useState(() => Date.now());
+  const [isEditLockedByTime, setIsEditLockedByTime] = useState(false);
   const reverseGeocodeRequestId = useRef(0);
 
   const role = normalizeRole(profile?.role);
   const canManageActivities = role === 'organizer' || role === 'admin';
   const organizerHomePath = role === 'admin' ? '/admin/dashboard' : '/organizer/activities';
   const isEditing = Boolean(activityId);
+  const isEditingDisabled = isEditing && isEditLockedByTime;
 
   const createQuickMilestoneDraft = useCallback(
     (): TimelineMilestoneDraft => {
@@ -535,6 +537,7 @@ export function CreateActivityPage() {
   useEffect(() => {
     if (!session?.access_token || !activityId) {
       setLoadingActivity(false);
+      setIsEditLockedByTime(false);
       return;
     }
 
@@ -567,6 +570,8 @@ export function CreateActivityPage() {
         setStartTime(start.time);
         setEndDate(end.date);
         setEndTime(end.time);
+        const endTimeMs = new Date(activity.end_time).getTime();
+        setIsEditLockedByTime(Number.isFinite(endTimeMs) && endTimeMs <= Date.now());
         setEndTimeManuallyChanged(true);
         setCapacity(String(activity.capacity ?? 10));
         setRequiredSkills(
@@ -984,6 +989,10 @@ export function CreateActivityPage() {
       setError('Only organizers/admins can create activities.');
       return;
     }
+    if (isEditingDisabled) {
+      setError('This activity has already ended, so it can no longer be edited.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -1147,6 +1156,7 @@ export function CreateActivityPage() {
           </div>
 
           {!canManageActivities && <p className="form-error">Only organizer/admin accounts can manage activities.</p>}
+          {isEditingDisabled ? <p className="form-error">This activity has already ended. Editing is locked.</p> : null}
           {error && <p className="form-error">{error}</p>}
           {success && <p className="form-success">{success}</p>}
           {!isEditing && success && role === 'organizer' && createdActivityId ? (
@@ -1221,7 +1231,7 @@ export function CreateActivityPage() {
                     </div>
                     <strong>Upload a file</strong>
                     <p>or drag and drop (click to browse)</p>
-                    <small>PNG, JPG, GIF up to 10MB</small>
+                    <small>PNG, JPG, GIF up to 700KB</small>
                     <input
                       accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
                       hidden
@@ -1686,7 +1696,7 @@ export function CreateActivityPage() {
                 )}
                 <button
                   className="action-btn is-secondary"
-                  disabled={saving || !canManageActivities || loadingActivity}
+                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled}
                   onClick={() => void handleSave('draft')}
                   type="button"
                 >
@@ -1694,7 +1704,7 @@ export function CreateActivityPage() {
                 </button>
                 <button
                   className="action-btn is-primary"
-                  disabled={saving || !canManageActivities || loadingActivity}
+                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled}
                   onClick={() => void handleSave('published')}
                   type="button"
                 >
