@@ -4,7 +4,6 @@ import {
   AI_TIMEOUT_MS,
   GEMINI_API_KEY,
 } from '../config/env.js';
-import { pickFinalFeedbackLabel } from '../feedback/feedback.final-label.js';
 import * as aiInternal from './ai.internal.js';
 
 const GEMINI_MODEL = 'gemini-2.0-flash';
@@ -332,12 +331,9 @@ async function recommend(input = {}) {
 async function classifyFeedback(input = {}) {
   const comment = String(input?.comment ?? '').trim();
   if (!comment) {
-    const finalLabel = pickFinalFeedbackLabel({ comment, label: 'not_spam', isSpam: false });
     return {
       label: 'not_spam',
       isSpam: false,
-      finalLabel,
-      final_label: finalLabel,
       reasons: [],
     };
   }
@@ -358,18 +354,10 @@ async function classifyFeedback(input = {}) {
     const normalizedLabel = String(aiResult?.label ?? '').trim().toLowerCase();
     const label = normalizedLabel === 'spam' ? 'spam' : 'not_spam';
     const reasons = normalizeReasonList(aiResult?.reasons, MAX_FEEDBACK_REASON_COUNT);
-    const finalLabel = pickFinalFeedbackLabel({
-      comment,
-      label,
-      isSpam: label === 'spam',
-      reasons,
-    });
 
     return {
       label,
       isSpam: label === 'spam',
-      finalLabel,
-      final_label: finalLabel,
       reasons,
     };
   });
@@ -402,16 +390,6 @@ function normalizeIssueList(values) {
     .slice(0, 5);
 }
 
-function parseFactCount(report, key) {
-  const facts = Array.isArray(report?.analyticsFacts) ? report.analyticsFacts : [];
-  const value = facts.find((item) => String(item?.key ?? '').trim() === key)?.value;
-  const matched = String(value ?? '').match(/\d+/g);
-  if (!matched || matched.length === 0) {
-    return 0;
-  }
-  return Number.parseInt(matched.join(''), 10) || 0;
-}
-
 async function summarizeReport(input = {}) {
   const base = await aiInternal.summarizeReport(input);
   const report = base?.report ?? null;
@@ -419,28 +397,11 @@ async function summarizeReport(input = {}) {
     return base;
   }
 
-  const validFeedbackCount =
-    Number.isFinite(Number(report?.feedbackStats?.validCount))
-      ? Number(report.feedbackStats.validCount)
-      : parseFactCount(report, 'feedback_count');
-  const totalFeedbackCount =
-    Number.isFinite(Number(report?.feedbackStats?.totalCount))
-      ? Number(report.feedbackStats.totalCount)
-      : parseFactCount(report, 'feedback_total_count');
-  const hasOnlySpamOrLowSignalFeedback = totalFeedbackCount > 0 && validFeedbackCount === 0;
-
   const rewritten = await withExternalCache(
     'summarizeReport',
     {
       organizerId: input?.organizerId ?? null,
       activityId: input?.activityId ?? null,
-      modelVersion: report?.modelVersion ?? null,
-      feedbackRating: report?.feedbackRating ?? null,
-      feedbackQuote: report?.feedbackQuote ?? null,
-      sentimentChips: report?.sentimentChips ?? [],
-      analyticsFacts: report?.analyticsFacts ?? [],
-      feedbackStats: report?.feedbackStats ?? null,
-      issues: report?.issues ?? [],
     },
     async () => {
       const aiResult = await callExternalJson({
@@ -464,10 +425,8 @@ async function summarizeReport(input = {}) {
     ...base,
     report: {
       ...report,
-      summary: hasOnlySpamOrLowSignalFeedback ? report.summary : rewritten.summary,
-      feedbackQuote: hasOnlySpamOrLowSignalFeedback
-        ? 'No valid feedback available yet.'
-        : rewritten.feedbackQuote,
+      summary: rewritten.summary,
+      feedbackQuote: rewritten.feedbackQuote,
       issues: rewritten.issues.length > 0 ? rewritten.issues : report.issues,
     },
   };

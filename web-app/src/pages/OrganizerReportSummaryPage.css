@@ -1,6 +1,6 @@
 .org-report-page {
   display: grid;
-  gap: 0.72rem;
+  gap: 0.84rem;
   align-content: start;
 }
 
@@ -8,23 +8,9 @@
   padding: 0.85rem 0.9rem;
 }
 
-.org-report-activity-picker-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 .org-report-activity-picker-copy {
   display: grid;
   gap: 0.22rem;
-}
-
-.org-report-activity-meta {
-  display: grid;
-  gap: 0.28rem;
-  justify-items: end;
 }
 
 .org-report-eyebrow {
@@ -82,52 +68,13 @@
 .org-report-hero-card.card,
 .org-report-side-card.card,
 .org-report-lower-card.card {
-  padding: 0.9rem;
+  padding: 1rem;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-}
-
-.org-report-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.62rem;
-}
-
-.org-report-kpi-card.card {
-  padding: 0.72rem 0.82rem;
-  display: grid;
-  gap: 0.2rem;
-}
-
-.org-report-kpi-card p {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 700;
-}
-
-.org-report-kpi-card strong {
-  color: #0f172a;
-  font-size: 1.22rem;
-  line-height: 1.2;
-}
-
-.org-report-main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.72rem;
-  align-items: start;
-}
-
-.org-report-main-col {
-  display: grid;
-  gap: 0.72rem;
 }
 
 .org-report-hero-card {
   display: grid;
-  gap: 0.7rem;
+  gap: 1rem;
 }
 
 .org-report-hero-head,
@@ -168,7 +115,7 @@
 }
 
 .org-report-hero-card h2 {
-  font-size: clamp(1.42rem, 2vw, 1.75rem);
+  font-size: clamp(1.55rem, 2.4vw, 2.05rem);
   line-height: 1.1;
   letter-spacing: -0.03em;
   color: #0f172a;
@@ -177,8 +124,8 @@
 .org-report-hero-card p,
 .org-report-issue-item p {
   color: #475569;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.82rem;
+  line-height: 1.7;
 }
 
 .org-report-mini-metric-grid {
@@ -218,7 +165,7 @@
 
 .org-report-participation-card {
   display: grid;
-  gap: 0.72rem;
+  gap: 1rem;
 }
 
 .org-report-total-wrap strong {
@@ -253,7 +200,7 @@
 
 .org-report-breakdown-list {
   display: grid;
-  gap: 0.62rem;
+  gap: 1rem;
 }
 
 .org-report-breakdown-row {
@@ -298,7 +245,7 @@
 
 .org-report-feedback-card {
   display: grid;
-  gap: 0.72rem;
+  gap: 1rem;
 }
 
 .org-report-feedback-card.is-interactive {
@@ -327,14 +274,14 @@
 
 .org-report-feedback-top {
   display: flex;
-  gap: 0.8rem;
+  gap: 1rem;
   align-items: center;
 }
 
 .org-report-rating-box {
-  width: 96px;
-  min-height: 78px;
-  border-radius: 14px;
+  width: 110px;
+  min-height: 90px;
+  border-radius: 16px;
   background: linear-gradient(180deg, #e8fbf7, #f6fffe);
   display: grid;
   place-items: center;
@@ -343,7 +290,7 @@
 }
 
 .org-report-rating-box strong {
-  font-size: 1.72rem;
+  font-size: 2rem;
   line-height: 1;
   color: #0f9b8e;
 }
@@ -358,7 +305,7 @@
 
 .org-report-feedback-copy {
   display: grid;
-  gap: 0.28rem;
+  gap: 0.42rem;
 }
 
 .org-report-stars {
@@ -370,53 +317,14 @@
 .org-report-feedback-copy blockquote {
   margin: 0;
   color: #475569;
-  font-size: 0.86rem;
-  line-height: 1.45;
+  font-size: 0.95rem;
+  line-height: 1.6;
   font-style: italic;
-}
-
-.org-report-feedback-empty-rating {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-}
-
-.org-report-feedback-stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.48rem;
-}
-
-.org-report-feedback-stats-row.is-compact {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.org-report-feedback-stat {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 0.5rem 0.6rem;
-  display: grid;
-  gap: 0.06rem;
-  background: #f8fafc;
-}
-
-.org-report-feedback-stat span {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
-  font-weight: 700;
-}
-
-.org-report-feedback-stat strong {
-  color: #0f172a;
-  font-size: 1rem;
-  line-height: 1.2;
 }
 
 .org-report-sentiment-block {
   display: grid;
-  gap: 0.42rem;
+  gap: 0.55rem;
 }
 
 .org-report-sentiment-block h4 {
@@ -427,32 +335,16 @@
 .org-report-sentiment-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.34rem;
-}
-
-.org-report-sentiment-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-.org-report-sentiment-item span {
-  color: #64748b;
-  font-size: 0.76rem;
-  font-weight: 700;
+  gap: 0.42rem;
 }
 
 .org-report-sentiment-chip.ui-badge {
-  padding: 0.3rem 0.58rem;
+  padding: 0.38rem 0.7rem;
 }
 
 .org-report-issues-card {
   display: grid;
-  gap: 0.62rem;
-}
-
-.org-report-issues-card.is-compact {
-  gap: 0.45rem;
+  gap: 0.8rem;
 }
 
 .org-report-facts-card {
@@ -530,25 +422,16 @@
 
 .org-report-issue-list {
   display: grid;
-  gap: 0.56rem;
+  gap: 0.7rem;
 }
 
 .org-report-issue-item {
   border: 1px solid #e8edf6;
   border-radius: 14px;
-  padding: 0.68rem 0.78rem;
+  padding: 0.9rem 0.95rem;
   background: #ffffff;
   display: grid;
-  gap: 0.22rem;
-}
-
-.org-report-issue-copy {
-  display: grid;
   gap: 0.34rem;
-}
-
-.org-report-issue-action {
-  margin-top: 0.1rem;
 }
 
 .org-report-issue-item strong {
@@ -642,9 +525,7 @@
   }
 
   body.org-report-printing .org-report-top-grid,
-  body.org-report-printing .org-report-lower-grid,
-  body.org-report-printing .org-report-main-grid,
-  body.org-report-printing .org-report-kpi-grid {
+  body.org-report-printing .org-report-lower-grid {
     grid-template-columns: 1fr;
     gap: 0.7rem;
   }
@@ -683,9 +564,7 @@
 
 @media (max-width: 1180px) {
   .org-report-top-grid,
-  .org-report-lower-grid,
-  .org-report-main-grid,
-  .org-report-kpi-grid {
+  .org-report-lower-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -712,13 +591,5 @@
   .org-report-facts-grid,
   .org-report-strength-grid {
     grid-template-columns: 1fr;
-  }
-
-  .org-report-feedback-stats-row {
-    grid-template-columns: 1fr;
-  }
-
-  .org-report-activity-meta {
-    justify-items: start;
   }
 }

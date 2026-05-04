@@ -158,23 +158,38 @@
 }
 
 .feedback-shared-status.ui-badge {
-  text-transform: none;
+  text-transform: capitalize;
 }
 
-.feedback-shared-status.is-pos.ui-badge {
+.feedback-shared-status.is-positive.ui-badge {
   background: #dcfce7;
   color: #15803d;
 }
 
-.feedback-shared-status.is-neu.ui-badge {
+.feedback-shared-status.is-neutral.ui-badge {
   background: #e2e8f0;
   color: #475569;
 }
 
-.feedback-shared-status.is-neg.ui-badge,
-.feedback-shared-status.is-spam.ui-badge {
+.feedback-shared-status.is-negative.ui-badge,
+.feedback-shared-status.is-flagged.ui-badge {
   background: #fee2e2;
   color: #dc2626;
+}
+
+.feedback-shared-status.is-reviewed.ui-badge {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.feedback-shared-status.is-pending.ui-badge {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.feedback-shared-status.is-unknown.ui-badge {
+  background: #eef2f7;
+  color: #64748b;
 }
 
 .feedback-shared-issue-badge.ui-badge {
@@ -186,12 +201,12 @@
 .feedback-shared-issue-badge.is-priority-high.ui-badge,
 .feedback-shared-issue-badge.is-state-active.ui-badge {
   background: #fee2e2;
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .feedback-shared-issue-badge.is-priority-medium.ui-badge {
   background: #ffedd5;
-  color: #c2410c;
+  color: #9a3412;
 }
 
 .feedback-shared-issue-badge.is-state-warning.ui-badge {
@@ -201,8 +216,8 @@
 
 .feedback-shared-issue-badge.is-priority-low.ui-badge,
 .feedback-shared-issue-badge.is-default.ui-badge {
-  background: #eef2f7;
-  color: #64748b;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .feedback-shared-state {

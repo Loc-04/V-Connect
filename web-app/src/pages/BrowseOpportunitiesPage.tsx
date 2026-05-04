@@ -9,11 +9,11 @@ import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { searchActivities } from '../lib/activities';
 import { cancelParticipation, listParticipations } from '../lib/participations';
-import type { ActivityRecord, ActivityStatus } from '../types/activity';
+import type { ActivityPriorityLevel, ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
 
-type CategoryTone = 'accent' | 'neutral' | 'success' | 'danger' | 'info';
+type CategoryTone = 'neutral' | 'success' | 'danger' | 'info';
 
 interface OpportunityViewModel {
   id: string;
@@ -24,7 +24,7 @@ interface OpportunityViewModel {
   date: string;
   title: string;
   location: string;
-  tags: string[];
+  tags: Array<{ label: string; priority: ActivityPriorityLevel }>;
   spotsLeft: number;
 }
 
@@ -45,7 +45,7 @@ function mapStatusToTone(status: string): CategoryTone {
     case 'draft':
       return 'neutral';
     case 'published':
-      return 'accent';
+      return 'info';
     default:
       return 'info';
   }
@@ -69,6 +69,39 @@ function getLocationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
+function normalizeSkillPriority(value: unknown): ActivityPriorityLevel {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'low' || normalized === 'normal' || normalized === 'urgent') {
+    return normalized;
+  }
+  return 'normal';
+}
+
+function getSkillPriorityMap(location: ActivityRecord['location']): Record<string, ActivityPriorityLevel> {
+  if (!location || typeof location !== 'object' || Array.isArray(location)) {
+    return {};
+  }
+  const rawMap = location.skillPriorities;
+  if (!rawMap || typeof rawMap !== 'object' || Array.isArray(rawMap)) {
+    return {};
+  }
+
+  const normalized: Record<string, ActivityPriorityLevel> = {};
+  for (const [skill, priority] of Object.entries(rawMap)) {
+    const key = String(skill ?? '').trim();
+    if (!key) continue;
+    normalized[key] = normalizeSkillPriority(priority);
+  }
+  return normalized;
+}
+
+function getSkillPriorityForTag(tag: string, skillPriorityMap: Record<string, ActivityPriorityLevel>): ActivityPriorityLevel {
+  const direct = skillPriorityMap[tag];
+  if (direct) return direct;
+  const fallback = Object.entries(skillPriorityMap).find(([name]) => name.toLowerCase() === tag.toLowerCase())?.[1];
+  return fallback ?? 'normal';
+}
+
 function isActivityExpired(activity: ActivityRecord) {
   const end = new Date(activity.end_time ?? '');
   return !Number.isNaN(end.getTime()) && end.getTime() <= Date.now();
@@ -79,6 +112,7 @@ function toOpportunity(activity: ActivityRecord): OpportunityViewModel {
   const isExpired = baseStatus === 'published' && isActivityExpired(activity);
   const status = isExpired ? 'expired' : baseStatus;
   const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
+  const skillPriorityMap = getSkillPriorityMap(activity.location);
 
   return {
     id: activity.id,
@@ -89,7 +123,10 @@ function toOpportunity(activity: ActivityRecord): OpportunityViewModel {
     date: formatDateLabel(activity.start_time),
     title: activity.title ?? 'Untitled activity',
     location: getLocationLabel(activity.location),
-    tags: requiredSkills.slice(0, 3),
+    tags: requiredSkills.slice(0, 3).map((label) => ({
+      label,
+      priority: getSkillPriorityForTag(label, skillPriorityMap),
+    })),
     spotsLeft: Number(activity.capacity ?? 0),
   };
 }
@@ -395,8 +432,12 @@ export function BrowseOpportunitiesPage() {
                       </Badge>
                     )}
                     {opportunity.tags.map((tag) => (
-                      <Badge className="browse-tag" key={`${opportunity.id}-${tag}`} tone="accent">
-                        {tag}
+                      <Badge
+                        className={`browse-tag is-priority-${tag.priority}`}
+                        key={`${opportunity.id}-${tag.label}`}
+                        tone="neutral"
+                      >
+                        {tag.label}
                       </Badge>
                     ))}
                   </div>

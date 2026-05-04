@@ -4,6 +4,8 @@ interface TimelineValidationContext {
   activityStartTime?: string | null;
   activityEndTime?: string | null;
   enforceActivityWindow?: boolean;
+  disallowPastStart?: boolean;
+  now?: string | Date;
 }
 
 function asDate(value: string | null | undefined) {
@@ -66,6 +68,7 @@ export function validateTimelineDrafts(
   const issues: TimelineValidationIssue[] = [];
   const activityStart = asDate(context.activityStartTime ?? null);
   const activityEnd = asDate(context.activityEndTime ?? null);
+  const now = context.now instanceof Date ? context.now : asDate(context.now ?? null) ?? new Date();
   const orderedDrafts = normalizeOrder(drafts);
 
   orderedDrafts.forEach((draft, index) => {
@@ -121,6 +124,15 @@ export function validateTimelineDrafts(
         field: 'timeRange',
         level: 'error',
         message: 'End time must be later than start time.',
+      });
+    }
+
+    if (start && context.disallowPastStart && start < now) {
+      issues.push({
+        milestoneId: draftId,
+        field: 'startTime',
+        level: 'error',
+        message: 'Start time cannot be in the past.',
       });
     }
 
