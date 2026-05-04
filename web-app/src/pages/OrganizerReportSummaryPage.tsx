@@ -3,19 +3,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { EmptyLoadingErrorState, IssueBadge } from '../components/feedback';
-import { EventTimelineReadOnly } from '../components/timeline';
-import { Badge, Button, Card, Select } from '../components/ui';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { FeedbackOverviewCard } from '../components/reports/FeedbackOverviewCard';
 import { IssueHighlightsCard } from '../components/reports/IssueHighlightsCard';
 import { ParticipationCountCard } from '../components/reports/ParticipationCountCard';
 import { ReportSummaryHeroCard } from '../components/reports/ReportSummaryHeroCard';
-<<<<<<< HEAD
-=======
 import { EventTimelineReadOnly } from '../components/timeline';
 import { Button, Card, Select } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
->>>>>>> main
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import type {
   OrganizerReportSummaryData,
@@ -309,14 +304,14 @@ function getFeedbackCopyForReportMode(input: {
     if (reportMode === 'completed') {
       return {
         mode: 'no-valid-feedback' as const,
-        title: 'No valid feedback collected',
-        description: `${subject} ${verb} flagged as spam and excluded from rating, sentiment, and insights.`,
+        title: 'Only spam feedback detected',
+        description: `${subject} ${verb} flagged as spam. Rating, sentiment, and insights use valid feedback only.`,
       };
     }
     return {
       mode: 'no-valid-feedback' as const,
-      title: 'No valid feedback yet',
-      description: `${subject} ${verb} flagged as spam and excluded from rating, sentiment, and insights.`,
+      title: 'Only spam feedback detected',
+      description: `${subject} ${verb} flagged as spam. Rating, sentiment, and insights use valid feedback only.`,
     };
   }
 
@@ -636,8 +631,8 @@ function buildReportActions(input: {
     if (validFeedbackCount === 0 && spamFeedbackCount > 0) {
       actions.push({
         id: 'completed-no-usable-feedback',
-        title: 'No usable feedback collected',
-        description: 'All submitted feedback was flagged as spam, so report insights cannot be generated.',
+        title: 'Only spam feedback detected',
+        description: 'All submitted feedback was flagged as spam, so report insights cannot be generated yet.',
         priority: 'low',
         actionLabel: 'Review Feedback',
         onAction: () => navigate(encodedActivityId ? `/feedback?activityId=${encodedActivityId}` : '/feedback'),
@@ -698,7 +693,7 @@ function buildReportActions(input: {
     if (validFeedbackCount === 0 && spamFeedbackCount > 0) {
       actions.push({
         id: 'live-no-usable-feedback',
-        title: 'No usable feedback yet',
+        title: 'Only spam feedback detected',
         description: 'All submitted feedback was flagged as spam, so insights cannot be generated yet.',
         priority: 'low',
         actionLabel: 'Review Feedback',
@@ -1075,11 +1070,6 @@ export function OrganizerReportSummaryPage() {
     ]
   );
 
-  const analyticsFacts = report?.analyticsFacts ?? [];
-  const issueHighlights = report?.issueHighlights ?? [];
-  const strengths = report?.strengths ?? [];
-  const weaknesses = report?.weaknesses ?? [];
-
   const filteredActionItems = useMemo(() => {
     const normalized = searchTerm.trim();
     if (!normalized) {
@@ -1092,7 +1082,9 @@ export function OrganizerReportSummaryPage() {
   }, [actionItems, searchTerm]);
 
   const actionSectionCopy = useMemo(() => getActionSectionCopy(reportMode), [reportMode]);
-  const shouldShowTimeline = timelineMilestones.length > 0;
+  const shouldShowTimeline =
+    Boolean(timelineActivityId) &&
+    (timelineLoading || Boolean(timelineError) || timelineMilestones.length > 0);
 
   const handleExportPdf = () => {
     setError(null);
@@ -1240,22 +1232,7 @@ export function OrganizerReportSummaryPage() {
 
             <div className="org-report-main-grid">
               <div className="org-report-main-col">
-<<<<<<< HEAD
-                <ParticipationCountCard
-                  rows={breakdownRows}
-                  title="Participation Breakdown"
-                />
-                <IssueHighlightsCard
-                  emptyMessage={
-                    searchTerm.trim()
-                      ? 'No action items match your current search.'
-                      : 'All key metrics look good. No action needed right now.'
-                  }
-                  issues={filteredActionItems}
-                />
-=======
                 <ParticipationCountCard rows={participationModel.rows} title={participationModel.title} />
->>>>>>> main
               </div>
 
               <div className="org-report-main-col">
@@ -1274,37 +1251,21 @@ export function OrganizerReportSummaryPage() {
                       <h3>Feedback Insights</h3>
                     </div>
                     <div className="org-report-strength-grid">
-<<<<<<< HEAD
-                      <div>
-                        <h4>Strengths</h4>
-                        {strengths.length > 0 ? (
-=======
                       {Array.isArray(report.strengths) && report.strengths.length > 0 ? (
                         <div>
                           <h4>Strengths</h4>
->>>>>>> main
                           <ul className="org-report-list">
-                            {strengths.map((item) => (
+                            {report.strengths.map((item) => (
                               <li key={`strength-${item}`}>{item}</li>
                             ))}
                           </ul>
-<<<<<<< HEAD
-                        ) : (
-                          <p className="muted">No recurring strengths detected yet.</p>
-                        )}
-                      </div>
-                      <div>
-                        <h4>Weaknesses</h4>
-                        {weaknesses.length > 0 ? (
-=======
                         </div>
                       ) : null}
                       {Array.isArray(report.weaknesses) && report.weaknesses.length > 0 ? (
                         <div>
                           <h4>Weaknesses</h4>
->>>>>>> main
                           <ul className="org-report-list">
-                            {weaknesses.map((item) => (
+                            {report.weaknesses.map((item) => (
                               <li key={`weakness-${item}`}>{item}</li>
                             ))}
                           </ul>
@@ -1318,19 +1279,17 @@ export function OrganizerReportSummaryPage() {
                       <h3>Feedback Insights</h3>
                     </div>
                     <p className="muted">
-                      {reportMode === 'completed'
-                        ? 'Insights are unavailable because no valid feedback was collected.'
-                        : 'Insights will appear after volunteers submit valid feedback.'}
+                      {effectiveFeedbackCounts.spam > 0 && effectiveFeedbackCounts.valid === 0
+                        ? 'Insights are unavailable because only spam feedback was detected.'
+                        : reportMode === 'completed'
+                          ? 'Insights are unavailable because no valid feedback was collected.'
+                          : 'Insights will appear after volunteers submit valid feedback.'}
                     </p>
                   </Card>
                 )}
               </div>
             </div>
 
-<<<<<<< HEAD
-            <div className="org-report-lower-grid">
-              <Card as="section" className="org-report-lower-card org-report-facts-card">
-=======
             <IssueHighlightsCard
               title={actionSectionCopy.title}
               emptyTitle={actionSectionCopy.emptyTitle}
@@ -1344,93 +1303,18 @@ export function OrganizerReportSummaryPage() {
 
             {shouldShowTimeline ? (
               <Card as="section" className="org-report-lower-card org-report-timeline-summary-card">
->>>>>>> main
                 <div className="org-report-card-head">
-                  <h3>Analytics Facts</h3>
-                  {report.modelVersion ? <small>{report.modelVersion}</small> : null}
+                  <h3>Activity Timeline</h3>
                 </div>
-                {analyticsFacts.length === 0 ? (
-                  <p className="muted">No analytics facts available.</p>
-                ) : (
-                  <div className="org-report-facts-grid">
-                    {analyticsFacts.map((fact) => (
-                      <div className="org-report-fact-item" key={fact.key}>
-                        <span>{fact.label}</span>
-                        <strong>{fact.value}</strong>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {issueHighlights.length > 0 && (
-                  <div className="org-report-inline-tags">
-                    {issueHighlights.map((item) => (
-                      <IssueBadge key={item.id} label={`${item.label} (${item.count})`} priority={item.priority} />
-                    ))}
-                  </div>
-                )}
+                <EventTimelineReadOnly
+                  compact
+                  emptyDescription="No timeline milestones available yet."
+                  milestones={timelineMilestones}
+                  loading={timelineLoading}
+                  error={timelineError}
+                />
               </Card>
-
-              <FeedbackOverviewCard
-                ariaLabel="Open feedback review"
-                spamFeedbackCount={effectiveFeedbackCounts.spam}
-                totalFeedbackCount={effectiveFeedbackCounts.total}
-                validFeedbackCount={effectiveFeedbackCounts.valid}
-                onClick={() => {
-                  const nextActivityId = selectedActivityId || requestedActivityId;
-                  navigate(nextActivityId ? `/feedback?activityId=${encodeURIComponent(nextActivityId)}` : '/feedback');
-                }}
-                quote={effectiveQuote}
-                rating={effectiveRating}
-                sentiments={sentimentCounts}
-              />
-
-              <Card as="section" className="org-report-lower-card org-report-facts-card">
-                <div className="org-report-card-head">
-                  <h3>Strengths and Weaknesses</h3>
-                </div>
-                <div className="org-report-strength-grid">
-                  <div>
-                    <h4>Strengths</h4>
-                    {strengths.length > 0 ? (
-                      <ul className="org-report-list">
-                        {strengths.map((item) => (
-                          <li key={`strength-${item}`}>{item}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">No explicit strengths detected yet.</p>
-                    )}
-                  </div>
-                  <div>
-                    <h4>Weaknesses</h4>
-                    {weaknesses.length > 0 ? (
-                      <ul className="org-report-list">
-                        {weaknesses.map((item) => (
-                          <li key={`weakness-${item}`}>{item}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">No explicit weaknesses detected yet.</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-
-              {shouldShowTimeline ? (
-                <Card as="section" className="org-report-lower-card org-report-timeline-summary-card">
-                  <div className="org-report-card-head">
-                    <h3>Activity Timeline</h3>
-                  </div>
-                  <EventTimelineReadOnly
-                    compact
-                    emptyDescription="No organizer-managed milestones are linked to this activity yet."
-                    milestones={timelineMilestones}
-                    loading={timelineLoading}
-                    error={timelineError}
-                  />
-                </Card>
-              ) : null}
-            </div>
+            ) : null}
           </>
         ) : (
           <section className="card org-report-lower-card org-report-empty-card">

@@ -17,6 +17,12 @@ function formatTypeLabel(type: TimelineMilestoneType) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatStatusLabel(status: TimelineMilestoneStatus) {
+  return status
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function formatRange(startTime: string, endTime: string) {
   const start = new Date(startTime);
   const end = new Date(endTime);
@@ -341,7 +347,7 @@ export function EventTimelineEditor({
             >
               {statusOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option.replace(/_/g, ' ')}
+                  {formatStatusLabel(option)}
                 </option>
               ))}
             </Select>
@@ -463,7 +469,7 @@ export function EventTimelineEditor({
                   >
                     {statusOptions.map((option) => (
                       <option key={option} value={option}>
-                        {option.replace(/_/g, ' ')}
+                        {formatStatusLabel(option)}
                       </option>
                     ))}
                   </Select>

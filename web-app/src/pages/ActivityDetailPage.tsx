@@ -578,7 +578,7 @@ export function ActivityDetailPage() {
           <>
             {usingMockFallback && (
               <p className="activity-detail-note">
-                Activity detail API is unavailable for this id. Displaying mock detail layout.
+                Live activity details are temporarily unavailable. Showing the best available preview.
               </p>
             )}
 

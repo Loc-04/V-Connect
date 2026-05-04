@@ -6,7 +6,7 @@ import { normalizeRole } from '../auth/roleUtils';
 import { useAuth } from '../auth/useAuth';
 import { TimelineStatusBadge } from '../components/timeline';
 import { ActivityLocationMap } from '../components/maps/ActivityLocationMap';
-import { Button, Card } from '../components/ui';
+import { Badge, Button, Card } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
@@ -1503,15 +1503,23 @@ export function CreateActivityPage() {
                   </div>
                 ) : (
                   <div className="activity-timeline-list">
-                    {sortedTimelineDrafts.map((milestone, milestoneIndex) => (
-                      <article className="activity-timeline-item" key={milestone.id ?? `draft-${milestoneIndex}`}>
-                        <div className="activity-timeline-item-head">
-                          <strong>{safeText(milestone.title, '').trim() || `Milestone ${milestoneIndex + 1}`}</strong>
-                          <TimelineStatusBadge status="upcoming" />
-                        </div>
-                        <small>{formatRange(toDateTimeLocalValue(milestone.startTime), toDateTimeLocalValue(milestone.endTime))}</small>
-                      </article>
-                    ))}
+                    {sortedTimelineDrafts.map((milestone, milestoneIndex) => {
+                      const previewStatus = milestone.status ?? 'upcoming';
+                      const description = safeText(milestone.description, '').trim();
+                      return (
+                        <article className="activity-timeline-item" key={milestone.id ?? `draft-${milestoneIndex}`}>
+                          <div className="activity-timeline-item-head">
+                            <strong>{safeText(milestone.title, '').trim() || `Milestone ${milestoneIndex + 1}`}</strong>
+                            <TimelineStatusBadge status={previewStatus} />
+                          </div>
+                          <small>{formatRange(toDateTimeLocalValue(milestone.startTime), toDateTimeLocalValue(milestone.endTime))}</small>
+                          <div className="timeline-item-tags">
+                            <Badge tone="neutral">{formatTimelineTypeLabel(milestone.type)}</Badge>
+                          </div>
+                          {description ? <p className="timeline-item-description">{description}</p> : null}
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
               </Card>

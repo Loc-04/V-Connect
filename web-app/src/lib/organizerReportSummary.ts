@@ -147,5 +147,5 @@ export const organizerReportSummaryMock: OrganizerReportSummaryData = {
     spamCount: 0,
     averageRating: 4.5,
   },
-  modelVersion: 'deterministic-facts-v2-2026-04',
+  modelVersion: 'report-summary-v1-2026-04',
 };
