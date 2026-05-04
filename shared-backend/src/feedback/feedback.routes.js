@@ -7,6 +7,7 @@ import { normalizeFeedbackPayload } from './feedback.validation.js';
 import { classifyFeedback } from '../ai/ai.router.js';
 import { classifyFeedbackSpam } from './feedback.spam.js';
 import { classifyFeedbackSemantics } from './feedback.classification.js';
+import { normalizeFeedbackLabel, pickFinalFeedbackLabel } from './feedback.final-label.js';
 
 const router = Router();
 
@@ -214,6 +215,7 @@ function normalizeAiClassification(classification) {
       issueTags: [],
       confidence: null,
       textQuality: null,
+      finalLabel: null,
     };
   }
 
@@ -291,6 +293,11 @@ function normalizeAiClassification(classification) {
     semanticRaw === 'low_signal'
       ? semanticRaw
       : null;
+  const rawFinalLabel = classification.finalLabel ?? classification.final_label ?? null;
+  const finalLabel =
+    rawFinalLabel == null || String(rawFinalLabel).trim().length === 0
+      ? null
+      : normalizeFeedbackLabel(rawFinalLabel);
 
   return {
     label,
@@ -305,6 +312,7 @@ function normalizeAiClassification(classification) {
     issueTags: Array.from(new Set(issueTags)).slice(0, 8),
     confidence,
     textQuality,
+    finalLabel,
   };
 }
 
@@ -403,6 +411,22 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
     issueTags: normalizedIssueTags,
     persistedBucket: normalizedClassification.feedbackBucket ?? feedback?.ai_feedback_bucket ?? null,
   });
+  const finalLabel = pickFinalFeedbackLabel({
+    comment: feedback?.comment ?? '',
+    aiLabel,
+    isSpam: aiLabel === 'spam',
+    feedbackBucket,
+    sentimentLabel,
+    semanticLabel,
+    moderationLabels: normalizedModerationLabels,
+    semanticLabels,
+    issueTags: normalizedIssueTags,
+    reasons: aiReasons,
+    semanticReasons,
+    textQualityLabel: textQuality?.label,
+    sentimentConfidence: confidence?.sentiment,
+    semanticConfidence: confidence?.semantic,
+  });
 
   return {
     ...feedback,
@@ -426,6 +450,8 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
           .filter((reason) => reason.length > 0)
           .slice(0, 6)
       : [],
+    final_label: normalizedClassification.finalLabel ?? finalLabel,
+    finalLabel: normalizedClassification.finalLabel ?? finalLabel,
   };
 }
 

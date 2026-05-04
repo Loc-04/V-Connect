@@ -22,6 +22,13 @@ const forbiddenLanguagePatterns = [
 ];
 
 const urlPattern = /\b(?:https?:\/\/|www\.)\S+/i;
+const shortLinkPattern = /\b(?:bit\.ly|t\.me|discord\.gg|tinyurl\.com)\b/i;
+const numericPunctuationOnlyPattern = /^[\d\s\W_]+$/;
+const repeatedSingleCharPattern = /^(.)(\1{4,})$/;
+const repeatedDigitGroupPattern = /^(\d{1,3})\1{2,}$/;
+const keyboardJunkPattern =
+  /\b(?:asdf(?:asdf)*|qwer(?:qwer)*|qwe(?:qwe)*|zxcv?(?:zxcv?)*|hjkl(?:hjkl)*|test(?:ing)?(?:\s*[\d/-]+)?|sample|demo|dummy)\b/i;
+const safeShortNeutralTokens = new Set(['ok', 'okay']);
 
 function normalizeText(text) {
   return String(text ?? '')
@@ -36,6 +43,103 @@ function normalizeText(text) {
 
 function tokenizeText(text) {
   return text.match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+function stripSpaces(text) {
+  return String(text ?? '').replace(/\s+/g, '');
+}
+
+function hasMostlyNumericOrSymbolContent(normalizedComment, tokens) {
+  if (!normalizedComment) {
+    return false;
+  }
+  if (!numericPunctuationOnlyPattern.test(normalizedComment)) {
+    return false;
+  }
+  const alphaTokenCount = tokens.filter((token) => /[a-z]/i.test(token)).length;
+  return alphaTokenCount === 0;
+}
+
+function hasRepeatedCharacterJunk(normalizedComment) {
+  const compact = stripSpaces(normalizedComment);
+  if (!compact) {
+    return false;
+  }
+  return repeatedSingleCharPattern.test(compact);
+}
+
+function hasRepeatedDigitGroupJunk(normalizedComment) {
+  const compact = stripSpaces(normalizedComment).replace(/[^\d]/g, '');
+  if (!compact) {
+    return false;
+  }
+  return repeatedDigitGroupPattern.test(compact);
+}
+
+function hasVeryShortMeaninglessContent(normalizedComment, tokens) {
+  if (!normalizedComment) {
+    return false;
+  }
+  const compact = stripSpaces(normalizedComment);
+  if (compact.length <= 2) {
+    if (safeShortNeutralTokens.has(compact.toLowerCase())) {
+      return false;
+    }
+    return true;
+  }
+
+  if (tokens.length === 1) {
+    const token = String(tokens[0] ?? '').toLowerCase();
+    if (safeShortNeutralTokens.has(token)) {
+      return false;
+    }
+    if (token.length <= 2) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasTestOrDummyContent(normalizedComment, tokens) {
+  if (!normalizedComment) {
+    return false;
+  }
+  if (!keyboardJunkPattern.test(normalizedComment)) {
+    return false;
+  }
+  const alphaTokens = tokens.filter((token) => /[a-z]/i.test(token));
+  const meaningfulTokens = alphaTokens.filter(
+    (token) => token.length >= 3 && !['test', 'testing', 'sample', 'demo', 'dummy'].includes(token.toLowerCase())
+  );
+  return meaningfulTokens.length === 0;
+}
+
+function hasRandomKeyboardNoise(normalizedComment) {
+  if (!normalizedComment) {
+    return false;
+  }
+  const compact = stripSpaces(normalizedComment);
+  if (compact.length < 6) {
+    return false;
+  }
+  return /(asdf|qwer|qweqwe|zxcv|zxczxc|hjkl)/i.test(compact);
+}
+
+function hasLinkOnlyOrSuspiciousLink(normalizedComment, tokens) {
+  if (!normalizedComment) {
+    return false;
+  }
+  const hasLink = urlPattern.test(normalizedComment) || shortLinkPattern.test(normalizedComment);
+  if (!hasLink) {
+    return false;
+  }
+
+  const nonLinkTokens = tokens.filter(
+    (token) =>
+      !/(https?|www|bit|ly|t|me|discord|gg|tinyurl|com|net|org)/i.test(String(token ?? '').toLowerCase())
+  );
+  return nonLinkTokens.length === 0 || shortLinkPattern.test(normalizedComment);
 }
 
 function detectRepeatedWords(tokens) {
@@ -95,6 +199,30 @@ function classifyFeedbackSpam(comment) {
   }
 
   const reasons = new Set();
+  const tokens = tokenizeText(normalizedComment);
+
+  if (hasMostlyNumericOrSymbolContent(normalizedComment, tokens)) {
+    reasons.add('numeric_or_symbol_only_content');
+  }
+  if (hasRepeatedCharacterJunk(normalizedComment)) {
+    reasons.add('repeated_character_noise');
+  }
+  if (hasRepeatedDigitGroupJunk(normalizedComment)) {
+    reasons.add('repeated_digit_group_noise');
+  }
+  if (hasVeryShortMeaninglessContent(normalizedComment, tokens)) {
+    reasons.add('too_short_or_meaningless');
+  }
+  if (hasLinkOnlyOrSuspiciousLink(normalizedComment, tokens)) {
+    reasons.add('suspicious_or_link_only_content');
+  }
+  if (hasTestOrDummyContent(normalizedComment, tokens)) {
+    reasons.add('test_or_dummy_content');
+  }
+  if (hasRandomKeyboardNoise(normalizedComment)) {
+    reasons.add('random_keyboard_noise');
+  }
+
   if (urlPattern.test(normalizedComment)) {
     reasons.add('contains_link');
   }
@@ -107,7 +235,7 @@ function classifyFeedbackSpam(comment) {
     reasons.add('forbidden_language');
   }
 
-  for (const repetitionReason of detectRepeatedWords(tokenizeText(normalizedComment))) {
+  for (const repetitionReason of detectRepeatedWords(tokens)) {
     reasons.add(repetitionReason);
   }
 

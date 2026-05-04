@@ -13,7 +13,7 @@ import { createActivity, getActivityById, updateActivity } from '../lib/activiti
 import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
 import { getTimelineIntegrationMeta, replaceActivityTimeline } from '../lib/timeline';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../lib/timelineValidation';
-import type { ActivityPriorityLevel, ActivityRecord, ActivityStatus } from '../types/activity';
+import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { GeocodedLocationRecord, ProvinceRecord, WardRecord } from '../types/location';
 import type { TimelineMilestoneDraft, TimelineMilestoneType } from '../types/timeline';
 import './CreateActivityPage.css';
@@ -67,17 +67,10 @@ function toIsoFromDateTimeLocal(value: string) {
 }
 
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
-const maxCoverImageBytes = 700 * 1024;
-const coverTargetWidth = 1200;
-const coverTargetHeight = 675;
+const maxCoverImageBytes = 10 * 1024 * 1024;
+const coverTargetWidth = 1280;
+const coverTargetHeight = 720;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['check_in', 'opening', 'session', 'break', 'closing', 'wrap_up', 'custom'];
-const skillPriorityOptions: ActivityPriorityLevel[] = ['low', 'normal', 'urgent'];
-
-function formatSkillPriorityLabel(priority: ActivityPriorityLevel) {
-  if (priority === 'low') return 'Low';
-  if (priority === 'urgent') return 'Urgent';
-  return 'Normal';
-}
 
 function formatTimelineTypeLabel(type: TimelineMilestoneType) {
   return type
@@ -278,7 +271,6 @@ export function CreateActivityPage() {
   const [endTimeManuallyChanged, setEndTimeManuallyChanged] = useState(false);
   const [capacity, setCapacity] = useState('10');
   const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
-  const [skillPriorities, setSkillPriorities] = useState<Record<string, ActivityPriorityLevel>>({});
   const [skillDraft, setSkillDraft] = useState('');
   const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
   const [wards, setWards] = useState<WardRecord[]>([]);
@@ -307,14 +299,6 @@ export function CreateActivityPage() {
   const organizerHomePath = role === 'admin' ? '/admin/dashboard' : '/organizer/activities';
   const isEditing = Boolean(activityId);
   const timelineIntegrationMeta = useMemo(() => getTimelineIntegrationMeta(), []);
-  const currentDateTime = useMemo(() => {
-    const now = new Date();
-    const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString();
-    return {
-      date: localIso.slice(0, 10),
-      time: localIso.slice(11, 16),
-    };
-  }, []);
 
   const createQuickMilestoneDraft = useCallback(
     (): TimelineMilestoneDraft => {
@@ -404,6 +388,14 @@ export function CreateActivityPage() {
       ),
     [locationSummary, resolvedMapLocation, selectedProvince?.name, selectedWard?.name, streetAddress]
   );
+  const currentDateTime = useMemo(() => {
+    const now = new Date();
+    const iso = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString();
+    return {
+      date: iso.slice(0, 10),
+      time: iso.slice(11, 16),
+    };
+  }, []);
   const sortedTimelineDrafts = useMemo(() => sortTimelineByTime(quickMilestones), [quickMilestones]);
   const activeTimelineDraft = useMemo(
     () => sortedTimelineDrafts.find((item) => item.id === activeTimelineDraftId) ?? null,
@@ -548,27 +540,7 @@ export function CreateActivityPage() {
         setEndTime(end.time);
         setEndTimeManuallyChanged(true);
         setCapacity(String(activity.capacity ?? 10));
-        const existingRequiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
-        const existingPriorityMap =
-          activity.location && typeof activity.location === 'object' && !Array.isArray(activity.location)
-            ? activity.location.skillPriorities
-            : null;
-        setRequiredSkills(existingRequiredSkills);
-        setSkillPriorities(
-          existingRequiredSkills.reduce<Record<string, ActivityPriorityLevel>>((acc, skill) => {
-            const rawPriority =
-              existingPriorityMap && typeof existingPriorityMap === 'object'
-                ? existingPriorityMap[skill] ??
-                  Object.entries(existingPriorityMap).find(([name]) => name.toLowerCase() === skill.toLowerCase())?.[1]
-                : null;
-            const normalizedPriority = typeof rawPriority === 'string' ? rawPriority.trim().toLowerCase() : '';
-            acc[skill] =
-              normalizedPriority === 'low' || normalizedPriority === 'normal' || normalizedPriority === 'urgent'
-                ? (normalizedPriority as ActivityPriorityLevel)
-                : 'normal';
-            return acc;
-          }, {})
-        );
+        setRequiredSkills(Array.isArray(activity.required_skills) ? activity.required_skills : []);
       })
       .catch((loadError) => {
         if (!isMounted) {
@@ -817,7 +789,6 @@ export function CreateActivityPage() {
 
     if (!requiredSkills.some((skill) => skill.toLowerCase() === nextSkill.toLowerCase())) {
       setRequiredSkills((current) => [...current, nextSkill]);
-      setSkillPriorities((current) => ({ ...current, [nextSkill]: 'normal' }));
     }
     setSkillDraft('');
   };
@@ -834,7 +805,7 @@ export function CreateActivityPage() {
       }
 
       if (file.size > maxCoverImageBytes) {
-        throw new Error('Cover image must be 700KB or less.');
+        throw new Error('Cover image must be 10MB or less.');
       }
 
       const encodedImage = await normalizeCoverImage(file);
@@ -849,14 +820,6 @@ export function CreateActivityPage() {
 
   const removeSkill = (skillToRemove: string) => {
     setRequiredSkills((current) => current.filter((skill) => skill !== skillToRemove));
-    setSkillPriorities((current) => {
-      const { [skillToRemove]: _ignored, ...rest } = current;
-      return rest;
-    });
-  };
-
-  const setSkillPriority = (skill: string, priority: ActivityPriorityLevel) => {
-    setSkillPriorities((current) => ({ ...current, [skill]: priority }));
   };
 
   const handleAddQuickMilestone = () => {
@@ -937,7 +900,6 @@ export function CreateActivityPage() {
       activityStartTime: activityStartValue,
       activityEndTime: activityEndValue,
       enforceActivityWindow: true,
-      disallowPastStart: true,
     });
 
     const errorMessages = Array.from(
@@ -1041,7 +1003,7 @@ export function CreateActivityPage() {
         startTime: startIso,
         endTime: endIso,
         capacity: capacityValue,
-        skillRequirements: requiredSkills.map((skill) => ({ skill, priority: skillPriorities[skill] ?? 'normal' })),
+        skillRequirements: requiredSkills.map((skill) => ({ skill, priority: 'normal' as const })),
         requiredSkills,
         status,
       };
@@ -1177,7 +1139,7 @@ export function CreateActivityPage() {
                     </div>
                     <strong>Upload a file</strong>
                     <p>or drag and drop (click to browse)</p>
-                    <small>PNG, JPG, GIF up to 700KB</small>
+                    <small>PNG, JPG, GIF up to 10MB</small>
                     <input
                       accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
                       hidden
@@ -1198,54 +1160,32 @@ export function CreateActivityPage() {
                 <h2>Requirements</h2>
               </div>
 
-              <div className="activity-grid two-cols requirements-grid">
-                <div className="activity-field requirements-skill-field">
+              <div className="activity-grid two-cols">
+                <div className="activity-field">
                   <span>Required Skills</span>
-                  <div className="skill-input-stack">
+                  <div className="activity-tag-input">
                     {requiredSkills.map((skill) => (
-                      <div key={skill} className="activity-tag-input skill-tag-row">
-                        <button className="activity-tag" onClick={() => removeSkill(skill)} type="button">
-                          {skill} <span aria-hidden="true">x</span>
-                        </button>
-                      </div>
+                      <button
+                        key={skill}
+                        className="activity-tag"
+                        onClick={() => removeSkill(skill)}
+                        type="button"
+                      >
+                        {skill} <span aria-hidden="true">x</span>
+                      </button>
                     ))}
-                    <div className="activity-tag-input">
-                      <input
-                        onChange={(event) => setSkillDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ',') {
-                            event.preventDefault();
-                            addSkill();
-                          }
-                        }}
-                        placeholder="Add skill..."
-                        type="text"
-                        value={skillDraft}
-                      />
-                    </div>
-                  </div>
-                  <p className="activity-help">Type and press Enter to add tags</p>
-                </div>
-                <div className="activity-field requirements-priority-field">
-                  <span>Priority Level</span>
-                  <div className="skill-priority-stack">
-                    {requiredSkills.map((skill) => {
-                      const selectedPriority = skillPriorities[skill] ?? 'normal';
-                      return (
-                        <div className="priority-toggle" key={`${skill}-priority`} role="group" aria-label={`Priority level for ${skill}`}>
-                          {skillPriorityOptions.map((priority) => (
-                            <button
-                              key={priority}
-                              className={`priority-${priority}${selectedPriority === priority ? ' is-selected' : ''}`}
-                              onClick={() => setSkillPriority(skill, priority)}
-                              type="button"
-                            >
-                              {formatSkillPriorityLabel(priority)}
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })}
+                    <input
+                      onChange={(event) => setSkillDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ',') {
+                          event.preventDefault();
+                          addSkill();
+                        }
+                      }}
+                      placeholder="Add skill and press Enter"
+                      type="text"
+                      value={skillDraft}
+                    />
                   </div>
                 </div>
               </div>

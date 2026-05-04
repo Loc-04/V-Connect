@@ -16,7 +16,6 @@ const router = Router();
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 const timelineColumns = 'id, activity_id, title, description, timeline_choice, created_at';
-const validSkillPriorityLevels = new Set(['low', 'normal', 'urgent']);
 
 function parseDateBoundary(rawValue, boundary) {
   if (typeof rawValue !== 'string' || rawValue.trim().length === 0) {
@@ -112,98 +111,6 @@ function normalizeCoordinateValue(value) {
 
 function normalizeOptionalText(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeSkillPriorityMap(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
-  }
-
-  const normalized = {};
-  for (const [skillRaw, priorityRaw] of Object.entries(value)) {
-    const skill = typeof skillRaw === 'string' ? skillRaw.trim() : '';
-    if (!skill) {
-      continue;
-    }
-    const priority = typeof priorityRaw === 'string' ? priorityRaw.trim().toLowerCase() : '';
-    if (!validSkillPriorityLevels.has(priority)) {
-      continue;
-    }
-    normalized[skill] = priority;
-  }
-
-  return normalized;
-}
-
-function normalizeSkillPriorityMapFromBody(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return null;
-  }
-
-  if (!Array.isArray(body.skillRequirements)) {
-    return null;
-  }
-
-  const normalized = {};
-  const seen = new Set();
-
-  body.skillRequirements.forEach((item, index) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new Error(`skillRequirements[${index}] must be an object.`);
-    }
-
-    const skill = typeof item.skill === 'string' ? item.skill.trim() : '';
-    if (!skill) {
-      throw new Error(`skillRequirements[${index}].skill is required.`);
-    }
-
-    const key = skill.toLowerCase();
-    if (seen.has(key)) {
-      throw new Error(`Duplicate skill in skillRequirements: "${skill}".`);
-    }
-    seen.add(key);
-
-    const priority = typeof item.priority === 'string' ? item.priority.trim().toLowerCase() : 'normal';
-    if (!validSkillPriorityLevels.has(priority)) {
-      throw new Error(`skillRequirements[${index}].priority must be one of: low, normal, urgent.`);
-    }
-
-    normalized[skill] = priority;
-  });
-
-  return normalized;
-}
-
-function attachSkillPrioritiesToLocation(locationValue, requiredSkills, incomingPriorityMap, previousLocationValue = null) {
-  if (!locationValue || typeof locationValue !== 'object' || Array.isArray(locationValue)) {
-    return locationValue;
-  }
-
-  const required = Array.isArray(requiredSkills)
-    ? requiredSkills.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0)
-    : [];
-
-  const baseMap = normalizeSkillPriorityMap(previousLocationValue?.skillPriorities);
-  const nextMap = {};
-
-  required.forEach((skill) => {
-    const incomingDirect = incomingPriorityMap && typeof incomingPriorityMap[skill] === 'string'
-      ? incomingPriorityMap[skill]
-      : null;
-    const incomingFallback = incomingPriorityMap
-      ? Object.entries(incomingPriorityMap).find(([name]) => String(name).trim().toLowerCase() === skill.toLowerCase())?.[1]
-      : null;
-    const previousDirect = typeof baseMap[skill] === 'string' ? baseMap[skill] : null;
-    const previousFallback = Object.entries(baseMap).find(([name]) => String(name).trim().toLowerCase() === skill.toLowerCase())?.[1];
-
-    const candidate = incomingDirect ?? incomingFallback ?? previousDirect ?? previousFallback ?? 'normal';
-    nextMap[skill] = validSkillPriorityLevels.has(candidate) ? candidate : 'normal';
-  });
-
-  return {
-    ...locationValue,
-    skillPriorities: nextMap,
-  };
 }
 
 function matchesSkillFilter(activity, skillFilters) {
@@ -403,7 +310,7 @@ async function resolveStoredLocation(payload, existingActivity = null) {
   };
 }
 
-function normalizeTimelineChoice(body, { partial = false, rejectPast = false } = {}) {
+function normalizeTimelineChoice(body, { partial = false } = {}) {
   const candidate =
     typeof body.timelineChoice === 'string'
       ? body.timelineChoice
@@ -427,14 +334,10 @@ function normalizeTimelineChoice(body, { partial = false, rejectPast = false } =
     throw new Error('timelineChoice must be a valid date-time.');
   }
 
-  if (rejectPast && parsed.getTime() < Date.now()) {
-    throw new Error('timelineChoice cannot be in the past.');
-  }
-
   return parsed.toISOString();
 }
 
-function normalizeTimelinePayload(body, { partial = false, rejectPast = false } = {}) {
+function normalizeTimelinePayload(body, { partial = false } = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('Body must be a JSON object.');
   }
@@ -462,7 +365,7 @@ function normalizeTimelinePayload(body, { partial = false, rejectPast = false } 
     payload.description = '';
   }
 
-  const timelineChoice = normalizeTimelineChoice(body, { partial, rejectPast });
+  const timelineChoice = normalizeTimelineChoice(body, { partial });
   if (timelineChoice) {
     payload.timeline_choice = timelineChoice;
   }
@@ -589,7 +492,7 @@ router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
 
   let payload;
   try {
-    payload = normalizeTimelinePayload(req.body, { partial: false, rejectPast: true });
+    payload = normalizeTimelinePayload(req.body, { partial: false });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
     return;
@@ -903,12 +806,9 @@ router.post('/activities', requireAuth, async (req, res) => {
   }
 
   let payload;
-  let incomingSkillPriorityMap = null;
   try {
-    incomingSkillPriorityMap = normalizeSkillPriorityMapFromBody(req.body);
     payload = normalizeActivityPayload(req.body, { partial: false });
     payload = await resolveStoredLocation(payload);
-    payload.location = attachSkillPrioritiesToLocation(payload.location, payload.required_skills, incomingSkillPriorityMap);
   } catch (error) {
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
     res.status(statusCode).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
@@ -978,9 +878,7 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
   }
 
   let payload;
-  let incomingSkillPriorityMap = null;
   try {
-    incomingSkillPriorityMap = normalizeSkillPriorityMapFromBody(req.body);
     payload = normalizeActivityPayload(req.body, { partial: true });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid payload.' });
@@ -993,13 +891,6 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
 
   try {
     payload = await resolveStoredLocation(payload, existingActivity);
-    const mergedRequiredSkills = payload.required_skills ?? existingActivity.required_skills ?? [];
-    payload.location = attachSkillPrioritiesToLocation(
-      payload.location,
-      mergedRequiredSkills,
-      incomingSkillPriorityMap,
-      existingActivity.location && typeof existingActivity.location === 'object' ? existingActivity.location : null
-    );
   } catch (error) {
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 400;
     res.status(statusCode).json({ message: error instanceof Error ? error.message : 'Invalid location payload.' });
