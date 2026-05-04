@@ -304,14 +304,14 @@ function getFeedbackCopyForReportMode(input: {
     if (reportMode === 'completed') {
       return {
         mode: 'no-valid-feedback' as const,
-        title: 'No valid feedback collected',
-        description: `${subject} ${verb} flagged as spam and excluded from rating, sentiment, and insights.`,
+        title: 'Only spam feedback detected',
+        description: `${subject} ${verb} flagged as spam. Rating, sentiment, and insights use valid feedback only.`,
       };
     }
     return {
       mode: 'no-valid-feedback' as const,
-      title: 'No valid feedback yet',
-      description: `${subject} ${verb} flagged as spam and excluded from rating, sentiment, and insights.`,
+      title: 'Only spam feedback detected',
+      description: `${subject} ${verb} flagged as spam. Rating, sentiment, and insights use valid feedback only.`,
     };
   }
 
@@ -631,8 +631,8 @@ function buildReportActions(input: {
     if (validFeedbackCount === 0 && spamFeedbackCount > 0) {
       actions.push({
         id: 'completed-no-usable-feedback',
-        title: 'No usable feedback collected',
-        description: 'All submitted feedback was flagged as spam, so report insights cannot be generated.',
+        title: 'Only spam feedback detected',
+        description: 'All submitted feedback was flagged as spam, so report insights cannot be generated yet.',
         priority: 'low',
         actionLabel: 'Review Feedback',
         onAction: () => navigate(encodedActivityId ? `/feedback?activityId=${encodedActivityId}` : '/feedback'),
@@ -693,7 +693,7 @@ function buildReportActions(input: {
     if (validFeedbackCount === 0 && spamFeedbackCount > 0) {
       actions.push({
         id: 'live-no-usable-feedback',
-        title: 'No usable feedback yet',
+        title: 'Only spam feedback detected',
         description: 'All submitted feedback was flagged as spam, so insights cannot be generated yet.',
         priority: 'low',
         actionLabel: 'Review Feedback',
@@ -1082,7 +1082,9 @@ export function OrganizerReportSummaryPage() {
   }, [actionItems, searchTerm]);
 
   const actionSectionCopy = useMemo(() => getActionSectionCopy(reportMode), [reportMode]);
-  const shouldShowTimeline = timelineMilestones.length > 0;
+  const shouldShowTimeline =
+    Boolean(timelineActivityId) &&
+    (timelineLoading || Boolean(timelineError) || timelineMilestones.length > 0);
 
   const handleExportPdf = () => {
     setError(null);
@@ -1277,9 +1279,11 @@ export function OrganizerReportSummaryPage() {
                       <h3>Feedback Insights</h3>
                     </div>
                     <p className="muted">
-                      {reportMode === 'completed'
-                        ? 'Insights are unavailable because no valid feedback was collected.'
-                        : 'Insights will appear after volunteers submit valid feedback.'}
+                      {effectiveFeedbackCounts.spam > 0 && effectiveFeedbackCounts.valid === 0
+                        ? 'Insights are unavailable because only spam feedback was detected.'
+                        : reportMode === 'completed'
+                          ? 'Insights are unavailable because no valid feedback was collected.'
+                          : 'Insights will appear after volunteers submit valid feedback.'}
                     </p>
                   </Card>
                 )}
@@ -1304,7 +1308,7 @@ export function OrganizerReportSummaryPage() {
                 </div>
                 <EventTimelineReadOnly
                   compact
-                  emptyDescription="No organizer-managed milestones are linked to this activity yet."
+                  emptyDescription="No timeline milestones available yet."
                   milestones={timelineMilestones}
                   loading={timelineLoading}
                   error={timelineError}

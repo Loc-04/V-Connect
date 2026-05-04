@@ -5,7 +5,7 @@ import { pickFinalFeedbackLabel } from '../feedback/feedback.final-label.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in']);
-const REPORT_SUMMARY_MODEL_VERSION = 'deterministic-facts-v2-2026-04';
+const REPORT_SUMMARY_MODEL_VERSION = 'report-summary-v1-2026-04';
 const DEBUG_REPORT_FEEDBACK =
   String(process.env.REPORT_DEBUG_FEEDBACK ?? '').trim().toLowerCase() === 'true' &&
   String(process.env.NODE_ENV ?? '').trim().toLowerCase() !== 'production';
@@ -558,6 +558,8 @@ function buildIssues({
   activeCount,
   capacity,
   feedbacks,
+  totalFeedbackCount,
+  spamCount,
   activityStatus,
   repeatedIssues,
 }) {
@@ -608,12 +610,21 @@ function buildIssues({
     });
   }
 
-  if (feedbacks.length === 0 && checkedInCount > 0) {
+  if (feedbacks.length === 0 && checkedInCount > 0 && totalFeedbackCount === 0) {
     issues.push({
       id: 'missing-feedback',
       title: 'No post-activity feedback submitted',
       description: 'Collecting volunteer feedback helps improve future activity quality and reduce repeat issues.',
       priority: 'low',
+    });
+  }
+
+  if (feedbacks.length === 0 && checkedInCount > 0 && totalFeedbackCount > 0 && spamCount > 0) {
+    issues.push({
+      id: 'spam-only-feedback',
+      title: 'Only spam feedback detected',
+      description: 'Submitted feedback was flagged as spam, so rating and insight analysis cannot be generated yet.',
+      priority: 'medium',
     });
   }
 
@@ -809,6 +820,8 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
       activeCount,
       capacity,
       feedbacks: validFeedbacks,
+      totalFeedbackCount,
+      spamCount: feedbackSignals.spamCount,
       activityStatus: selectedActivity.status,
       repeatedIssues: feedbackSignals.repeatedIssues,
     }),

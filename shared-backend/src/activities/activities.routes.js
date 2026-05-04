@@ -346,8 +346,18 @@ function safeText(value, fallback = '') {
   if (value == null) {
     return fallback;
   }
-  if (typeof value === 'string' || typeof value === 'number') {
+  if (typeof value === 'number') {
     return String(value);
+  }
+  if (typeof value === 'string') {
+    const parsed = safeParseJson(value);
+    if (isPlainObject(parsed)) {
+      return safeText(
+        parsed.text ?? parsed.description ?? parsed.title ?? parsed.name ?? parsed.label,
+        fallback
+      );
+    }
+    return value;
   }
   if (isPlainObject(value)) {
     return safeText(value.text ?? value.description ?? value.title ?? value.name ?? value.label, fallback);
@@ -359,6 +369,9 @@ function normalizeTimelineType(value) {
   const normalized = safeText(value, '').trim().toLowerCase();
   if (normalized === 'opening' || normalized === 'session' || normalized === 'break' || normalized === 'closing') {
     return normalized;
+  }
+  if (!normalized) {
+    return 'session';
   }
   return 'other';
 }
@@ -480,12 +493,13 @@ function normalizeTimelinePayload(body, { partial = false } = {}) {
 
 function normalizeTimelineItem(row, fallbackIndex = 0) {
   const item = isPlainObject(row) ? row : {};
-  const descriptionMeta = normalizeTimelineDescriptionMeta(item.description ?? null) ?? {};
+  const descriptionSource = item.description ?? item.detail ?? item.notes ?? item.content ?? item.metadata ?? null;
+  const descriptionMeta = normalizeTimelineDescriptionMeta(descriptionSource) ?? {};
 
   const title = safeText(item.title ?? item.name ?? item.label ?? item.text, 'Untitled milestone').trim() || 'Untitled milestone';
   const description = safeText(
-    item.description ?? item.detail ?? item.notes ?? item.content,
-    safeText(descriptionMeta.text ?? descriptionMeta.description, '')
+    descriptionSource,
+    ''
   ).trim();
 
   const startTime = normalizeTimelineIsoString(

@@ -696,18 +696,6 @@ export function OrganizerActivityManagementPage() {
                               </button>
 
                               <button
-                                className="row-action-item"
-                                onClick={() => {
-                                  setMessage('Other actions are coming soon.');
-                                  setOpenMenuActivityId(null);
-                                  setOpenStatusPickerActivityId(null);
-                                }}
-                                type="button"
-                              >
-                                Other actions
-                              </button>
-
-                              <button
                                 className="row-action-item danger"
                                 onClick={() => void handleDelete(activity.id)}
                                 type="button"
