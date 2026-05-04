@@ -63,6 +63,24 @@ function getInitials(name: string) {
     .join('');
 }
 
+function isActivityExpired(activity: ActivityRecord): boolean {
+  const now = new Date();
+  const endTime = activity.end_time ? new Date(activity.end_time) : null;
+  const startTime = activity.start_time ? new Date(activity.start_time) : null;
+
+  if (endTime && !Number.isNaN(endTime.getTime())) {
+    return endTime.getTime() < now.getTime();
+  }
+
+  if (startTime && !Number.isNaN(startTime.getTime())) {
+    const toDateOnly = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return toDateOnly(startTime) < toDateOnly(now);
+  }
+
+  return false;
+}
+
 function statusSortWeight(status: string) {
   if (status === 'pending') {
     return 0;
@@ -111,12 +129,13 @@ export function OrganizerRegistrationApprovalPage() {
         status: 'published',
         limit: 120,
       });
-      setActivities(activityRows);
+      const activeRows = activityRows.filter((activity) => !isActivityExpired(activity));
+      setActivities(activeRows);
       setSelectedActivityId((current) => {
-        if (current && activityRows.some((activity) => activity.id === current)) {
+        if (current && activeRows.some((activity) => activity.id === current)) {
           return current;
         }
-        return activityRows[0]?.id ?? '';
+        return activeRows[0]?.id ?? '';
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load active activities.');
