@@ -358,6 +358,11 @@ p {
   color: #175cd3;
 }
 
+.ui-badge-warning {
+  background: rgba(249, 115, 22, 0.16);
+  color: #9a3412;
+}
+
 .muted {
   color: var(--muted);
 }

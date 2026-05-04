@@ -1,8 +1,10 @@
 import { Clock3 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Badge, Card } from '../ui';
 import type { TimelineMilestone } from '../../types/timeline';
 import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
+import { resolveTimelineMilestoneStatus } from '../../lib/timelineStatus';
 import { sortTimelineByTime } from '../../lib/timelineValidation';
 import { TimelineStatusBadge } from './TimelineStatusBadge';
 
@@ -67,9 +69,28 @@ export function EventTimelineReadOnly({
   emptyDescription = 'No timeline milestones available yet.',
   compact = false,
 }: EventTimelineReadOnlyProps) {
-  const ordered = sortTimelineByTime(
-    milestones.map((item, index) => normalizeTimelineItem(item, item.activityId, index))
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const ordered = useMemo(
+    () => sortTimelineByTime(milestones.map((item, index) => normalizeTimelineItem(item, item.activityId, index))),
+    [milestones]
   );
+  const displayedMilestones = useMemo(
+    () =>
+      ordered.map((item) => ({
+        ...item,
+        status: resolveTimelineMilestoneStatus(item, nowMs),
+      })),
+    [nowMs, ordered]
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -87,7 +108,7 @@ export function EventTimelineReadOnly({
     );
   }
 
-  if (ordered.length === 0) {
+  if (displayedMilestones.length === 0) {
     return (
       <div className="timeline-empty-state">
         <p>{emptyTitle}</p>
@@ -98,10 +119,10 @@ export function EventTimelineReadOnly({
 
   return (
     <div className={compact ? 'timeline-readonly-list is-compact' : 'timeline-readonly-list'}>
-      {ordered.map((milestone, index) => (
+      {displayedMilestones.map((milestone, index) => (
         <Card
           as="article"
-          className={`timeline-readonly-item ${getHighlightClass(ordered, index)}`.trim()}
+          className={`timeline-readonly-item ${getHighlightClass(displayedMilestones, index)}`.trim()}
           key={milestone.id}
         >
           <div className="timeline-item-head">

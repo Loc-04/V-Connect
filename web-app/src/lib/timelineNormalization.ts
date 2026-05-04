@@ -1,4 +1,5 @@
 import type { TimelineMilestone, TimelineMilestoneStatus, TimelineMilestoneType } from '../types/timeline';
+import { resolveTimelineMilestoneStatus } from './timelineStatus';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -124,6 +125,7 @@ export function normalizeTimelineItem(item: unknown, activityId = '', fallbackIn
   const endTime = normalizeIso(
     row.endTime ?? row.end_time ?? row.end ?? nested.endTime ?? nested.end_time
   );
+  const rawStatus = normalizeTimelineStatus(row.status ?? nested.status);
 
   return {
     id: safeTimelineText(row.id ?? row.milestoneId, `timeline-${fallbackIndex}`),
@@ -136,7 +138,11 @@ export function normalizeTimelineItem(item: unknown, activityId = '', fallbackIn
       row.orderIndex ?? row.order_index ?? nested.orderIndex ?? nested.order_index ?? fallbackIndex
     ),
     type: normalizeTimelineType(row.type ?? nested.type),
-    status: normalizeTimelineStatus(row.status ?? nested.status),
+    status: resolveTimelineMilestoneStatus({
+      startTime,
+      endTime,
+      status: rawStatus,
+    }),
     createdAt: normalizeIso(row.createdAt ?? row.created_at) || now,
     updatedAt: normalizeIso(row.updatedAt ?? row.updated_at) || normalizeIso(row.createdAt ?? row.created_at) || now,
     source: 'server',

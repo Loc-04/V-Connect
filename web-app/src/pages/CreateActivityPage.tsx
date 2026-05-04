@@ -12,9 +12,10 @@ import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
 import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
 import { safeText } from '../lib/timelineNormalization';
+import { resolveTimelineMilestoneStatus } from '../lib/timelineStatus';
 import { replaceActivityTimeline } from '../lib/timeline';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../lib/timelineValidation';
-import type { ActivityRecord, ActivityStatus } from '../types/activity';
+import type { ActivityPriorityLevel, ActivityRecord, ActivityStatus } from '../types/activity';
 import type { GeocodedLocationRecord, ProvinceRecord, WardRecord } from '../types/location';
 import type { TimelineMilestoneDraft, TimelineMilestoneType } from '../types/timeline';
 import './CreateActivityPage.css';
@@ -68,10 +69,21 @@ function toIsoFromDateTimeLocal(value: string) {
 }
 
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
-const maxCoverImageBytes = 10 * 1024 * 1024;
+const maxCoverImageBytes = 700 * 1024;
 const coverTargetWidth = 1280;
 const coverTargetHeight = 720;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['opening', 'session', 'break', 'closing', 'other'];
+const skillPriorityOptions: Array<{ value: ActivityPriorityLevel; label: string }> = [
+  { value: 'low', label: 'Low' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'urgent', label: 'Urgent' },
+];
+
+interface SkillRequirementDraft {
+  id: string;
+  name: string;
+  priority: ActivityPriorityLevel;
+}
 
 function formatTimelineTypeLabel(type: TimelineMilestoneType) {
   return type
@@ -110,6 +122,14 @@ function createLocalDraftId() {
     return globalThis.crypto.randomUUID();
   }
   return `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createSkillRequirementDraft(name: string, priority: ActivityPriorityLevel = 'normal'): SkillRequirementDraft {
+  return {
+    id: createLocalDraftId(),
+    name,
+    priority,
+  };
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -271,7 +291,7 @@ export function CreateActivityPage() {
   const [endTime, setEndTime] = useState('');
   const [endTimeManuallyChanged, setEndTimeManuallyChanged] = useState(false);
   const [capacity, setCapacity] = useState('10');
-  const [requiredSkills, setRequiredSkills] = useState<string[]>([]);
+  const [requiredSkills, setRequiredSkills] = useState<SkillRequirementDraft[]>([]);
   const [skillDraft, setSkillDraft] = useState('');
   const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
   const [wards, setWards] = useState<WardRecord[]>([]);
@@ -293,12 +313,15 @@ export function CreateActivityPage() {
   const [quickTimelineWarning, setQuickTimelineWarning] = useState<string | null>(null);
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [activeTimelineDraftId, setActiveTimelineDraftId] = useState<string | null>(null);
+  const [timelineNowMs, setTimelineNowMs] = useState(() => Date.now());
+  const [isEditLockedByTime, setIsEditLockedByTime] = useState(false);
   const reverseGeocodeRequestId = useRef(0);
 
   const role = normalizeRole(profile?.role);
   const canManageActivities = role === 'organizer' || role === 'admin';
   const organizerHomePath = role === 'admin' ? '/admin/dashboard' : '/organizer/activities';
   const isEditing = Boolean(activityId);
+  const isEditingDisabled = isEditing && isEditLockedByTime;
 
   const createQuickMilestoneDraft = useCallback(
     (): TimelineMilestoneDraft => {
@@ -326,7 +349,6 @@ export function CreateActivityPage() {
         startTime: seedStart,
         endTime: seedEnd,
         type: 'session',
-        status: 'upcoming',
       };
     },
     [beginDate, endDate, endTime, startTime]
@@ -435,6 +457,15 @@ export function CreateActivityPage() {
   }, [activeTimelineDraftId, quickMilestones]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      setTimelineNowMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!session?.access_token) {
       setLoadingProvinces(false);
       return;
@@ -506,6 +537,7 @@ export function CreateActivityPage() {
   useEffect(() => {
     if (!session?.access_token || !activityId) {
       setLoadingActivity(false);
+      setIsEditLockedByTime(false);
       return;
     }
 
@@ -538,9 +570,17 @@ export function CreateActivityPage() {
         setStartTime(start.time);
         setEndDate(end.date);
         setEndTime(end.time);
+        const endTimeMs = new Date(activity.end_time).getTime();
+        setIsEditLockedByTime(Number.isFinite(endTimeMs) && endTimeMs <= Date.now());
         setEndTimeManuallyChanged(true);
         setCapacity(String(activity.capacity ?? 10));
-        setRequiredSkills(Array.isArray(activity.required_skills) ? activity.required_skills : []);
+        setRequiredSkills(
+          Array.isArray(activity.required_skills)
+            ? activity.required_skills
+                .filter((skill): skill is string => typeof skill === 'string')
+                .map((skill) => createSkillRequirementDraft(skill, 'normal'))
+            : []
+        );
       })
       .catch((loadError) => {
         if (!isMounted) {
@@ -787,8 +827,8 @@ export function CreateActivityPage() {
       return;
     }
 
-    if (!requiredSkills.some((skill) => skill.toLowerCase() === nextSkill.toLowerCase())) {
-      setRequiredSkills((current) => [...current, nextSkill]);
+    if (!requiredSkills.some((skill) => skill.name.trim().toLowerCase() === nextSkill.toLowerCase())) {
+      setRequiredSkills((current) => [...current, createSkillRequirementDraft(nextSkill, 'normal')]);
     }
     setSkillDraft('');
   };
@@ -818,8 +858,18 @@ export function CreateActivityPage() {
     }
   };
 
-  const removeSkill = (skillToRemove: string) => {
-    setRequiredSkills((current) => current.filter((skill) => skill !== skillToRemove));
+  const updateSkillName = (id: string, nextName: string) => {
+    setRequiredSkills((current) => current.map((skill) => (skill.id === id ? { ...skill, name: nextName } : skill)));
+  };
+
+  const updateSkillPriority = (id: string, nextPriority: ActivityPriorityLevel) => {
+    setRequiredSkills((current) =>
+      current.map((skill) => (skill.id === id ? { ...skill, priority: nextPriority } : skill))
+    );
+  };
+
+  const removeSkill = (skillId: string) => {
+    setRequiredSkills((current) => current.filter((skill) => skill.id !== skillId));
   };
 
   const handleAddQuickMilestone = () => {
@@ -919,7 +969,6 @@ export function CreateActivityPage() {
     return sortedMilestones.map((item, index) => ({
       ...item,
       orderIndex: index,
-      status: 'upcoming' as const,
     }));
   };
 
@@ -938,6 +987,10 @@ export function CreateActivityPage() {
 
     if (!canManageActivities) {
       setError('Only organizers/admins can create activities.');
+      return;
+    }
+    if (isEditingDisabled) {
+      setError('This activity has already ended, so it can no longer be edited.');
       return;
     }
 
@@ -982,6 +1035,32 @@ export function CreateActivityPage() {
         throw new Error('Volunteer capacity must be a positive integer.');
       }
 
+      const normalizedSkillRequirements = requiredSkills.map((skill, index) => {
+        const name = skill.name.trim();
+        if (!name) {
+          throw new Error(`Skill row ${index + 1} is missing a name.`);
+        }
+
+        const priority = skill.priority ?? 'normal';
+        if (!skillPriorityOptions.some((option) => option.value === priority)) {
+          throw new Error(`Skill row ${index + 1} has an invalid priority.`);
+        }
+
+        return {
+          skill: name,
+          priority,
+        };
+      });
+
+      const seenSkills = new Set<string>();
+      for (const skill of normalizedSkillRequirements) {
+        const key = skill.skill.toLowerCase();
+        if (seenSkills.has(key)) {
+          throw new Error(`Duplicate required skill: "${skill.skill}".`);
+        }
+        seenSkills.add(key);
+      }
+
       const payload = {
         title: title.trim(),
         description: description.trim(),
@@ -1003,8 +1082,8 @@ export function CreateActivityPage() {
         startTime: startIso,
         endTime: endIso,
         capacity: capacityValue,
-        skillRequirements: requiredSkills.map((skill) => ({ skill, priority: 'normal' as const })),
-        requiredSkills,
+        skillRequirements: normalizedSkillRequirements,
+        requiredSkills: normalizedSkillRequirements.map((item) => item.skill),
         status,
       };
 
@@ -1077,6 +1156,7 @@ export function CreateActivityPage() {
           </div>
 
           {!canManageActivities && <p className="form-error">Only organizer/admin accounts can manage activities.</p>}
+          {isEditingDisabled ? <p className="form-error">This activity has already ended. Editing is locked.</p> : null}
           {error && <p className="form-error">{error}</p>}
           {success && <p className="form-success">{success}</p>}
           {!isEditing && success && role === 'organizer' && createdActivityId ? (
@@ -1151,7 +1231,7 @@ export function CreateActivityPage() {
                     </div>
                     <strong>Upload a file</strong>
                     <p>or drag and drop (click to browse)</p>
-                    <small>PNG, JPG, GIF up to 10MB</small>
+                    <small>PNG, JPG, GIF up to 700KB</small>
                     <input
                       accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
                       hidden
@@ -1172,34 +1252,58 @@ export function CreateActivityPage() {
                 <h2>Requirements</h2>
               </div>
 
-              <div className="activity-grid two-cols">
-                <div className="activity-field">
-                  <span>Required Skills</span>
-                  <div className="activity-tag-input">
-                    {requiredSkills.map((skill) => (
-                      <button
-                        key={skill}
-                        className="activity-tag"
-                        onClick={() => removeSkill(skill)}
-                        type="button"
-                      >
-                        {skill} <span aria-hidden="true">x</span>
-                      </button>
-                    ))}
-                    <input
-                      onChange={(event) => setSkillDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ',') {
-                          event.preventDefault();
-                          addSkill();
-                        }
-                      }}
-                      placeholder="Add skill and press Enter"
-                      type="text"
-                      value={skillDraft}
-                    />
-                  </div>
+              <div className="activity-field">
+                <span>Required Skills</span>
+                <div className="skill-requirements-list">
+                  {requiredSkills.map((skill, index) => (
+                    <div key={skill.id} className={`skill-requirement-row priority-${skill.priority}`}>
+                      <label className="activity-field">
+                        <span>Skill</span>
+                        <input
+                          onChange={(event) => updateSkillName(skill.id, event.target.value)}
+                          placeholder={`Skill ${index + 1}`}
+                          type="text"
+                          value={skill.name}
+                        />
+                      </label>
+                      <div className="activity-field skill-requirement-priority">
+                        <span>Priority</span>
+                        <div className="priority-toggle" role="group" aria-label={`Priority for ${skill.name || `skill ${index + 1}`}`}>
+                          {skillPriorityOptions.map((option) => (
+                            <button
+                              key={`${skill.id}-${option.value}`}
+                              className={`${option.value === skill.priority ? 'is-selected ' : ''}priority-${option.value}`}
+                              onClick={() => updateSkillPriority(skill.id, option.value)}
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="skill-requirement-actions">
+                        <button className="action-btn is-ghost skill-requirement-remove" onClick={() => removeSkill(skill.id)} type="button">
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+                <div className="skill-requirement-footer">
+                  <input
+                    onChange={(event) => setSkillDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ',') {
+                        event.preventDefault();
+                        addSkill();
+                      }
+                    }}
+                    placeholder="Type a skill and press Enter"
+                    type="text"
+                    value={skillDraft}
+                  />
+                </div>
+                <small className="activity-help">Each added skill starts with Normal priority and can be changed per row.</small>
               </div>
             </Card>
 
@@ -1432,7 +1536,7 @@ export function CreateActivityPage() {
                 ) : (
                   <div className="activity-timeline-list">
                     {sortedTimelineDrafts.map((milestone, milestoneIndex) => {
-                      const previewStatus = milestone.status ?? 'upcoming';
+                      const previewStatus = resolveTimelineMilestoneStatus(milestone, timelineNowMs);
                       const description = safeText(milestone.description, '').trim();
                       return (
                         <article className="activity-timeline-item" key={milestone.id ?? `draft-${milestoneIndex}`}>
@@ -1592,7 +1696,7 @@ export function CreateActivityPage() {
                 )}
                 <button
                   className="action-btn is-secondary"
-                  disabled={saving || !canManageActivities || loadingActivity}
+                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled}
                   onClick={() => void handleSave('draft')}
                   type="button"
                 >
@@ -1600,7 +1704,7 @@ export function CreateActivityPage() {
                 </button>
                 <button
                   className="action-btn is-primary"
-                  disabled={saving || !canManageActivities || loadingActivity}
+                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled}
                   onClick={() => void handleSave('published')}
                   type="button"
                 >

@@ -1,6 +1,6 @@
 import type { HTMLAttributes } from 'react';
 
-export type BadgeTone = 'accent' | 'neutral' | 'success' | 'danger' | 'info';
+export type BadgeTone = 'accent' | 'neutral' | 'success' | 'danger' | 'info' | 'warning';
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   tone?: BadgeTone;
@@ -12,6 +12,7 @@ const toneClassByTone: Record<BadgeTone, string> = {
   success: 'ui-badge-success',
   danger: 'ui-badge-danger',
   info: 'ui-badge-info',
+  warning: 'ui-badge-warning',
 };
 
 export function Badge({ tone = 'neutral', className = '', ...props }: BadgeProps) {

@@ -376,12 +376,53 @@ function normalizeTimelineType(value) {
   return 'other';
 }
 
-function normalizeTimelineStatus(value) {
+function normalizeTimelineStatusToken(value) {
   const normalized = safeText(value, '').trim().toLowerCase();
-  if (normalized === 'in_progress' || normalized === 'completed' || normalized === 'cancelled') {
+  if (
+    normalized === 'upcoming' ||
+    normalized === 'in_progress' ||
+    normalized === 'completed' ||
+    normalized === 'cancelled'
+  ) {
     return normalized;
   }
-  return 'upcoming';
+  return '';
+}
+
+function isTimelineCancelledStatus(value) {
+  return normalizeTimelineStatusToken(value) === 'cancelled';
+}
+
+function computeTimelineAutoStatus(startTime, endTime, now = Date.now()) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 'upcoming';
+  }
+
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  if (startMs > endMs) {
+    return 'upcoming';
+  }
+
+  if (now < startMs) {
+    return 'upcoming';
+  }
+
+  if (now <= endMs) {
+    return 'in_progress';
+  }
+
+  return 'completed';
+}
+
+function resolveTimelineMilestoneStatus({ startTime, endTime, status }) {
+  if (isTimelineCancelledStatus(status)) {
+    return 'cancelled';
+  }
+
+  return computeTimelineAutoStatus(startTime, endTime);
 }
 
 function normalizeTimelineIsoString(value) {
@@ -427,7 +468,7 @@ function serializeTimelineDescription({
   return JSON.stringify({
     text: safeText(description, '').trim(),
     type: normalizeTimelineType(type),
-    status: normalizeTimelineStatus(status),
+    status: isTimelineCancelledStatus(status) ? 'cancelled' : null,
     endTime: normalizeTimelineIsoString(endTime),
     orderIndex: normalizeOrderIndex(orderIndex, 0),
   });
@@ -449,7 +490,16 @@ function normalizeTimelinePayload(body, { partial = false } = {}) {
 
   const descriptionValue = safeText(body.description ?? body.detail ?? body.notes ?? body.content, safeText(meta.text ?? meta.description, '')).trim();
   const typeValue = normalizeTimelineType(body.type ?? meta.type ?? (partial ? null : 'session'));
-  const statusValue = normalizeTimelineStatus(body.status ?? meta.status ?? (partial ? null : 'upcoming'));
+  const hasManualStatusInput = Object.hasOwn(body, 'status');
+  const manualStatusSource = hasManualStatusInput ? body.status : meta.status;
+  const manualStatusRaw = safeText(manualStatusSource, '').trim();
+  const manualStatusToken = normalizeTimelineStatusToken(manualStatusSource);
+  if (hasManualStatusInput) {
+    if (manualStatusRaw && !manualStatusToken) {
+      throw new Error('status is invalid. Only "cancelled" is allowed for manual milestone status.');
+    }
+  }
+  const statusValue = manualStatusToken === 'cancelled' ? 'cancelled' : null;
   const endTimeValue = normalizeTimelineIsoString(body.endTime ?? body.end_time ?? meta.endTime ?? meta.end_time);
   const orderIndexValue = normalizeOrderIndex(
     body.orderIndex ?? body.order_index ?? meta.orderIndex ?? meta.order_index,
@@ -457,6 +507,9 @@ function normalizeTimelinePayload(body, { partial = false } = {}) {
   );
 
   const timelineChoice = normalizeTimelineChoice(body, { partial });
+  if (timelineChoice && endTimeValue && new Date(timelineChoice).getTime() > new Date(endTimeValue).getTime()) {
+    throw new Error('startTime cannot be later than endTime for a timeline milestone.');
+  }
   if (timelineChoice) {
     payload.timeline_choice = timelineChoice;
   }
@@ -520,7 +573,11 @@ function normalizeTimelineItem(row, fallbackIndex = 0) {
     title,
     description,
     type: normalizeTimelineType(item.type ?? descriptionMeta.type),
-    status: normalizeTimelineStatus(item.status ?? descriptionMeta.status),
+    status: resolveTimelineMilestoneStatus({
+      startTime,
+      endTime,
+      status: item.status ?? descriptionMeta.status,
+    }),
     startTime,
     endTime,
     orderIndex,
@@ -1049,6 +1106,12 @@ router.patch('/activities/:id', requireAuth, async (req, res) => {
 
   if (role !== 'admin' && existingActivity.organizer_id !== req.auth.user.id) {
     res.status(403).json({ message: 'You can update only your own activities.' });
+    return;
+  }
+
+  const existingActivityEndTime = new Date(existingActivity.end_time);
+  if (!Number.isNaN(existingActivityEndTime.getTime()) && existingActivityEndTime.getTime() <= Date.now()) {
+    res.status(400).json({ message: 'Cannot edit an activity that has already ended.' });
     return;
   }
 
