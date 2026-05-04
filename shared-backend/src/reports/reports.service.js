@@ -26,6 +26,34 @@ function formatDateLabel(date) {
   }).format(date);
 }
 
+function formatDateRange(startDate, endDate) {
+  if (!startDate && !endDate) {
+    return 'No schedule available';
+  }
+  if (startDate && endDate) {
+    const sameDay =
+      startDate.getFullYear() === endDate.getFullYear() &&
+      startDate.getMonth() === endDate.getMonth() &&
+      startDate.getDate() === endDate.getDate();
+    if (sameDay) {
+      return formatDateLabel(startDate);
+    }
+    const sameYear = startDate.getFullYear() === endDate.getFullYear();
+    if (sameYear) {
+      const shortFormatter = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: '2-digit',
+      });
+      return `${shortFormatter.format(startDate)} - ${shortFormatter.format(endDate)}, ${startDate.getFullYear()}`;
+    }
+    return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
+  }
+  if (startDate) {
+    return `From ${formatDateLabel(startDate)}`;
+  }
+  return `Until ${formatDateLabel(endDate)}`;
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat('en-US').format(Math.max(0, Math.trunc(value)));
 }
@@ -113,6 +141,16 @@ function createEmptyReportSummary() {
       { label: 'Checked In', value: 0, progress: 0, tone: 'success' },
       { label: 'Pending Approval', value: 0, progress: 0, tone: 'muted' },
     ],
+    participationStats: {
+      registeredCount: 0,
+      checkedInCount: 0,
+      pendingApprovalCount: 0,
+      approvedCount: 0,
+      totalParticipations: 0,
+      capacity: null,
+      completionRatePercent: 0,
+      capacityFilledPercent: null,
+    },
     feedbackRating: null,
     feedbackQuote: 'No valid feedback available yet.',
     sentimentChips: [{ label: 'No feedback yet', tone: 'neutral' }],
@@ -195,16 +233,7 @@ async function countPreviousWindowParticipations(activityId, previousStart, prev
 }
 
 function buildDurationValue(startDate, endDate) {
-  if (startDate && endDate) {
-    return `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
-  }
-  if (startDate) {
-    return `From ${formatDateLabel(startDate)}`;
-  }
-  if (endDate) {
-    return `Until ${formatDateLabel(endDate)}`;
-  }
-  return 'No schedule available';
+  return formatDateRange(startDate, endDate);
 }
 
 function buildLiveLabel(status) {
@@ -229,10 +258,53 @@ function summarizeStatuses(participations) {
   }, {});
 }
 
+function normalizeFeedbackBucket(rawValue) {
+  const normalized = String(rawValue ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === 'spam') {
+    return 'spam';
+  }
+  if (normalized === 'low_signal' || normalized === 'low signal' || normalized === 'uninformative') {
+    return 'low_signal';
+  }
+  if (normalized === 'valid') {
+    return 'valid';
+  }
+  return null;
+}
+
+function resolveFeedbackBucketForReport({ aiLabel, semanticLabel, textQuality, issueTags }) {
+  if (aiLabel === 'spam') {
+    return 'spam';
+  }
+  const normalizedSemanticLabel = String(semanticLabel ?? '').trim().toLowerCase();
+  if (textQuality?.isLowSignal === true || normalizedSemanticLabel === 'low_signal') {
+    return 'low_signal';
+  }
+  const normalizedIssueTags = Array.isArray(issueTags)
+    ? issueTags.map((tag) => String(tag ?? '').trim().toLowerCase())
+    : [];
+  if (normalizedIssueTags.some((tag) => tag === 'low_signal' || tag === 'needs_review' || tag === 'uninformative')) {
+    return 'low_signal';
+  }
+  return 'valid';
+}
+
+function isValidInsightFeedbackForReport(feedbackBucket, finalLabel) {
+  const normalizedBucket = normalizeFeedbackBucket(feedbackBucket);
+  if (normalizedBucket === 'spam' || normalizedBucket === 'low_signal') {
+    return false;
+  }
+  return String(finalLabel ?? '').trim().toLowerCase() !== 'spam';
+}
+
 function summarizeFeedbackSignals(feedbacks) {
   const sentiment = { positive: 0, neutral: 0, negative: 0 };
   const issueCounts = new Map();
   let spamCount = 0;
+  let lowSignalCount = 0;
   let incidentCount = 0;
   const classified = [];
 
@@ -241,33 +313,55 @@ function summarizeFeedbackSignals(feedbacks) {
     const comment = String(feedback.comment ?? '');
     const semantic = classifyFeedbackSemantics({ comment, rating });
     const spam = classifyFeedbackSpam(comment);
+    const aiLabel = spam.isSpam ? 'spam' : 'not_spam';
+    const feedbackBucket = resolveFeedbackBucketForReport({
+      aiLabel,
+      semanticLabel: semantic.semanticLabel,
+      textQuality: semantic.textQuality,
+      issueTags: semantic.issueTags,
+    });
     const finalLabel = pickFinalFeedbackLabel({
       comment,
+      label: aiLabel,
+      aiLabel,
+      feedbackBucket,
       sentimentLabel: semantic.sentimentLabel,
-      semanticLabels: semantic.issueTags,
+      incidentLabel: semantic.incidentLabel,
+      semanticLabel: semantic.semanticLabel,
+      semanticLabels: semantic.semanticLabels,
+      moderationLabels: semantic.moderationLabels,
       issueTags: semantic.issueTags,
-      semanticReasons: semantic.reasons,
+      semanticReasons: semantic.semanticReasons,
       reasons: spam.reasons,
       isSpam: spam.isSpam,
-      semanticLabel: semantic.textQualityLabel,
-      textQualityLabel: semantic.textQualityLabel,
+      textQualityLabel: semantic?.textQuality?.label,
+      sentimentConfidence: semantic?.confidence?.sentiment,
+      semanticConfidence: semantic?.confidence?.semantic,
     });
 
     classified.push({
       feedback,
       semantic,
       spam,
+      feedbackBucket,
       finalLabel,
     });
 
-    if (finalLabel === 'Spam') {
+    if (feedbackBucket === 'spam' || finalLabel === 'Spam') {
       spamCount += 1;
       continue;
     }
+    if (feedbackBucket === 'low_signal') {
+      lowSignalCount += 1;
+      continue;
+    }
+    if (!isValidInsightFeedbackForReport(feedbackBucket, finalLabel)) {
+      continue;
+    }
 
-    if (finalLabel === 'Pos') {
+    if (finalLabel === 'Positive') {
       sentiment.positive += 1;
-    } else if (finalLabel === 'Neg') {
+    } else if (finalLabel === 'Negative' || finalLabel === 'Incident') {
       sentiment.negative += 1;
     } else {
       sentiment.neutral += 1;
@@ -294,13 +388,14 @@ function summarizeFeedbackSignals(feedbacks) {
       comment: String(row.feedback?.comment ?? '').slice(0, 120),
       rawRating: Number(row.feedback?.rating ?? 0),
       rawSentiment: row.semantic?.sentimentLabel ?? null,
-      rawTextQuality: row.semantic?.textQualityLabel ?? null,
+      rawTextQuality: row.semantic?.textQuality?.label ?? null,
       rawIssueTags: Array.isArray(row.semantic?.issueTags) ? row.semantic.issueTags : [],
       spamReasons: Array.isArray(row.spam?.reasons) ? row.spam.reasons : [],
+      feedbackBucket: row.feedbackBucket ?? null,
       finalLabel: row.finalLabel,
-      includedInAverageRating: row.finalLabel !== 'Spam',
-      includedInInsights: row.finalLabel !== 'Spam',
-      includedInActionNeeded: row.finalLabel !== 'Spam',
+      includedInAverageRating: isValidInsightFeedbackForReport(row.feedbackBucket, row.finalLabel),
+      includedInInsights: isValidInsightFeedbackForReport(row.feedbackBucket, row.finalLabel),
+      includedInActionNeeded: isValidInsightFeedbackForReport(row.feedbackBucket, row.finalLabel),
     }));
     console.info('[report.summary.feedback.debug] classified feedback sample', sample);
   }
@@ -319,6 +414,7 @@ function summarizeFeedbackSignals(feedbacks) {
     sentiment,
     repeatedIssues,
     spamCount,
+    lowSignalCount,
     incidentCount,
     classified,
   };
@@ -342,6 +438,9 @@ function buildSentimentChipsFromSignals(totalFeedbackCount, signals) {
   if ((signals?.spamCount ?? 0) > 0) {
     chips.push({ label: `Spam (${signals.spamCount})`, tone: 'danger' });
   }
+  if ((signals?.lowSignalCount ?? 0) > 0) {
+    chips.push({ label: `Low-signal (${signals.lowSignalCount})`, tone: 'neutral' });
+  }
   return chips.length > 0 ? chips : [{ label: 'No feedback yet', tone: 'neutral' }];
 }
 
@@ -353,6 +452,7 @@ function buildAnalyticsFacts({
   feedbackCount,
   totalFeedbackCount,
   spamCount,
+  lowSignalCount,
   averageRating,
   completionRate,
   capacityFilled,
@@ -367,6 +467,7 @@ function buildAnalyticsFacts({
     { key: 'feedback_count', label: 'Valid feedback submissions', value: String(feedbackCount) },
     { key: 'feedback_total_count', label: 'Total feedback submissions', value: String(totalFeedbackCount) },
     { key: 'feedback_spam_count', label: 'Spam feedback submissions', value: String(spamCount) },
+    { key: 'feedback_low_signal_count', label: 'Low-signal feedback submissions', value: String(lowSignalCount) },
     { key: 'average_rating', label: 'Average rating', value: feedbackCount > 0 ? `${averageRating.toFixed(1)}/5` : 'N/A' },
     { key: 'completion_rate', label: 'Completion rate', value: formatPercent(completionRate) },
     { key: 'capacity_fill', label: 'Capacity filled', value: formatPercent(capacityFilled) },
@@ -560,11 +661,11 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
   const participationIds = participations.map((participation) => participation.id).filter(Boolean);
   const feedbacks = await listFeedbackByParticipationIds(participationIds);
   const feedbackSignals = summarizeFeedbackSignals(feedbacks);
-  const nonSpamFeedbacks = feedbackSignals.classified
-    .filter((item) => item.finalLabel !== 'Spam')
+  const validFeedbacks = feedbackSignals.classified
+    .filter((item) => isValidInsightFeedbackForReport(item.feedbackBucket, item.finalLabel))
     .map((item) => item.feedback);
   const totalFeedbackCount = feedbacks.length;
-  const validFeedbackCount = nonSpamFeedbacks.length;
+  const validFeedbackCount = validFeedbacks.length;
 
   const statusCounts = summarizeStatuses(participations);
   const pendingCount = statusCounts.pending ?? 0;
@@ -576,9 +677,9 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
   const totalParticipations = participations.length;
   const capacity = Number(selectedActivity.capacity ?? 0);
 
-  const ratingSum = nonSpamFeedbacks.reduce((sum, feedback) => sum + Number(feedback.rating ?? 0), 0);
+  const ratingSum = validFeedbacks.reduce((sum, feedback) => sum + Number(feedback.rating ?? 0), 0);
   const averageRating = validFeedbackCount > 0 ? ratingSum / validFeedbackCount : null;
-  const latestFeedbackWithComment = nonSpamFeedbacks.find(
+  const latestFeedbackWithComment = validFeedbacks.find(
     (feedback) => String(feedback.comment ?? '').trim().length > 0
   );
 
@@ -620,6 +721,7 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
     feedbackCount: validFeedbackCount,
     totalFeedbackCount,
     spamCount: feedbackSignals.spamCount,
+    lowSignalCount: feedbackSignals.lowSignalCount,
     averageRating: averageRating ?? 0,
     completionRate,
     capacityFilled,
@@ -684,6 +786,16 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
         tone: 'muted',
       },
     ],
+    participationStats: {
+      registeredCount: activeCount,
+      checkedInCount,
+      pendingApprovalCount: pendingCount,
+      approvedCount,
+      totalParticipations,
+      capacity: Number.isFinite(capacity) && capacity > 0 ? Math.trunc(capacity) : null,
+      completionRatePercent: Number(formatPercent(completionRate).replace('%', '')),
+      capacityFilledPercent: capacity > 0 ? Number(formatPercent(capacityFilled).replace('%', '')) : null,
+    },
     feedbackRating: validFeedbackCount > 0 && averageRating !== null ? Number(averageRating.toFixed(1)) : null,
     feedbackQuote: latestFeedbackWithComment
       ? truncateText(latestFeedbackWithComment.comment)
@@ -696,7 +808,7 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
       checkedInCount,
       activeCount,
       capacity,
-      feedbacks: nonSpamFeedbacks,
+      feedbacks: validFeedbacks,
       activityStatus: selectedActivity.status,
       repeatedIssues: feedbackSignals.repeatedIssues,
     }),
@@ -708,6 +820,7 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
       totalCount: totalFeedbackCount,
       validCount: validFeedbackCount,
       spamCount: feedbackSignals.spamCount,
+      lowSignalCount: feedbackSignals.lowSignalCount,
       averageRating: validFeedbackCount > 0 && averageRating !== null ? Number(averageRating.toFixed(2)) : null,
     },
     modelVersion: REPORT_SUMMARY_MODEL_VERSION,
@@ -725,6 +838,7 @@ async function buildOrganizerReportSummary({ organizerId, activityId = null }) {
         status: activity.status,
         start_time: activity.start_time,
         end_time: activity.end_time,
+        capacity: Number(activity.capacity) > 0 ? Math.trunc(Number(activity.capacity)) : null,
       })),
     },
   };

@@ -403,6 +403,7 @@ async function resolveStoredLocation(payload, existingActivity = null) {
   };
 }
 
+<<<<<<< HEAD
 function normalizeTimelineChoice(body, { partial = false, rejectPast = false } = {}) {
   const candidate =
     typeof body.timelineChoice === 'string'
@@ -416,6 +417,11 @@ function normalizeTimelineChoice(body, { partial = false, rejectPast = false } =
             : null;
 
   if (!candidate) {
+=======
+function normalizeTimelineChoice(body, { partial = false } = {}) {
+  const candidate = body.timelineChoice ?? body.timeline_choice ?? body.startTime ?? body.start_time ?? null;
+  if (candidate == null || candidate === '') {
+>>>>>>> main
     if (partial) {
       return null;
     }
@@ -434,37 +440,152 @@ function normalizeTimelineChoice(body, { partial = false, rejectPast = false } =
   return parsed.toISOString();
 }
 
+<<<<<<< HEAD
 function normalizeTimelinePayload(body, { partial = false, rejectPast = false } = {}) {
+=======
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function safeParseJson(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function safeText(value, fallback = '') {
+  if (value == null) {
+    return fallback;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value);
+  }
+  if (isPlainObject(value)) {
+    return safeText(value.text ?? value.description ?? value.title ?? value.name ?? value.label, fallback);
+  }
+  return fallback;
+}
+
+function normalizeTimelineType(value) {
+  const normalized = safeText(value, '').trim().toLowerCase();
+  if (normalized === 'opening' || normalized === 'session' || normalized === 'break' || normalized === 'closing') {
+    return normalized;
+  }
+  return 'other';
+}
+
+function normalizeTimelineStatus(value) {
+  const normalized = safeText(value, '').trim().toLowerCase();
+  if (normalized === 'in_progress' || normalized === 'completed' || normalized === 'cancelled') {
+    return normalized;
+  }
+  return 'upcoming';
+}
+
+function normalizeTimelineIsoString(value) {
+  const raw = safeText(value, '').trim();
+  if (!raw) {
+    return '';
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toISOString();
+}
+
+function normalizeOrderIndex(value, fallback = 0) {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) {
+    return fallback;
+  }
+  return Math.max(0, Math.trunc(normalized));
+}
+
+function normalizeTimelineDescriptionMeta(value) {
+  if (isPlainObject(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = safeParseJson(value);
+    if (isPlainObject(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function serializeTimelineDescription({
+  description,
+  type,
+  status,
+  endTime,
+  orderIndex,
+}) {
+  return JSON.stringify({
+    text: safeText(description, '').trim(),
+    type: normalizeTimelineType(type),
+    status: normalizeTimelineStatus(status),
+    endTime: normalizeTimelineIsoString(endTime),
+    orderIndex: normalizeOrderIndex(orderIndex, 0),
+  });
+}
+
+function normalizeTimelinePayload(body, { partial = false } = {}) {
+>>>>>>> main
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('Body must be a JSON object.');
   }
 
+  const meta = normalizeTimelineDescriptionMeta(body.description ?? null) ?? {};
   const payload = {};
-  if (Object.hasOwn(body, 'title')) {
-    if (typeof body.title !== 'string') {
-      throw new Error('title must be a string.');
-    }
-    const title = body.title.trim();
-    if (!title) {
-      throw new Error('title cannot be empty.');
-    }
-    payload.title = title;
+  const titleCandidate = safeText(body.title ?? body.name ?? body.label ?? body.text, '').trim();
+  if (titleCandidate) {
+    payload.title = titleCandidate;
   } else if (!partial) {
     throw new Error('title is required.');
   }
 
-  if (Object.hasOwn(body, 'description')) {
-    if (typeof body.description !== 'string') {
-      throw new Error('description must be a string.');
-    }
-    payload.description = body.description.trim();
-  } else if (!partial) {
-    payload.description = '';
-  }
+  const descriptionValue = safeText(body.description ?? body.detail ?? body.notes ?? body.content, safeText(meta.text ?? meta.description, '')).trim();
+  const typeValue = normalizeTimelineType(body.type ?? meta.type ?? (partial ? null : 'session'));
+  const statusValue = normalizeTimelineStatus(body.status ?? meta.status ?? (partial ? null : 'upcoming'));
+  const endTimeValue = normalizeTimelineIsoString(body.endTime ?? body.end_time ?? meta.endTime ?? meta.end_time);
+  const orderIndexValue = normalizeOrderIndex(
+    body.orderIndex ?? body.order_index ?? meta.orderIndex ?? meta.order_index,
+    0
+  );
 
   const timelineChoice = normalizeTimelineChoice(body, { partial, rejectPast });
   if (timelineChoice) {
     payload.timeline_choice = timelineChoice;
+  }
+
+  const shouldWriteDescription =
+    Object.hasOwn(body, 'description') ||
+    Object.hasOwn(body, 'detail') ||
+    Object.hasOwn(body, 'notes') ||
+    Object.hasOwn(body, 'content') ||
+    Object.hasOwn(body, 'type') ||
+    Object.hasOwn(body, 'status') ||
+    Object.hasOwn(body, 'endTime') ||
+    Object.hasOwn(body, 'end_time') ||
+    Object.hasOwn(body, 'orderIndex') ||
+    Object.hasOwn(body, 'order_index') ||
+    !partial;
+
+  if (shouldWriteDescription) {
+    payload.description = serializeTimelineDescription({
+      description: descriptionValue,
+      type: typeValue,
+      status: statusValue,
+      endTime: endTimeValue,
+      orderIndex: orderIndexValue,
+    });
   }
 
   if (partial && Object.keys(payload).length === 0) {
@@ -472,6 +593,66 @@ function normalizeTimelinePayload(body, { partial = false, rejectPast = false } 
   }
 
   return payload;
+}
+
+function normalizeTimelineItem(row, fallbackIndex = 0) {
+  const item = isPlainObject(row) ? row : {};
+  const descriptionMeta = normalizeTimelineDescriptionMeta(item.description ?? null) ?? {};
+
+  const title = safeText(item.title ?? item.name ?? item.label ?? item.text, 'Untitled milestone').trim() || 'Untitled milestone';
+  const description = safeText(
+    item.description ?? item.detail ?? item.notes ?? item.content,
+    safeText(descriptionMeta.text ?? descriptionMeta.description, '')
+  ).trim();
+
+  const startTime = normalizeTimelineIsoString(
+    item.timeline_choice ?? item.timelineChoice ?? item.start_time ?? item.startTime
+  );
+  const endTime = normalizeTimelineIsoString(
+    item.end_time ?? item.endTime ?? descriptionMeta.endTime ?? descriptionMeta.end_time
+  );
+
+  const orderIndex = normalizeOrderIndex(
+    item.order_index ?? item.orderIndex ?? descriptionMeta.orderIndex ?? descriptionMeta.order_index,
+    fallbackIndex
+  );
+
+  return {
+    id: safeText(item.id, `timeline-${fallbackIndex}`),
+    activityId: safeText(item.activity_id ?? item.activityId, ''),
+    title,
+    description,
+    type: normalizeTimelineType(item.type ?? descriptionMeta.type),
+    status: normalizeTimelineStatus(item.status ?? descriptionMeta.status),
+    startTime,
+    endTime,
+    orderIndex,
+    createdAt: normalizeTimelineIsoString(item.created_at ?? item.createdAt),
+  };
+}
+
+function compareTimelineItems(left, right) {
+  if (left.orderIndex !== right.orderIndex) {
+    return left.orderIndex - right.orderIndex;
+  }
+  const leftStart = left.startTime ? new Date(left.startTime).getTime() : Number.MAX_SAFE_INTEGER;
+  const rightStart = right.startTime ? new Date(right.startTime).getTime() : Number.MAX_SAFE_INTEGER;
+  return leftStart - rightStart;
+}
+
+function normalizeTimelineItems(input) {
+  if (!input) {
+    return [];
+  }
+
+  const rows = Array.isArray(input) ? input : [input];
+  return rows
+    .map((row, index) => normalizeTimelineItem(row, index))
+    .sort(compareTimelineItems)
+    .map((item, index) => ({
+      ...item,
+      orderIndex: index,
+    }));
 }
 
 async function getTimelineActivity(activityId) {
@@ -561,7 +742,7 @@ router.get('/activities/:id/timeline', requireAuth, async (req, res) => {
     return;
   }
 
-  res.json({ timeline: data ?? [] });
+  res.json({ timeline: normalizeTimelineItems(data ?? []) });
 });
 
 router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
@@ -613,7 +794,7 @@ router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
     return;
   }
 
-  res.status(201).json({ milestone: data });
+  res.status(201).json({ milestone: normalizeTimelineItem(data ?? null, 0) });
 });
 
 router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, res) => {
@@ -671,7 +852,7 @@ router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, re
     return;
   }
 
-  res.json({ milestone: data });
+  res.json({ milestone: normalizeTimelineItem(data ?? null, 0) });
 });
 
 router.delete('/activities/:id/timeline/:timelineId', requireAuth, async (req, res) => {

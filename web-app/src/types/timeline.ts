@@ -1,6 +1,6 @@
-export type TimelineMilestoneStatus = 'upcoming' | 'in_progress' | 'completed' | 'delayed' | 'cancelled';
+export type TimelineMilestoneStatus = 'upcoming' | 'in_progress' | 'completed' | 'cancelled';
 
-export type TimelineMilestoneType = 'check_in' | 'opening' | 'session' | 'break' | 'closing' | 'wrap_up' | 'custom';
+export type TimelineMilestoneType = 'opening' | 'session' | 'break' | 'closing' | 'other';
 
 export interface TimelineMilestone {
   id: string;
@@ -36,7 +36,7 @@ export interface TimelineValidationIssue {
 }
 
 export interface TimelineIntegrationMeta {
-  mode: 'local_only' | 'server';
+  mode: 'server';
   pendingServerIntegration: boolean;
   message: string;
 }

@@ -9,12 +9,16 @@ interface ReportActionItem extends ReportIssueHighlight {
 }
 
 interface IssueHighlightsCardProps {
+  title?: string;
   issues: ReportActionItem[];
+  emptyTitle?: string;
   emptyMessage?: string;
 }
 
 export function IssueHighlightsCard({
+  title = 'Action Needed',
   issues,
+  emptyTitle = 'No urgent action needed',
   emptyMessage = 'All key metrics look good. No action needed right now.',
 }: IssueHighlightsCardProps) {
   const isSingleIssue = issues.length === 1;
@@ -25,12 +29,19 @@ export function IssueHighlightsCard({
       className={isSingleIssue ? 'org-report-lower-card org-report-issues-card is-compact' : 'org-report-lower-card org-report-issues-card'}
     >
       <div className="org-report-card-head">
-        <h3>Action Needed</h3>
-        <IssueBadge className="org-report-active-badge" label={`${issues.length} Active`} state="active" />
+        <h3>{title}</h3>
+        <IssueBadge
+          className="org-report-active-badge"
+          label={`${issues.length} action${issues.length === 1 ? '' : 's'}`}
+          state={issues.length > 0 ? 'active' : 'warning'}
+        />
       </div>
 
       {issues.length === 0 ? (
-        <p className="muted">{emptyMessage}</p>
+        <div className="org-report-action-empty">
+          <strong>{emptyTitle}</strong>
+          <p className="muted">{emptyMessage}</p>
+        </div>
       ) : (
         <div className="org-report-issue-list">
           {issues.map((item) => (

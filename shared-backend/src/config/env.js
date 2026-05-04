@@ -55,7 +55,12 @@ const AI_PROVIDER_CLASSIFY = normalizeProvider(process.env.AI_PROVIDER_CLASSIFY,
 const AI_PROVIDER_SUMMARIZE = normalizeProvider(process.env.AI_PROVIDER_SUMMARIZE, 'internal');
 const AI_EXTERNAL_PROVIDER = normalizeExternalAiProvider(process.env.AI_EXTERNAL_PROVIDER, 'gemini');
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY ?? '').trim();
-const AI_TIMEOUT_MS = parseInteger(process.env.AI_TIMEOUT_MS, 8000, { min: 500, max: 120000 });
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL ?? 'gemini-2.0-flash').trim() || 'gemini-2.0-flash';
+const AI_EXTERNAL_TIMEOUT_MS = parseInteger(process.env.AI_EXTERNAL_TIMEOUT_MS ?? process.env.AI_TIMEOUT_MS, 15000, {
+  min: 500,
+  max: 120000,
+});
+const AI_TIMEOUT_MS = AI_EXTERNAL_TIMEOUT_MS;
 const AI_CACHE_TTL_SECONDS = parseInteger(process.env.AI_CACHE_TTL_SECONDS, 3600, {
   min: 0,
   max: 86400,
@@ -79,6 +84,8 @@ export {
   AI_PROVIDER_SUMMARIZE,
   AI_EXTERNAL_PROVIDER,
   GEMINI_API_KEY,
+  GEMINI_MODEL,
+  AI_EXTERNAL_TIMEOUT_MS,
   AI_TIMEOUT_MS,
   AI_CACHE_TTL_SECONDS,
   CHECKIN_CODE_SALT,

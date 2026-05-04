@@ -101,6 +101,60 @@ function asContribution(feature, score, maxScore, detail) {
   };
 }
 
+function humanizeReasonCode(code) {
+  const dictionary = {
+    skills_full_match: 'strong skill overlap',
+    skills_partial_match: 'relevant skill overlap',
+    skills_not_required_profile_has_skills: 'skills still align with activity needs',
+    interest_overlap: 'interest overlap',
+    availability_overlap: 'availability alignment',
+    experience_signal: 'relevant volunteer experience',
+    organizer_history_signal: 'prior organizer history',
+  };
+
+  const normalized = String(code ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
+}
+
+function toDisplayReasons(score) {
+  const fromReasonCodes = Array.isArray(score?.reason_codes)
+    ? score.reason_codes.map((code) => humanizeReasonCode(code)).filter(Boolean)
+    : [];
+  const fromReasons = Array.isArray(score?.reasons)
+    ? score.reasons.map((reason) => String(reason ?? '').trim()).filter(Boolean)
+    : [];
+
+  const merged = fromReasonCodes.length > 0 ? fromReasonCodes : fromReasons;
+  return uniqueReasons(merged).slice(0, 3);
+}
+
+function toDisplayExplanation(score) {
+  const modelKind = String(score?.model_kind ?? '').trim().toLowerCase();
+  const reasons = toDisplayReasons(score);
+  const reasonPhrase = reasons.slice(0, 2).join(' and ');
+
+  if (modelKind === 'heuristic') {
+    return reasonPhrase
+      ? `Recommended based on profile matching: ${reasonPhrase}.`
+      : 'Recommended based on profile matching from skills, interests, availability, and experience signals.';
+  }
+
+  return reasonPhrase
+    ? `Recommended because your profile aligns on ${reasonPhrase}.`
+    : 'Recommended from structured profile and activity matching signals.';
+}
+
+function toAiBadgeLabel(score) {
+  const modelKind = String(score?.model_kind ?? '').trim().toLowerCase();
+  if (modelKind === 'ml_logistic_regression_v1') {
+    return 'Internal ML v1';
+  }
+  return 'Profile Match';
+}
+
 function buildGroundedExplanation({ contributions, fallbackText }) {
   const highlights = contributions
     .filter((item) => item.score > 0 && item.detail)
@@ -136,6 +190,9 @@ function toStructuredRecommendationFields(score) {
       !Array.isArray(score.prediction_snapshot)
         ? score.prediction_snapshot
         : null,
+    display_explanation: toDisplayExplanation(score),
+    display_reasons: toDisplayReasons(score),
+    ai_badge_label: toAiBadgeLabel(score),
   };
 }
 

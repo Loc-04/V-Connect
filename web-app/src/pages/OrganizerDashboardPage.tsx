@@ -37,7 +37,6 @@ export function OrganizerDashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timelineIntegrationMessage, setTimelineIntegrationMessage] = useState<string | null>(null);
   const [bundles, setBundles] = useState<ActivityTimelineBundle[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
 
@@ -64,13 +63,10 @@ export function OrganizerDashboardPage() {
 
         const timelineRows = await Promise.all(
           activityRows.map(async (activity) => {
-            const timeline = await listActivityTimeline(activity.id);
+            const timeline = await listActivityTimeline(activity.id, session.access_token);
             return {
               activity,
               milestones: timeline.milestones,
-              integrationMessage: timeline.integration.pendingServerIntegration
-                ? timeline.integration.message
-                : null,
             };
           })
         );
@@ -85,7 +81,6 @@ export function OrganizerDashboardPage() {
             milestones: item.milestones,
           }))
         );
-        setTimelineIntegrationMessage(timelineRows.find((item) => item.integrationMessage)?.integrationMessage ?? null);
 
         const firstTimelineActivity = timelineRows.find((item) => item.milestones.length > 0)?.activity.id ?? null;
         setSelectedActivityId((current) => current ?? firstTimelineActivity ?? activityRows[0]?.id ?? null);
@@ -187,12 +182,6 @@ export function OrganizerDashboardPage() {
           </Card>
         </div>
 
-        {timelineIntegrationMessage ? (
-          <Card as="section" className="org-dashboard-note-card">
-            <p>{timelineIntegrationMessage}</p>
-          </Card>
-        ) : null}
-
         {error ? <p className="form-error">{error}</p> : null}
 
         {loading ? (
@@ -282,7 +271,7 @@ export function OrganizerDashboardPage() {
                   </div>
                   <EventTimelineReadOnly
                     compact
-                    emptyDescription="No organizer milestones found for this activity."
+                    emptyDescription="No timeline milestones available yet."
                     milestones={selectedBundle?.milestones ?? []}
                   />
                 </>

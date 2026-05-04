@@ -11,7 +11,8 @@ import { OrganizerShell } from '../layouts/OrganizerShell';
 import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
 import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
-import { getTimelineIntegrationMeta, replaceActivityTimeline } from '../lib/timeline';
+import { safeText } from '../lib/timelineNormalization';
+import { replaceActivityTimeline } from '../lib/timeline';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../lib/timelineValidation';
 import type { ActivityPriorityLevel, ActivityRecord, ActivityStatus } from '../types/activity';
 import type { GeocodedLocationRecord, ProvinceRecord, WardRecord } from '../types/location';
@@ -67,6 +68,7 @@ function toIsoFromDateTimeLocal(value: string) {
 }
 
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
+<<<<<<< HEAD
 const maxCoverImageBytes = 700 * 1024;
 const coverTargetWidth = 1200;
 const coverTargetHeight = 675;
@@ -78,6 +80,12 @@ function formatSkillPriorityLabel(priority: ActivityPriorityLevel) {
   if (priority === 'urgent') return 'Urgent';
   return 'Normal';
 }
+=======
+const maxCoverImageBytes = 10 * 1024 * 1024;
+const coverTargetWidth = 1280;
+const coverTargetHeight = 720;
+const quickTimelineTypeOptions: TimelineMilestoneType[] = ['opening', 'session', 'break', 'closing', 'other'];
+>>>>>>> main
 
 function formatTimelineTypeLabel(type: TimelineMilestoneType) {
   return type
@@ -306,6 +314,7 @@ export function CreateActivityPage() {
   const canManageActivities = role === 'organizer' || role === 'admin';
   const organizerHomePath = role === 'admin' ? '/admin/dashboard' : '/organizer/activities';
   const isEditing = Boolean(activityId);
+<<<<<<< HEAD
   const timelineIntegrationMeta = useMemo(() => getTimelineIntegrationMeta(), []);
   const currentDateTime = useMemo(() => {
     const now = new Date();
@@ -315,6 +324,8 @@ export function CreateActivityPage() {
       time: localIso.slice(11, 16),
     };
   }, []);
+=======
+>>>>>>> main
 
   const createQuickMilestoneDraft = useCallback(
     (): TimelineMilestoneDraft => {
@@ -1052,7 +1063,19 @@ export function CreateActivityPage() {
         : await createActivity(payload, session.access_token);
 
       if (!isEditing && validatedQuickTimeline.length > 0) {
-        await replaceActivityTimeline(savedActivity.id, validatedQuickTimeline);
+        const timelineResult = await replaceActivityTimeline(savedActivity.id, validatedQuickTimeline, session.access_token);
+        setQuickMilestones(
+          timelineResult.milestones.map((item) => ({
+            id: item.id,
+            title: item.title,
+            description: item.description,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            orderIndex: item.orderIndex,
+            type: item.type,
+            status: item.status,
+          }))
+        );
       }
 
       setCreatedActivityId(savedActivity.id);
@@ -1461,10 +1484,6 @@ export function CreateActivityPage() {
                   publishing.
                 </p>
 
-                {timelineIntegrationMeta.pendingServerIntegration ? (
-                  <div className="activity-timeline-integration-note">{timelineIntegrationMeta.message}</div>
-                ) : null}
-
                 {quickTimelineError ? <p className="form-error">{quickTimelineError}</p> : null}
                 {quickTimelineWarning ? <p className="activity-timeline-warning">{quickTimelineWarning}</p> : null}
 
@@ -1487,7 +1506,7 @@ export function CreateActivityPage() {
                     {sortedTimelineDrafts.map((milestone, milestoneIndex) => (
                       <article className="activity-timeline-item" key={milestone.id ?? `draft-${milestoneIndex}`}>
                         <div className="activity-timeline-item-head">
-                          <strong>{milestone.title?.trim() || `Milestone ${milestoneIndex + 1}`}</strong>
+                          <strong>{safeText(milestone.title, '').trim() || `Milestone ${milestoneIndex + 1}`}</strong>
                           <TimelineStatusBadge status="upcoming" />
                         </div>
                         <small>{formatRange(toDateTimeLocalValue(milestone.startTime), toDateTimeLocalValue(milestone.endTime))}</small>
@@ -1523,7 +1542,7 @@ export function CreateActivityPage() {
                           onClick={() => setActiveTimelineDraftId(milestone.id ?? null)}
                           type="button"
                         >
-                          <strong>{milestone.title?.trim() || `Milestone ${milestoneIndex + 1}`}</strong>
+                          <strong>{safeText(milestone.title, '').trim() || `Milestone ${milestoneIndex + 1}`}</strong>
                           <small>{formatTimelineTypeLabel(milestone.type)}</small>
                         </button>
                       ))}

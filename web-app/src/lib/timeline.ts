@@ -1,6 +1,10 @@
 import { apiRequest } from './api';
+<<<<<<< HEAD
 import { supabase } from './supabase';
 import { sortTimelineByTime } from './timelineValidation';
+=======
+import { normalizeTimelineItem, normalizeTimelineItems } from './timelineNormalization';
+>>>>>>> main
 import type {
   TimelineIntegrationMeta,
   TimelineMilestone,
@@ -9,6 +13,7 @@ import type {
   TimelineMilestoneType,
 } from '../types/timeline';
 
+<<<<<<< HEAD
 interface TimelineApiRow {
   id: string;
   activity_id: string;
@@ -189,6 +194,47 @@ async function createTimelineEntry(activityId: string, draft: TimelineMilestoneD
     accessToken,
     body: buildTimelinePayloadFromDraft(draft),
   });
+=======
+const integrationMeta: TimelineIntegrationMeta = {
+  mode: 'server',
+  pendingServerIntegration: false,
+  message: '',
+};
+
+interface TimelineListResponse {
+  timeline?: unknown;
+}
+
+interface TimelineMilestoneResponse {
+  milestone?: unknown;
+}
+
+function assertAccessToken(accessToken?: string): asserts accessToken is string {
+  if (!accessToken) {
+    throw new Error('No active session token.');
+  }
+}
+
+function toTimelinePayload(draft: TimelineMilestoneDraft, orderIndex?: number) {
+  return {
+    id: draft.id,
+    title: draft.title,
+    description: draft.description,
+    timelineChoice: draft.startTime,
+    startTime: draft.startTime,
+    endTime: draft.endTime,
+    orderIndex,
+    type: draft.type,
+    status: draft.status ?? 'upcoming',
+  };
+}
+
+async function fetchTimeline(activityId: string, accessToken: string) {
+  const response = await apiRequest<TimelineListResponse>(`/activities/${activityId}/timeline`, {
+    accessToken,
+  });
+  return normalizeTimelineItems(response.timeline ?? [], activityId);
+>>>>>>> main
 }
 
 export function supportsTimelineServerIntegration() {
@@ -199,25 +245,36 @@ export function getTimelineIntegrationMeta(): TimelineIntegrationMeta {
   return { ...integrationMeta };
 }
 
-export async function listActivityTimeline(activityId: string): Promise<{
+export async function listActivityTimeline(
+  activityId: string,
+  accessToken?: string
+): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const accessToken = await getAccessToken();
   const rows = await listTimelineRows(activityId, accessToken);
   return {
     milestones: mapRowsToMilestones(rows),
+=======
+  assertAccessToken(accessToken);
+  return {
+    milestones: await fetchTimeline(activityId, accessToken),
+>>>>>>> main
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function replaceActivityTimeline(
   activityId: string,
-  drafts: TimelineMilestoneDraft[]
+  drafts: TimelineMilestoneDraft[],
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const accessToken = await getAccessToken();
   const existing = await listTimelineRows(activityId, accessToken);
 
@@ -242,17 +299,43 @@ export async function replaceActivityTimeline(
   const rows = await listTimelineRows(activityId, accessToken);
   return {
     milestones: mapRowsToMilestones(rows),
+=======
+  assertAccessToken(accessToken);
+  const existing = await fetchTimeline(activityId, accessToken);
+
+  await Promise.all(
+    existing.map((item) =>
+      apiRequest<{ success: boolean }>(`/activities/${activityId}/timeline/${item.id}`, {
+        method: 'DELETE',
+        accessToken,
+      })
+    )
+  );
+
+  for (let index = 0; index < drafts.length; index += 1) {
+    await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
+      method: 'POST',
+      accessToken,
+      body: toTimelinePayload(drafts[index], index),
+    });
+  }
+
+  return {
+    milestones: await fetchTimeline(activityId, accessToken),
+>>>>>>> main
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function appendActivityTimeline(
   activityId: string,
-  drafts: TimelineMilestoneDraft[]
+  drafts: TimelineMilestoneDraft[],
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const accessToken = await getAccessToken();
   const sortedDrafts = sortTimelineByTime(drafts);
   for (const draft of sortedDrafts) {
@@ -261,18 +344,35 @@ export async function appendActivityTimeline(
   const rows = await listTimelineRows(activityId, accessToken);
   return {
     milestones: mapRowsToMilestones(rows),
+=======
+  assertAccessToken(accessToken);
+  const current = await fetchTimeline(activityId, accessToken);
+
+  for (let index = 0; index < drafts.length; index += 1) {
+    await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
+      method: 'POST',
+      accessToken,
+      body: toTimelinePayload(drafts[index], current.length + index),
+    });
+  }
+
+  return {
+    milestones: await fetchTimeline(activityId, accessToken),
+>>>>>>> main
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function createTimelineMilestone(
   activityId: string,
-  draft: TimelineMilestoneDraft
+  draft: TimelineMilestoneDraft,
+  accessToken?: string
 ): Promise<{
   milestone: TimelineMilestone;
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const accessToken = await getAccessToken();
   const createResult = await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
     method: 'POST',
@@ -285,6 +385,17 @@ export async function createTimelineMilestone(
   const createdIndex = milestones.findIndex((item) => item.id === createResult.milestone?.id);
   const milestone = createdIndex >= 0 ? milestones[createdIndex] : milestones[milestones.length - 1];
 
+=======
+  assertAccessToken(accessToken);
+  const current = await fetchTimeline(activityId, accessToken);
+  const response = await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
+    method: 'POST',
+    accessToken,
+    body: toTimelinePayload(draft, current.length),
+  });
+  const milestone = normalizeTimelineItem(response.milestone ?? {}, activityId, current.length);
+  const milestones = await fetchTimeline(activityId, accessToken);
+>>>>>>> main
   return {
     milestone,
     milestones,
@@ -295,12 +406,14 @@ export async function createTimelineMilestone(
 export async function updateTimelineMilestone(
   activityId: string,
   milestoneId: string,
-  draft: TimelineMilestoneDraft
+  draft: TimelineMilestoneDraft,
+  accessToken?: string
 ): Promise<{
   milestone: TimelineMilestone | null;
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const accessToken = await getAccessToken();
   await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${milestoneId}`, {
     method: 'PATCH',
@@ -311,6 +424,20 @@ export async function updateTimelineMilestone(
   const rows = await listTimelineRows(activityId, accessToken);
   const milestones = mapRowsToMilestones(rows);
   const milestone = milestones.find((item) => item.id === milestoneId) ?? null;
+=======
+  assertAccessToken(accessToken);
+  const currentMilestones = await fetchTimeline(activityId, accessToken);
+  const current = currentMilestones.find((item) => item.id === milestoneId);
+  const response = await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${milestoneId}`, {
+    method: 'PATCH',
+    accessToken,
+    body: toTimelinePayload(draft, draft.orderIndex ?? current?.orderIndex ?? 0),
+  });
+
+  const milestones = await fetchTimeline(activityId, accessToken);
+  const milestone = milestones.find((item) => item.id === milestoneId) ?? normalizeTimelineItem(response.milestone ?? null, activityId, 0);
+
+>>>>>>> main
   return {
     milestone,
     milestones,
@@ -321,12 +448,14 @@ export async function updateTimelineMilestone(
 export async function updateTimelineMilestoneStatus(
   activityId: string,
   milestoneId: string,
-  status: TimelineMilestoneStatus
+  status: TimelineMilestoneStatus,
+  accessToken?: string
 ): Promise<{
   milestone: TimelineMilestone | null;
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const current = await listActivityTimeline(activityId);
   const target = current.milestones.find((item) => item.id === milestoneId);
   if (!target) {
@@ -343,23 +472,68 @@ export async function updateTimelineMilestoneStatus(
   });
 
   return updated;
+=======
+  assertAccessToken(accessToken);
+  const currentMilestones = await fetchTimeline(activityId, accessToken);
+  const current = currentMilestones.find((item) => item.id === milestoneId);
+  if (!current) {
+    return {
+      milestone: null,
+      milestones: currentMilestones,
+      integration: getTimelineIntegrationMeta(),
+    };
+  }
+
+  await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${milestoneId}`, {
+    method: 'PATCH',
+    accessToken,
+    body: {
+      title: current.title,
+      description: current.description,
+      timelineChoice: current.startTime,
+      startTime: current.startTime,
+      endTime: current.endTime,
+      orderIndex: current.orderIndex,
+      type: current.type,
+      status,
+    },
+  });
+
+  const milestones = await fetchTimeline(activityId, accessToken);
+  const milestone = milestones.find((item) => item.id === milestoneId) ?? null;
+  return {
+    milestone,
+    milestones,
+    integration: getTimelineIntegrationMeta(),
+  };
+>>>>>>> main
 }
 
 export async function deleteTimelineMilestone(
   activityId: string,
-  milestoneId: string
+  milestoneId: string,
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const accessToken = await getAccessToken();
+=======
+  assertAccessToken(accessToken);
+>>>>>>> main
   await apiRequest<{ success: boolean }>(`/activities/${activityId}/timeline/${milestoneId}`, {
     method: 'DELETE',
     accessToken,
   });
+<<<<<<< HEAD
   const rows = await listTimelineRows(activityId, accessToken);
   return {
     milestones: mapRowsToMilestones(rows),
+=======
+  return {
+    milestones: await fetchTimeline(activityId, accessToken),
+>>>>>>> main
     integration: getTimelineIntegrationMeta(),
   };
 }
@@ -367,11 +541,13 @@ export async function deleteTimelineMilestone(
 export async function moveTimelineMilestone(
   activityId: string,
   milestoneId: string,
-  direction: 'up' | 'down'
+  direction: 'up' | 'down',
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+<<<<<<< HEAD
   const current = await listActivityTimeline(activityId);
   const ordered = sortTimelineByTime(current.milestones);
   const currentIndex = ordered.findIndex((item) => item.id === milestoneId);
@@ -419,4 +595,51 @@ export async function moveTimelineMilestone(
   });
 
   return updated;
+=======
+  assertAccessToken(accessToken);
+  const milestones = await fetchTimeline(activityId, accessToken);
+  const currentIndex = milestones.findIndex((item) => item.id === milestoneId);
+  if (currentIndex < 0) {
+    return {
+      milestones,
+      integration: getTimelineIntegrationMeta(),
+    };
+  }
+
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= milestones.length) {
+    return {
+      milestones,
+      integration: getTimelineIntegrationMeta(),
+    };
+  }
+
+  const reordered = [...milestones];
+  const current = reordered[currentIndex];
+  reordered[currentIndex] = reordered[targetIndex];
+  reordered[targetIndex] = current;
+
+  for (let index = 0; index < reordered.length; index += 1) {
+    const item = reordered[index];
+    await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${item.id}`, {
+      method: 'PATCH',
+      accessToken,
+      body: {
+        title: item.title,
+        description: item.description,
+        timelineChoice: item.startTime,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        orderIndex: index,
+        type: item.type,
+        status: item.status,
+      },
+    });
+  }
+
+  return {
+    milestones: await fetchTimeline(activityId, accessToken),
+    integration: getTimelineIntegrationMeta(),
+  };
+>>>>>>> main
 }

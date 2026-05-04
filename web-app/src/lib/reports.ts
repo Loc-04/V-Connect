@@ -7,6 +7,7 @@ export interface ActivitySummaryOption {
   status: string | null;
   start_time: string | null;
   end_time: string | null;
+  capacity?: number | null;
 }
 
 interface OrganizerReportSummaryMeta {

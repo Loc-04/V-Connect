@@ -2,6 +2,7 @@ import { Clock3 } from 'lucide-react';
 
 import { Badge, Card } from '../ui';
 import type { TimelineMilestone } from '../../types/timeline';
+import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
 import { sortTimelineByTime } from '../../lib/timelineValidation';
 import { TimelineStatusBadge } from './TimelineStatusBadge';
 
@@ -63,10 +64,12 @@ export function EventTimelineReadOnly({
   loading = false,
   error = null,
   emptyTitle = 'Timeline is not available',
-  emptyDescription = 'Organizer milestones will appear here once timeline data is provided.',
+  emptyDescription = 'No timeline milestones available yet.',
   compact = false,
 }: EventTimelineReadOnlyProps) {
-  const ordered = sortTimelineByTime(milestones);
+  const ordered = sortTimelineByTime(
+    milestones.map((item, index) => normalizeTimelineItem(item, item.activityId, index))
+  );
 
   if (loading) {
     return (
@@ -103,7 +106,7 @@ export function EventTimelineReadOnly({
         >
           <div className="timeline-item-head">
             <div>
-              <p className="timeline-item-title">{milestone.title}</p>
+              <p className="timeline-item-title">{safeText(milestone.title, 'Untitled milestone')}</p>
               <small className="timeline-item-time">
                 <Clock3 size={13} />
                 <span>{formatRange(milestone.startTime, milestone.endTime)}</span>
@@ -116,7 +119,9 @@ export function EventTimelineReadOnly({
             <Badge tone="neutral">{getTypeLabel(milestone.type)}</Badge>
           </div>
 
-          {milestone.description ? <p className="timeline-item-description">{milestone.description}</p> : null}
+          {safeText(milestone.description) ? (
+            <p className="timeline-item-description">{safeText(milestone.description)}</p>
+          ) : null}
         </Card>
       ))}
     </div>

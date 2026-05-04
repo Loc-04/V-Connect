@@ -339,6 +339,8 @@ function resolveFeedbackBucket({ aiLabel, semanticLabel, textQuality, issueTags,
 
 function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_label, classification = null) {
   const normalizedClassification = normalizeAiClassification(classification);
+  const aiMeta =
+    classification?.ai_meta && typeof classification.ai_meta === 'object' ? classification.ai_meta : null;
   const spamFromComment = classifyFeedbackSpam(feedback?.comment ?? '');
   const semanticFromComment = classifyFeedbackSemantics({
     comment: feedback?.comment ?? '',
@@ -417,6 +419,7 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
     isSpam: aiLabel === 'spam',
     feedbackBucket,
     sentimentLabel,
+    incidentLabel,
     semanticLabel,
     moderationLabels: normalizedModerationLabels,
     semanticLabels,
@@ -452,6 +455,7 @@ function enrichFeedbackWithAiLabel(feedback, persistedAiLabelRaw = feedback.ai_l
       : [],
     final_label: normalizedClassification.finalLabel ?? finalLabel,
     finalLabel: normalizedClassification.finalLabel ?? finalLabel,
+    ai_meta: aiMeta,
   };
 }
 

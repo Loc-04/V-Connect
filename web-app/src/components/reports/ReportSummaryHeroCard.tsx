@@ -1,9 +1,11 @@
 import { Badge, Card } from '../ui';
+import type { BadgeTone } from '../ui';
 import type { ReportMiniMetric } from '../../lib/organizerReportSummary';
 import { ReportMiniMetricCard } from './ReportMiniMetricCard';
 
 interface ReportSummaryHeroCardProps {
   liveLabel: string;
+  badgeTone?: BadgeTone;
   title: string;
   durationLabel: string;
   durationValue: string;
@@ -13,6 +15,7 @@ interface ReportSummaryHeroCardProps {
 
 export function ReportSummaryHeroCard({
   liveLabel,
+  badgeTone = 'success',
   title,
   durationLabel,
   durationValue,
@@ -22,7 +25,7 @@ export function ReportSummaryHeroCard({
   return (
     <Card as="section" className="org-report-hero-card">
       <div className="org-report-hero-head">
-        <Badge className="org-report-live-badge" tone="success">
+        <Badge className="org-report-live-badge" tone={badgeTone}>
           {liveLabel}
         </Badge>
 
