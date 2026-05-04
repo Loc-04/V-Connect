@@ -1,7 +1,7 @@
 const positivePatterns = [
-  /\b(?:great|excellent|amazing|awesome|helpful|well organized|well-organized|good job|learned a lot)\b/i,
+  /\b(?:great|excellent|amazing|awesome|helpful|well organized|well-organized|good job|learned a lot|good|nice)\b/i,
   /\b(?:smooth|friendly|clear guidance|well managed|very satisfied|highly recommend)\b/i,
-  /\b(?:tot voi|rat tot|hai long|hieu qua|chuyen nghiep|ho tro tot)\b/i,
+  /\b(?:tot|tot voi|rat tot|tot lam|hai long|hieu qua|chuyen nghiep|ho tro tot|hay|dep|tuyet voi)\b/i,
 ];
 
 const negativePatterns = [
@@ -109,7 +109,12 @@ function evaluateTextQuality(inputComment) {
 
   const meaningfulWordCount = tokens.filter((token) => /[a-z]/.test(token) && token.length >= 3).length;
   const hasIncidentKeyword = tokens.some((token) => incidentLexicon.includes(token));
-  const tooFewMeaningfulWords = meaningfulWordCount < 2 && !hasIncidentKeyword;
+  const safeShortFeedbackTokens = new Set([
+    'tot', 'hay', 'vui', 'dep', 'on', 'ok', 'okay', 'good', 'nice', 'bad',
+    'te', 'kem', 'tuyet', 'nhat', 'duoc', 'tam', 'suon', 'okey',
+  ]);
+  const hasSafeShortToken = tokens.some((token) => safeShortFeedbackTokens.has(token));
+  const tooFewMeaningfulWords = meaningfulWordCount < 2 && !hasIncidentKeyword && !hasSafeShortToken;
 
   const reasons = [];
   if (mostlyNumeric) {

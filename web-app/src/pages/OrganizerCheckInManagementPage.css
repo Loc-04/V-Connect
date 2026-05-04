@@ -236,6 +236,16 @@
   font-weight: 600;
 }
 
+.org-checkin-lock-note.is-expired {
+  color: #b42318;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.5rem 0.72rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
 .org-checkin-table thead th {
   background: #f6f8fc;
   font-size: 0.62rem;

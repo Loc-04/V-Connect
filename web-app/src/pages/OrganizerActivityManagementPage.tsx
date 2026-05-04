@@ -9,9 +9,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
+
 import { useAuth } from '../auth/useAuth';
 import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
-import { EventTimelineEditor } from '../components/timeline';
+import { EventTimelineEditor, EventTimelineReadOnly } from '../components/timeline';
 import { Badge, Button, Card, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
@@ -61,6 +62,24 @@ function getActivityStatusTone(status: string) {
     return 'danger' as const;
   }
   return 'neutral' as const;
+}
+
+function isActivityExpired(activity: ActivityRecord): boolean {
+  const now = new Date();
+  const endTime = activity.end_time ? new Date(activity.end_time) : null;
+  const startTime = activity.start_time ? new Date(activity.start_time) : null;
+
+  if (endTime && !Number.isNaN(endTime.getTime())) {
+    return endTime.getTime() < now.getTime();
+  }
+
+  if (startTime && !Number.isNaN(startTime.getTime())) {
+    const toDateOnly = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return toDateOnly(startTime) < toDateOnly(now);
+  }
+
+  return false;
 }
 
 interface AttendanceNoticeState {
@@ -552,6 +571,7 @@ export function OrganizerActivityManagementPage() {
                   const capacity = Math.max(1, Number(activity.capacity ?? 0));
                   const progress = Math.min(100, Math.round((participationStats.joined / capacity) * 100));
                   const status = String(activity.status ?? 'draft').toLowerCase();
+                  const expired = isActivityExpired(activity);
 
                   return (
                     <tr key={activity.id}>
@@ -582,7 +602,11 @@ export function OrganizerActivityManagementPage() {
                         </div>
                       </td>
                       <td>
-                        <Badge tone={getActivityStatusTone(status)}>{toTitleCase(status)}</Badge>
+                        {expired ? (
+                          <Badge tone="danger">Expired</Badge>
+                        ) : (
+                          <Badge tone={getActivityStatusTone(status)}>{toTitleCase(status)}</Badge>
+                        )}
                       </td>
                       <td>
                         <div className="row-action-wrap">
@@ -628,7 +652,7 @@ export function OrganizerActivityManagementPage() {
                                 }}
                                 type="button"
                               >
-                                Manage Attendance
+                                {expired ? 'View Attendance' : 'Manage Attendance'}
                               </button>
 
                               <button
@@ -640,33 +664,37 @@ export function OrganizerActivityManagementPage() {
                                 }}
                                 type="button"
                               >
-                                Manage Timeline
+                                {expired ? 'View Timeline' : 'Manage Timeline'}
                               </button>
 
-                              <button
-                                className="row-action-item"
-                                onClick={() => {
-                                  navigate(`/activities/${activity.id}/edit`);
-                                  setOpenMenuActivityId(null);
-                                  setOpenStatusPickerActivityId(null);
-                                }}
-                                type="button"
-                              >
-                                Edit Activity
-                              </button>
+                              {!expired && (
+                                <button
+                                  className="row-action-item"
+                                  onClick={() => {
+                                    navigate(`/activities/${activity.id}/edit`);
+                                    setOpenMenuActivityId(null);
+                                    setOpenStatusPickerActivityId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  Edit Activity
+                                </button>
+                              )}
 
-                              <button
-                                aria-expanded={openStatusPickerActivityId === activity.id}
-                                className="row-action-item"
-                                onClick={() =>
-                                  setOpenStatusPickerActivityId((current) => (current === activity.id ? null : activity.id))
-                                }
-                                type="button"
-                              >
-                                Change Status
-                              </button>
+                              {!expired && (
+                                <button
+                                  aria-expanded={openStatusPickerActivityId === activity.id}
+                                  className="row-action-item"
+                                  onClick={() =>
+                                    setOpenStatusPickerActivityId((current) => (current === activity.id ? null : activity.id))
+                                  }
+                                  type="button"
+                                >
+                                  Change Status
+                                </button>
+                              )}
 
-                              {openStatusPickerActivityId === activity.id && (
+                              {!expired && openStatusPickerActivityId === activity.id && (
                                 <div className="org-row-status-submenu">
                                   {statusOptions.map((statusOption) => (
                                     <button
@@ -683,25 +711,29 @@ export function OrganizerActivityManagementPage() {
                                 </div>
                               )}
 
-                              <button
-                                className="row-action-item"
-                                onClick={() => {
-                                  navigate(`/organizer/recommendations?activityId=${activity.id}`);
-                                  setOpenMenuActivityId(null);
-                                  setOpenStatusPickerActivityId(null);
-                                }}
-                                type="button"
-                              >
-                                Recommend Volunteers
-                              </button>
+                              {!expired && (
+                                <button
+                                  className="row-action-item"
+                                  onClick={() => {
+                                    navigate(`/organizer/recommendations?activityId=${activity.id}`);
+                                    setOpenMenuActivityId(null);
+                                    setOpenStatusPickerActivityId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  Recommend Volunteers
+                                </button>
+                              )}
 
-                              <button
-                                className="row-action-item danger"
-                                onClick={() => void handleDelete(activity.id)}
-                                type="button"
-                              >
-                                Delete
-                              </button>
+                              {!expired && (
+                                <button
+                                  className="row-action-item danger"
+                                  onClick={() => void handleDelete(activity.id)}
+                                  type="button"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -728,7 +760,11 @@ export function OrganizerActivityManagementPage() {
               <div className="org-activity-workspace-head">
                 <div>
                   <h2>{selectedActivity.title}</h2>
-                  <p className="muted">Manage attendance and organizer timeline for this activity.</p>
+                  <p className="muted">
+                    {isActivityExpired(selectedActivity)
+                      ? 'This activity has ended. You can view attendance and timeline but editing is disabled.'
+                      : 'Manage attendance and organizer timeline for this activity.'}
+                  </p>
                 </div>
                 <div className="org-activity-workspace-tabs" role="tablist" aria-label="Activity workspace tabs">
                   <button
@@ -827,6 +863,7 @@ export function OrganizerActivityManagementPage() {
                             <td>
                               <Button
                                 disabled={
+                                  isActivityExpired(selectedActivity) ||
                                   checkingInParticipationId === participation.id ||
                                   status === 'checked_in' ||
                                   status === 'rejected'
@@ -835,11 +872,13 @@ export function OrganizerActivityManagementPage() {
                                 type="button"
                                 variant="secondary"
                               >
-                                {checkingInParticipationId === participation.id
-                                  ? 'Checking...'
-                                  : status === 'checked_in'
-                                    ? 'Checked In'
-                                    : 'Check In'}
+                                {isActivityExpired(selectedActivity)
+                                  ? 'Expired'
+                                  : checkingInParticipationId === participation.id
+                                    ? 'Checking...'
+                                    : status === 'checked_in'
+                                      ? 'Checked In'
+                                      : 'Check In'}
                               </Button>
                             </td>
                           </tr>
@@ -856,6 +895,21 @@ export function OrganizerActivityManagementPage() {
                     </tbody>
                   </Table>
                 )}
+              </Card>
+            ) : isActivityExpired(selectedActivity) ? (
+              <Card as="section" className="timeline-editor-shell">
+                <div className="timeline-editor-head">
+                  <div>
+                    <h2>Timeline (Read Only)</h2>
+                    <p className="muted">This activity has ended. Timeline is view-only.</p>
+                  </div>
+                  <Badge tone="danger">Expired</Badge>
+                </div>
+                <EventTimelineReadOnly
+                  milestones={[]}
+                  emptyTitle="Timeline is not available"
+                  emptyDescription="No timeline milestones available for this expired activity."
+                />
               </Card>
             ) : (
               <EventTimelineEditor
