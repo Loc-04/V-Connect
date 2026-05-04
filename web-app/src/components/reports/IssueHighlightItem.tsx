@@ -7,12 +7,12 @@ interface IssueHighlightItemProps {
 
 export function IssueHighlightItem({ item }: IssueHighlightItemProps) {
   return (
-    <article className="org-report-issue-item">
+    <div className="org-report-issue-copy">
       <div className="org-report-issue-head">
         <strong>{item.title}</strong>
         <IssueBadge className={`org-report-priority org-report-priority-${item.priority}`} priority={item.priority} />
       </div>
       <p>{item.description}</p>
-    </article>
+    </div>
   );
 }
