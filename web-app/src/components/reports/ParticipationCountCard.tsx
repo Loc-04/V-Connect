@@ -1,33 +1,20 @@
-import { ArrowUpRight } from 'lucide-react';
-
 import { Card } from '../ui';
 import type { ReportParticipationBreakdownItem } from '../../lib/organizerReportSummary';
 import { ParticipationBreakdownRow } from './ParticipationBreakdownRow';
 
 interface ParticipationCountCardProps {
-  total: string;
-  trend: string;
-  trendLabel: string;
+  title?: string;
+  subtitle?: string;
   rows: ReportParticipationBreakdownItem[];
 }
 
-export function ParticipationCountCard({ total, trend, trendLabel, rows }: ParticipationCountCardProps) {
+export function ParticipationCountCard({ title = 'Participation Breakdown', subtitle, rows }: ParticipationCountCardProps) {
   return (
     <Card as="section" className="org-report-side-card org-report-participation-card">
       <div className="org-report-card-head">
-        <h3>Participation Count</h3>
+        <h3>{title}</h3>
       </div>
-
-      <div className="org-report-total-wrap">
-        <strong>{total}</strong>
-        <div className="org-report-trend org-report-trend-positive">
-          <span>
-            <ArrowUpRight size={14} />
-            {trend}
-          </span>
-          <small>{trendLabel}</small>
-        </div>
-      </div>
+      {subtitle ? <p className="muted">{subtitle}</p> : null}
 
       <div className="org-report-breakdown-list">
         {rows.map((item) => (

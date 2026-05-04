@@ -5,6 +5,7 @@ import {
 } from '../recommendations/recommendations.service.js';
 import { classifyFeedbackSpam } from '../feedback/feedback.spam.js';
 import { classifyFeedbackSemantics } from '../feedback/feedback.classification.js';
+import { pickFinalFeedbackLabel } from '../feedback/feedback.final-label.js';
 import { buildOrganizerReportSummary } from '../reports/reports.service.js';
 
 function createBadRequestError(message) {
@@ -142,10 +143,29 @@ async function classifyFeedback(input = {}) {
 
   const label = isSpam ? 'spam' : 'not_spam';
   const isLowSignal = Boolean(semantics?.textQuality?.isLowSignal);
+  const feedbackBucket = label === 'spam' ? 'spam' : isLowSignal ? 'low_signal' : 'valid';
+  const finalLabel = pickFinalFeedbackLabel({
+    comment,
+    label,
+    isSpam: label === 'spam',
+    feedbackBucket,
+    sentimentLabel: semantics.sentimentLabel,
+    semanticLabel: semantics.semanticLabel,
+    moderationLabels: Array.isArray(semantics.moderationLabels) ? semantics.moderationLabels : [],
+    semanticLabels: Array.isArray(semantics.semanticLabels) ? semantics.semanticLabels : [],
+    issueTags: Array.isArray(semantics.issueTags) ? semantics.issueTags : [],
+    reasons,
+    semanticReasons: Array.isArray(semantics.semanticReasons) ? semantics.semanticReasons : [],
+    textQualityLabel: semantics?.textQuality?.label,
+    sentimentConfidence: semantics?.confidence?.sentiment,
+    semanticConfidence: semantics?.confidence?.semantic,
+  });
   return {
     label,
     isSpam: label === 'spam',
-    feedbackBucket: label === 'spam' ? 'spam' : isLowSignal ? 'low_signal' : 'valid',
+    feedbackBucket,
+    finalLabel,
+    final_label: finalLabel,
     reasons,
     sentimentLabel: semantics.sentimentLabel,
     incidentLabel: semantics.incidentLabel,
