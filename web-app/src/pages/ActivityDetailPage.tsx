@@ -227,7 +227,6 @@ export function ActivityDetailPage() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const [timelineMilestones, setTimelineMilestones] = useState<TimelineMilestone[]>([]);
-  const [timelineIntegrationMessage, setTimelineIntegrationMessage] = useState<string | null>(null);
   const registrationPanelRef = useRef<HTMLDivElement | null>(null);
   const canRegister = profile?.role === 'volunteer';
   const recommendationItemIdFromQuery = useMemo(() => {
@@ -326,7 +325,12 @@ export function ActivityDetailPage() {
     if (!activity?.id) {
       setTimelineMilestones([]);
       setTimelineError(null);
-      setTimelineIntegrationMessage(null);
+      setTimelineLoading(false);
+      return;
+    }
+    if (!session?.access_token) {
+      setTimelineMilestones([]);
+      setTimelineError('No active session token.');
       setTimelineLoading(false);
       return;
     }
@@ -335,15 +339,12 @@ export function ActivityDetailPage() {
     setTimelineLoading(true);
     setTimelineError(null);
 
-    void listActivityTimeline(activity.id)
+    void listActivityTimeline(activity.id, session.access_token)
       .then((response) => {
         if (cancelled) {
           return;
         }
         setTimelineMilestones(response.milestones);
-        setTimelineIntegrationMessage(
-          response.integration.pendingServerIntegration ? response.integration.message : null
-        );
       })
       .catch((timelineLoadError) => {
         if (!cancelled) {
@@ -362,7 +363,7 @@ export function ActivityDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [activity?.id]);
+  }, [activity?.id, session?.access_token]);
 
   useEffect(() => {
     if (!guestIntent) {
@@ -586,11 +587,8 @@ export function ActivityDetailPage() {
                     <h2>Event Timeline</h2>
                     <Badge tone="info">Read Only</Badge>
                   </div>
-                  {timelineIntegrationMessage ? (
-                    <small className="activity-detail-timeline-note">{timelineIntegrationMessage}</small>
-                  ) : null}
                   <EventTimelineReadOnly
-                    emptyDescription="Timeline milestones will appear here when the organizer adds them."
+                    emptyDescription="No timeline milestones available yet."
                     milestones={timelineMilestones}
                     loading={timelineLoading}
                     error={timelineError}

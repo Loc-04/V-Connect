@@ -15,7 +15,7 @@ import './AdminFeedbackPage.css';
 type PeriodFilter = '30' | '90' | 'all';
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5';
 type FeedbackSentiment = 'positive' | 'neutral' | 'negative';
-type FinalFeedbackLabel = 'Neu' | 'Pos' | 'Neg' | 'Spam';
+type FinalFeedbackLabel = 'Neutral' | 'Positive' | 'Negative' | 'Incident' | 'Spam';
 type SpamLabel = 'spam' | 'not_spam';
 type ManualSpamLabel = 'spam' | 'not_spam' | 'auto';
 type SemanticLabel = 'incident' | 'positive' | 'negative' | 'neutral' | 'low_signal';
@@ -323,10 +323,10 @@ function normalizeSemanticReasons(rawValue: string[] | string | null | undefined
 }
 
 
-function normalizeFinalLabel(rawValue: string | null | undefined): FinalFeedbackLabel {
+function normalizeFinalLabel(rawValue: string | null | undefined): FinalFeedbackLabel | null {
   const normalized = String(rawValue ?? '').trim().toLowerCase();
   if (!normalized) {
-    return 'Neu';
+    return null;
   }
 
   if (
@@ -348,7 +348,7 @@ function normalizeFinalLabel(rawValue: string | null | undefined): FinalFeedback
     normalized.includes('satisfied') ||
     normalized.includes('compliment')
   ) {
-    return 'Pos';
+    return 'Positive';
   }
 
   if (
@@ -360,82 +360,23 @@ function normalizeFinalLabel(rawValue: string | null | undefined): FinalFeedback
     normalized.includes('dissatisfied') ||
     normalized.includes('problem')
   ) {
-    return 'Neg';
+    return 'Negative';
   }
 
-  return 'Neu';
+  if (normalized === 'incident' || normalized.includes('safety') || normalized.includes('unsafe')) {
+    return 'Incident';
+  }
+
+  if (normalized === 'neu' || normalized === 'neutral') {
+    return 'Neutral';
+  }
+
+  return null;
 }
 
 const spamSignalPattern = /\b(spam|abusive|irrelevant|duplicate|meaningless|toxic|scam|ads?)\b/i;
-const urlOrShortLinkPattern = /(https?:\/\/|www\.|bit\.ly|t\.me|discord\.gg|tinyurl\.com)/i;
-const onlyNumberSymbolPattern = /^[\d\s\W_]+$/;
-const repeatedSingleCharPattern = /^(.)(\1{4,})$/;
-const repeatedDigitGroupPattern = /^(\d{1,3})\1{2,}$/;
-const randomKeyboardPattern = /(asdf|qwer|qweqwe|zxcv|zxczxc|hjkl)/i;
 const positiveKeywordPattern = /\b(positive|good|great|satisfied|compliment|helpful|thank|love|excellent)\b/i;
 const negativeKeywordPattern = /\b(negative|bad|problem|issue|complaint|disappointed|poor|late|confusing)\b/i;
-const testDataPattern = /\b(test|testing|sample|demo|dummy)\b/i;
-
-function tokenizeForContentCheck(comment: string): string[] {
-  return comment.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-}
-
-function isInvalidFeedbackContent(comment: string | null | undefined): boolean {
-  const normalized = String(comment ?? '').trim().toLowerCase();
-  if (!normalized) {
-    return true;
-  }
-
-  const compact = normalized.replace(/\s+/g, '');
-  const tokens = tokenizeForContentCheck(normalized);
-  const meaningfulAlphaTokens = tokens.filter(
-    (token) =>
-      /[a-z]/.test(token) && token.length >= 3 && !['test', 'testing', 'sample', 'demo', 'dummy'].includes(token)
-  );
-
-  if (urlOrShortLinkPattern.test(normalized)) {
-    const nonLinkTokens = tokens.filter(
-      (token) => !/^(https?|www|bit|ly|t|me|discord|gg|tinyurl|com|net|org)$/.test(token)
-    );
-    if (nonLinkTokens.length === 0 || testDataPattern.test(normalized)) {
-      return true;
-    }
-  }
-
-  if (onlyNumberSymbolPattern.test(normalized)) {
-    return true;
-  }
-
-  if (compact && repeatedSingleCharPattern.test(compact)) {
-    return true;
-  }
-
-  const digitsOnly = compact.replace(/[^\d]/g, '');
-  if (digitsOnly.length >= 6 && repeatedDigitGroupPattern.test(digitsOnly)) {
-    return true;
-  }
-
-  if (randomKeyboardPattern.test(compact)) {
-    return true;
-  }
-
-  if (testDataPattern.test(normalized) && meaningfulAlphaTokens.length === 0) {
-    return true;
-  }
-
-  if (compact.length <= 2 && compact !== 'ok') {
-    return true;
-  }
-
-  if (tokens.length > 0 && meaningfulAlphaTokens.length === 0) {
-    const hasOnlyDigitsOrNoise = tokens.every((token) => /^\d+$/.test(token) || token.length <= 2);
-    if (hasOnlyDigitsOrNoise) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 function hasSpamSignalInList(values: string[] | null | undefined): boolean {
   if (!Array.isArray(values)) {
@@ -445,7 +386,6 @@ function hasSpamSignalInList(values: string[] | null | undefined): boolean {
 }
 
 function isSpamFeedback(item: {
-  comment: string | null;
   aiLabel: SpamLabel;
   isSpam: boolean;
   feedbackBucket: FeedbackBucket;
@@ -458,20 +398,12 @@ function isSpamFeedback(item: {
   aiTextQualityLabel?: string | null;
   aiTextQualityIsLowSignal?: boolean;
 }): boolean {
-  if (isInvalidFeedbackContent(item.comment)) {
-    return true;
-  }
-
   const normalizedFromPayload = normalizeFinalLabel(item.finalLabelRaw);
   if (normalizedFromPayload === 'Spam') {
     return true;
   }
 
   if (item.aiLabel === 'spam' || item.isSpam || item.feedbackBucket === 'spam') {
-    return true;
-  }
-
-  if (item.aiTextQualityIsLowSignal === true || item.aiTextQualityLabel === 'low_signal' || item.aiTextQualityLabel === 'uninformative') {
     return true;
   }
 
@@ -488,13 +420,14 @@ function isSpamFeedback(item: {
 }
 
 function pickDisplayFeedbackLabel(item: {
-  comment: string | null;
+  comment?: string | null;
   aiLabel: SpamLabel;
   isSpam: boolean;
   feedbackBucket: FeedbackBucket;
   sentiment: FeedbackSentiment | null;
   aiSentimentLabel: FeedbackSentiment | null;
   aiSemanticLabel: SemanticLabel | null;
+  aiIncidentLabel: IncidentLabel | null;
   finalLabelRaw?: string | null;
   aiIssueTags?: string[] | null;
   aiSpamReasons?: string[] | null;
@@ -508,11 +441,18 @@ function pickDisplayFeedbackLabel(item: {
     semantic: number;
   } | null;
 }): FinalFeedbackLabel {
+  const normalizedFromPayload = normalizeFinalLabel(item.finalLabelRaw);
+  if (normalizedFromPayload) {
+    return normalizedFromPayload;
+  }
+
   if (isSpamFeedback(item)) {
     return 'Spam';
   }
 
-  const normalizedFromPayload = normalizeFinalLabel(item.finalLabelRaw);
+  if (item.aiIncidentLabel === 'incident' || item.aiSemanticLabel === 'incident') {
+    return 'Incident';
+  }
 
   const signals = [item.sentiment, item.aiSentimentLabel, item.aiSemanticLabel]
     .map((value) => String(value ?? '').trim().toLowerCase())
@@ -530,16 +470,6 @@ function pickDisplayFeedbackLabel(item: {
 
   const merged = [...signals, ...extraSignals];
 
-  if (
-    merged.some((value) =>
-      ['spam', 'abusive', 'irrelevant', 'duplicate', 'meaningless', 'toxic'].some(
-        (token) => value === token || value.includes(token)
-      )
-    )
-  ) {
-    return 'Spam';
-  }
-
   const hasPositive = merged.some((value) => positiveKeywordPattern.test(value) || value === 'positive' || value === 'pos');
   const hasNegative = merged.some((value) => negativeKeywordPattern.test(value) || value === 'negative' || value === 'neg');
 
@@ -550,25 +480,21 @@ function pickDisplayFeedbackLabel(item: {
 
   if (hasPositive && hasNegative) {
     if (positiveScore > negativeScore) {
-      return 'Pos';
+      return 'Positive';
     }
     if (negativeScore > positiveScore) {
-      return 'Neg';
+      return 'Negative';
     }
-    return 'Neu';
+    return 'Neutral';
   }
   if (hasPositive) {
-    return 'Pos';
+    return 'Positive';
   }
   if (hasNegative) {
-    return 'Neg';
+    return 'Negative';
   }
 
-  if (normalizedFromPayload === 'Pos' || normalizedFromPayload === 'Neg') {
-    return normalizedFromPayload;
-  }
-
-  return 'Neu';
+  return 'Neutral';
 }
 
 
@@ -725,6 +651,7 @@ function buildFeedbackItems(feedbacks: FeedbackRecord[], participations: Partici
         sentiment: resolvedSentiment,
         aiSentimentLabel,
         aiSemanticLabel,
+        aiIncidentLabel,
         finalLabelRaw: feedback.finalLabel ?? feedback.final_label ?? null,
         aiIssueTags,
         aiSpamReasons,
@@ -1449,6 +1376,7 @@ export function AdminFeedbackPage() {
         sentiment: nextResolvedSentiment,
         aiSentimentLabel: nextSentimentLabel,
         aiSemanticLabel: nextSemanticLabel,
+        aiIncidentLabel: nextIncidentLabel,
         finalLabelRaw: updated.finalLabel ?? updated.final_label ?? null,
         aiIssueTags: nextIssueTags,
         aiSpamReasons: nextReasons,
@@ -1756,9 +1684,10 @@ export function AdminFeedbackPage() {
             >
               <option value="all">All Labels</option>
               <option value="Spam">Spam</option>
-              <option value="Pos">Pos</option>
-              <option value="Neg">Neg</option>
-              <option value="Neu">Neu</option>
+              <option value="Positive">Positive</option>
+              <option value="Negative">Negative</option>
+              <option value="Neutral">Neutral</option>
+              <option value="Incident">Incident</option>
             </Select>
           </div>
         )}

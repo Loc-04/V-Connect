@@ -1,9 +1,10 @@
 import { classifyFeedbackSpam } from './feedback.spam.js';
 
 const FINAL_FEEDBACK_LABELS = Object.freeze({
-  NEU: 'Neu',
-  POS: 'Pos',
-  NEG: 'Neg',
+  NEUTRAL: 'Neutral',
+  POSITIVE: 'Positive',
+  NEGATIVE: 'Negative',
+  INCIDENT: 'Incident',
   SPAM: 'Spam',
 });
 
@@ -53,6 +54,7 @@ function pickFinalFeedbackLabel(input = {}) {
   const sentimentLabel = normalizeText(input.sentimentLabel);
   const semanticLabel = normalizeText(input.semanticLabel);
   const textQualityLabel = normalizeText(input.textQualityLabel);
+  const incidentLabel = normalizeText(input.incidentLabel);
 
   const moderationLabels = collectStrings(input.moderationLabels);
   const semanticLabels = collectStrings(input.semanticLabels);
@@ -84,6 +86,14 @@ function pickFinalFeedbackLabel(input = {}) {
     return FINAL_FEEDBACK_LABELS.SPAM;
   }
 
+  const hasIncidentSignal =
+    incidentLabel === 'incident' ||
+    semanticLabel === 'incident' ||
+    mergedSignals.some((value) => hasToken(value, ['incident', 'safety', 'unsafe', 'injury', 'hazard', 'violence']));
+  if (hasIncidentSignal) {
+    return FINAL_FEEDBACK_LABELS.INCIDENT;
+  }
+
   if (mergedSignals.some((value) => hasToken(value, neutralTokens))) {
     const hasPositiveSignal =
       sentimentLabel === 'positive' || semanticLabel === 'positive' || mergedSignals.some((value) => hasToken(value, positiveTokens));
@@ -91,7 +101,7 @@ function pickFinalFeedbackLabel(input = {}) {
       sentimentLabel === 'negative' || semanticLabel === 'negative' || mergedSignals.some((value) => hasToken(value, negativeTokens));
 
     if (!hasPositiveSignal && !hasNegativeSignal) {
-      return FINAL_FEEDBACK_LABELS.NEU;
+      return FINAL_FEEDBACK_LABELS.NEUTRAL;
     }
   }
 
@@ -112,37 +122,40 @@ function pickFinalFeedbackLabel(input = {}) {
 
   if (hasPositiveSignal && hasNegativeSignal) {
     if (positiveScore > negativeScore) {
-      return FINAL_FEEDBACK_LABELS.POS;
+      return FINAL_FEEDBACK_LABELS.POSITIVE;
     }
     if (negativeScore > positiveScore) {
-      return FINAL_FEEDBACK_LABELS.NEG;
+      return FINAL_FEEDBACK_LABELS.NEGATIVE;
     }
-    return FINAL_FEEDBACK_LABELS.NEU;
+    return FINAL_FEEDBACK_LABELS.NEUTRAL;
   }
 
   if (hasPositiveSignal) {
-    return FINAL_FEEDBACK_LABELS.POS;
+    return FINAL_FEEDBACK_LABELS.POSITIVE;
   }
 
   if (hasNegativeSignal) {
-    return FINAL_FEEDBACK_LABELS.NEG;
+    return FINAL_FEEDBACK_LABELS.NEGATIVE;
   }
 
-  return FINAL_FEEDBACK_LABELS.NEU;
+  return FINAL_FEEDBACK_LABELS.NEUTRAL;
 }
 
 function normalizeFeedbackLabel(input) {
   const normalized = normalizeText(input);
   if (normalized === 'pos' || normalized === 'positive') {
-    return FINAL_FEEDBACK_LABELS.POS;
+    return FINAL_FEEDBACK_LABELS.POSITIVE;
   }
   if (normalized === 'neg' || normalized === 'negative') {
-    return FINAL_FEEDBACK_LABELS.NEG;
+    return FINAL_FEEDBACK_LABELS.NEGATIVE;
+  }
+  if (normalized === 'incident') {
+    return FINAL_FEEDBACK_LABELS.INCIDENT;
   }
   if (normalized === 'spam') {
     return FINAL_FEEDBACK_LABELS.SPAM;
   }
-  return FINAL_FEEDBACK_LABELS.NEU;
+  return FINAL_FEEDBACK_LABELS.NEUTRAL;
 }
 
 export { FINAL_FEEDBACK_LABELS, normalizeFeedbackLabel, pickFinalFeedbackLabel };

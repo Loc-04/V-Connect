@@ -7,8 +7,6 @@ function toLabel(status: TimelineMilestoneStatus) {
       return 'In Progress';
     case 'completed':
       return 'Completed';
-    case 'delayed':
-      return 'Delayed';
     case 'cancelled':
       return 'Cancelled';
     case 'upcoming':
@@ -21,7 +19,6 @@ function toTone(status: TimelineMilestoneStatus) {
   switch (status) {
     case 'completed':
       return 'success' as const;
-    case 'delayed':
     case 'cancelled':
       return 'danger' as const;
     case 'in_progress':

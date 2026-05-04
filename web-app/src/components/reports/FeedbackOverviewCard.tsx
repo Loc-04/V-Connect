@@ -1,16 +1,28 @@
-﻿import { ChevronRight, Star } from 'lucide-react';
+import { ChevronRight, Star } from 'lucide-react';
 import type { KeyboardEvent } from 'react';
 
-import { EmptyLoadingErrorState, ReviewStatusTag } from '../feedback';
 import { Card } from '../ui';
+import { ReviewStatusTag } from '../feedback';
 
-interface FeedbackOverviewCardProps {
-  rating: number | null;
-  totalFeedbackCount: number;
+interface FeedbackSentimentItem {
+  label: 'Positive' | 'Neutral' | 'Negative';
+  count: number;
+}
+
+interface FeedbackOverviewModel {
+  mode: 'no-feedback' | 'no-valid-feedback' | 'has-valid-feedback';
+  title: string;
+  description: string;
   validFeedbackCount: number;
   spamFeedbackCount: number;
+  averageRating: number | null;
   quote?: string;
-  sentiments: Array<{ label: 'Pos' | 'Neu' | 'Neg' | 'Spam'; count: number }>;
+  sentiments: FeedbackSentimentItem[];
+  showSpamNote: boolean;
+}
+
+interface FeedbackOverviewCardProps {
+  overview: FeedbackOverviewModel;
   onClick?: () => void;
   ariaLabel?: string;
 }
@@ -26,21 +38,10 @@ function handleKeyDown(event: KeyboardEvent<HTMLElement>, onClick?: () => void) 
   }
 }
 
-export function FeedbackOverviewCard({
-  rating,
-  totalFeedbackCount,
-  validFeedbackCount,
-  spamFeedbackCount,
-  quote,
-  sentiments,
-  onClick,
-  ariaLabel,
-}: FeedbackOverviewCardProps) {
+export function FeedbackOverviewCard({ overview, onClick, ariaLabel }: FeedbackOverviewCardProps) {
   const interactive = Boolean(onClick);
-  const hasAnyFeedback = totalFeedbackCount > 0;
-  const hasRatedFeedback = validFeedbackCount > 0 && rating !== null;
-  const isSpamOnly = hasAnyFeedback && validFeedbackCount === 0 && spamFeedbackCount > 0;
-  const safeRating = rating ?? 0;
+  const hasValidFeedback = overview.mode === 'has-valid-feedback' && overview.averageRating !== null;
+  const safeRating = overview.averageRating ?? 0;
 
   return (
     <Card
@@ -59,69 +60,67 @@ export function FeedbackOverviewCard({
         {interactive ? <ChevronRight className="org-report-feedback-link-icon" size={16} /> : null}
       </div>
 
-      {!hasAnyFeedback ? (
-        <EmptyLoadingErrorState description="Feedback metrics appear after first submission." state="empty" title="No feedback yet" />
-      ) : (
+      {hasValidFeedback ? (
         <>
-          {hasRatedFeedback ? (
-            <div className="org-report-feedback-top">
-              <div className="org-report-rating-box">
-                <strong>{safeRating.toFixed(1)}</strong>
-                <span>Rating</span>
-              </div>
-
-              <div className="org-report-feedback-copy">
-                <div className="org-report-stars" aria-label={`${safeRating.toFixed(1)} out of 5 stars`}>
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Star className="org-report-star" fill="currentColor" key={index} size={16} />
-                  ))}
-                </div>
-                {quote ? <blockquote>{`"${quote}"`}</blockquote> : null}
-              </div>
+          <div className="org-report-feedback-top">
+            <div className="org-report-rating-box">
+              <strong>{safeRating.toFixed(1)}</strong>
+              <span>Rating</span>
             </div>
-          ) : (
-            <div className="org-report-feedback-empty-rating">
-              <div className="org-report-rating-box">
-                <strong>—</strong>
-                <span>No Valid Rating</span>
-              </div>
-              <p className="muted">
-                {isSpamOnly
-                  ? `${spamFeedbackCount} submission${spamFeedbackCount === 1 ? '' : 's'} flagged as spam.`
-                  : 'No valid rating yet.'}
-              </p>
-            </div>
-          )}
 
-          <div
-            className={isSpamOnly ? 'org-report-feedback-stats-row is-compact' : 'org-report-feedback-stats-row'}
-            aria-label="Feedback counts"
-          >
-            {!isSpamOnly ? (
+            <div className="org-report-feedback-copy">
+              <div className="org-report-stars" aria-label={`${safeRating.toFixed(1)} out of 5 stars`}>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Star className="org-report-star" fill="currentColor" key={index} size={16} />
+                ))}
+              </div>
+              {overview.quote ? <blockquote>{`"${overview.quote}"`}</blockquote> : null}
+            </div>
+          </div>
+
+          <div className="org-report-feedback-stats-row" aria-label="Feedback counts">
+            <div className="org-report-feedback-stat">
+              <span>Valid feedback</span>
+              <strong>{overview.validFeedbackCount}</strong>
+            </div>
+            {overview.spamFeedbackCount > 0 ? (
               <div className="org-report-feedback-stat">
-                <span>Total</span>
-                <strong>{totalFeedbackCount}</strong>
+                <span>Spam</span>
+                <strong>{overview.spamFeedbackCount}</strong>
               </div>
             ) : null}
-            <div className="org-report-feedback-stat">
-              <span>Valid</span>
-              <strong>{validFeedbackCount}</strong>
-            </div>
-            <div className="org-report-feedback-stat">
-              <span>Spam</span>
-              <strong>{spamFeedbackCount}</strong>
-            </div>
           </div>
 
           <div className="org-report-sentiment-block">
             <h4>Sentiment Mix</h4>
             <div className="org-report-sentiment-list">
-              {sentiments.map((chip) => (
+              {overview.sentiments.map((chip) => (
                 <div className="org-report-sentiment-item" key={chip.label}>
                   <ReviewStatusTag className="org-report-sentiment-chip" status={chip.label} />
                   <span>{chip.count}</span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {overview.showSpamNote ? (
+            <p className="org-report-feedback-note">Spam feedback is excluded from rating and sentiment insights.</p>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <div className="org-report-feedback-state">
+            <strong>{overview.title}</strong>
+            <p className="muted">{overview.description}</p>
+          </div>
+          <div className="org-report-feedback-stats-row is-compact" aria-label="Feedback counts">
+            <div className="org-report-feedback-stat">
+              <span>Valid feedback</span>
+              <strong>{overview.validFeedbackCount}</strong>
+            </div>
+            <div className="org-report-feedback-stat">
+              <span>Spam</span>
+              <strong>{overview.spamFeedbackCount}</strong>
             </div>
           </div>
         </>

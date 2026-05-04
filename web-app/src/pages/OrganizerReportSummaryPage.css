@@ -11,7 +11,7 @@
 .org-report-activity-picker-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
@@ -111,6 +111,12 @@
   color: #0f172a;
   font-size: 1.22rem;
   line-height: 1.2;
+}
+
+.org-report-kpi-card small {
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .org-report-main-grid {
@@ -271,6 +277,11 @@
   font-size: 0.9rem;
 }
 
+.org-report-breakdown-helper {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
 .org-report-breakdown-track {
   width: 100%;
   height: 9px;
@@ -375,6 +386,20 @@
   font-style: italic;
 }
 
+.org-report-feedback-state {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.68rem 0.72rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.org-report-feedback-state strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
 .org-report-feedback-empty-rating {
   display: flex;
   align-items: center;
@@ -412,6 +437,12 @@
   color: #0f172a;
   font-size: 1rem;
   line-height: 1.2;
+}
+
+.org-report-feedback-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.74rem;
 }
 
 .org-report-sentiment-block {
@@ -547,6 +578,16 @@
   gap: 0.34rem;
 }
 
+.org-report-action-empty {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.org-report-action-empty strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
 .org-report-issue-action {
   margin-top: 0.1rem;
 }
@@ -634,6 +675,13 @@
     color: #475569;
     font-size: 0.8rem;
     font-weight: 600;
+  }
+
+  body.org-report-printing .org-report-print-meta .org-report-print-status {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.7rem;
+    color: #64748b;
   }
 
   body.org-report-printing .org-report-print-meta strong {

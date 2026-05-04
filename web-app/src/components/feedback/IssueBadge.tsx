@@ -13,12 +13,12 @@ interface IssueBadgeProps {
 
 function getPriorityLabel(priority: IssuePriority) {
   if (priority === 'high') {
-    return 'High Priority';
+    return 'High';
   }
   if (priority === 'medium') {
-    return 'Medium Priority';
+    return 'Medium';
   }
-  return 'Low Priority';
+  return 'Low';
 }
 
 export function IssueBadge({ priority, state, label, className = '' }: IssueBadgeProps) {

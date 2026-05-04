@@ -10,9 +10,10 @@ export interface ReportMiniMetric {
 
 export interface ReportParticipationBreakdownItem {
   label: string;
-  value: number;
+  value: number | string;
   progress: number;
   tone: ReportBarTone;
+  helper?: string;
 }
 
 export interface ReportSentimentChip {
@@ -41,6 +42,17 @@ export interface ReportIssueTagHighlight {
   priority: ReportIssuePriority;
 }
 
+export interface ReportParticipationStats {
+  registeredCount: number;
+  checkedInCount: number;
+  pendingApprovalCount: number;
+  approvedCount: number;
+  totalParticipations: number;
+  capacity: number | null;
+  completionRatePercent: number;
+  capacityFilledPercent: number | null;
+}
+
 export interface OrganizerReportSummaryData {
   liveLabel: string;
   activityTitle: string;
@@ -60,10 +72,12 @@ export interface OrganizerReportSummaryData {
   strengths?: string[];
   weaknesses?: string[];
   issueHighlights?: ReportIssueTagHighlight[];
+  participationStats?: ReportParticipationStats;
   feedbackStats?: {
     totalCount: number;
     validCount: number;
     spamCount: number;
+    lowSignalCount?: number;
     averageRating: number | null;
   };
   modelVersion?: string;

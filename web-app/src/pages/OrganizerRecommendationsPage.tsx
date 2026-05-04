@@ -90,6 +90,27 @@ function humanizeReasonCode(code: string) {
   return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
 }
 
+function getDisplayExplanation(volunteer: RecommendedVolunteerRecord) {
+  const display = String(volunteer.display_explanation ?? '').trim();
+  if (display) {
+    return display;
+  }
+  return String(volunteer.explanation ?? '').trim() || 'Recommended from profile and activity matching signals.';
+}
+
+function getDisplayReasons(volunteer: RecommendedVolunteerRecord) {
+  const fromDisplay = Array.isArray(volunteer.display_reasons)
+    ? volunteer.display_reasons.map((reason) => String(reason ?? '').trim()).filter((reason) => reason.length > 0)
+    : [];
+  if (fromDisplay.length > 0) {
+    return fromDisplay.slice(0, 3);
+  }
+  if (Array.isArray(volunteer.reason_codes) && volunteer.reason_codes.length > 0) {
+    return volunteer.reason_codes.map((code) => humanizeReasonCode(code)).slice(0, 3);
+  }
+  return Array.isArray(volunteer.reasons) ? volunteer.reasons.slice(0, 3) : [];
+}
+
 function normalizeAssignmentStatus(value: string | null | undefined) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -528,7 +549,7 @@ export function OrganizerRecommendationsPage() {
                           )}
                           <div>
                             <strong>{volunteer.fullName}</strong>
-                            <small>{volunteer.explanation}</small>
+                            <small>{getDisplayExplanation(volunteer)}</small>
                           </div>
                         </div>
                       </td>
@@ -639,64 +660,15 @@ export function OrganizerRecommendationsPage() {
 
                 <div className="org-reco-insight">
                   <h4>Why this volunteer</h4>
-                  <p>{selectedVolunteer.explanation}</p>
+                  <p>{getDisplayExplanation(selectedVolunteer)}</p>
                   <div className="org-reco-badge-list">
-                    {Array.isArray(selectedVolunteer.reason_codes) && selectedVolunteer.reason_codes.length > 0
-                      ? selectedVolunteer.reason_codes.map((code) => (
-                          <Badge className="org-reco-mini-badge" key={code} tone="accent">
-                            {humanizeReasonCode(code)}
-                          </Badge>
-                        ))
-                      : selectedVolunteer.reasons.map((reason) => (
+                    {getDisplayReasons(selectedVolunteer).map((reason) => (
                           <Badge className="org-reco-mini-badge" key={reason} tone="accent">
                             {reason}
                           </Badge>
                         ))}
                   </div>
                 </div>
-
-                {selectedVolunteer.score_breakdown && (
-                  <div className="org-reco-note">
-                    <h4>Score Breakdown</h4>
-                    <p>
-                      <strong>Skills:</strong> {Math.round(selectedVolunteer.score_breakdown.skill_score)}
-                    </p>
-                    <p>
-                      <strong>Interests:</strong> {Math.round(selectedVolunteer.score_breakdown.interest_score)}
-                    </p>
-                    <p>
-                      <strong>Availability:</strong> {Math.round(selectedVolunteer.score_breakdown.availability_score)}
-                    </p>
-                    <p>
-                      <strong>Experience:</strong> {Math.round(selectedVolunteer.score_breakdown.experience_score)}
-                    </p>
-                    <p>
-                      <strong>History:</strong> {Math.round(selectedVolunteer.score_breakdown.history_score)}
-                    </p>
-                    <p>
-                      <strong>Total:</strong> {Math.round(selectedVolunteer.score_breakdown.final_score)}
-                    </p>
-                  </div>
-                )}
-
-                {Array.isArray(selectedVolunteer.feature_contributions) &&
-                  selectedVolunteer.feature_contributions.length > 0 && (
-                    <div className="org-reco-note">
-                      <h4>Feature Contributions</h4>
-                      {selectedVolunteer.feature_contributions.map((item) => (
-                        <p key={`${selectedVolunteer.userId}-${item.feature}`}>
-                          <strong>{item.feature}:</strong> {Math.round(item.score)}/{Math.round(item.max_score)} - {item.detail}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-
-                {selectedVolunteer.model_version && (
-                  <div className="org-reco-note">
-                    <h4>Scoring Model</h4>
-                    <p>{selectedVolunteer.model_version}</p>
-                  </div>
-                )}
 
                 <div className="org-reco-note">
                   <h4>Skills & Interests</h4>

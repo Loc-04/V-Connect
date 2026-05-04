@@ -2,13 +2,14 @@ import { AlertCircle, ArrowDown, ArrowUp, PencilLine, PlusCircle, Save, Trash2 }
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createTimelineMilestone, deleteTimelineMilestone, listActivityTimeline, moveTimelineMilestone, updateTimelineMilestone, updateTimelineMilestoneStatus } from '../../lib/timeline';
+import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../../lib/timelineValidation';
 import type { TimelineIntegrationMeta, TimelineMilestone, TimelineMilestoneDraft, TimelineMilestoneStatus, TimelineMilestoneType } from '../../types/timeline';
 import { Badge, Button, Card, Input, Select } from '../ui';
 import { TimelineStatusBadge } from './TimelineStatusBadge';
 
-const statusOptions: TimelineMilestoneStatus[] = ['upcoming', 'in_progress', 'completed', 'delayed', 'cancelled'];
-const typeOptions: TimelineMilestoneType[] = ['check_in', 'opening', 'session', 'break', 'closing', 'wrap_up', 'custom'];
+const statusOptions: TimelineMilestoneStatus[] = ['upcoming', 'in_progress', 'completed', 'cancelled'];
+const typeOptions: TimelineMilestoneType[] = ['opening', 'session', 'break', 'closing', 'other'];
 
 function formatTypeLabel(type: TimelineMilestoneType) {
   return type
@@ -80,6 +81,7 @@ function getInlineFieldError(issueMessages: string[], targetText: string) {
 }
 
 interface EventTimelineEditorProps {
+  accessToken?: string;
   activityId: string;
   activityTitle: string;
   activityStartTime?: string | null;
@@ -87,6 +89,7 @@ interface EventTimelineEditorProps {
 }
 
 export function EventTimelineEditor({
+  accessToken,
   activityId,
   activityTitle,
   activityStartTime = null,
@@ -117,21 +120,27 @@ export function EventTimelineEditor({
       setError('Select an activity to manage timeline.');
       return;
     }
+    if (!accessToken) {
+      setMilestones([]);
+      setLoading(false);
+      setError('No active session token.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
     setNotice(null);
 
     try {
-      const result = await listActivityTimeline(activityId);
-      setMilestones(result.milestones);
+      const result = await listActivityTimeline(activityId, accessToken);
+      setMilestones(result.milestones.map((item, index) => normalizeTimelineItem(item, activityId, index)));
       setIntegrationMeta(result.integration);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load timeline.');
     } finally {
       setLoading(false);
     }
-  }, [activityId]);
+  }, [accessToken, activityId]);
 
   useEffect(() => {
     void loadTimeline();
@@ -173,15 +182,16 @@ export function EventTimelineEditor({
   };
 
   const handleEditMilestone = (milestone: TimelineMilestone) => {
+    const normalized = normalizeTimelineItem(milestone, activityId, milestone.orderIndex);
     setEditingMilestoneId(milestone.id);
     setFormDraft({
-      id: milestone.id,
-      title: milestone.title,
-      description: milestone.description,
-      startTime: milestone.startTime,
-      endTime: milestone.endTime,
-      type: milestone.type,
-      status: milestone.status,
+      id: normalized.id,
+      title: normalized.title,
+      description: normalized.description,
+      startTime: normalized.startTime,
+      endTime: normalized.endTime,
+      type: normalized.type,
+      status: normalized.status,
     });
     setFormErrorMessages([]);
     setNotice(null);
@@ -211,13 +221,13 @@ export function EventTimelineEditor({
 
     try {
       if (editingMilestoneId) {
-        const result = await updateTimelineMilestone(activityId, editingMilestoneId, payload);
+        const result = await updateTimelineMilestone(activityId, editingMilestoneId, payload, accessToken);
         setMilestones(result.milestones);
-        setNotice('Milestone updated in frontend session.');
+        setNotice('Milestone updated.');
       } else {
-        const result = await createTimelineMilestone(activityId, payload);
+        const result = await createTimelineMilestone(activityId, payload, accessToken);
         setMilestones(result.milestones);
-        setNotice('Milestone added in frontend session.');
+        setNotice('Milestone added.');
       }
       resetForm();
     } catch (saveError) {
@@ -233,9 +243,9 @@ export function EventTimelineEditor({
 
     setBusyMilestoneId(milestoneId);
     try {
-      const result = await deleteTimelineMilestone(activityId, milestoneId);
+      const result = await deleteTimelineMilestone(activityId, milestoneId, accessToken);
       setMilestones(result.milestones);
-      setNotice('Milestone removed from frontend session.');
+      setNotice('Milestone removed.');
       if (editingMilestoneId === milestoneId) {
         resetForm();
       }
@@ -249,7 +259,7 @@ export function EventTimelineEditor({
   const handleMoveMilestone = async (milestoneId: string, direction: 'up' | 'down') => {
     setBusyMilestoneId(milestoneId);
     try {
-      const result = await moveTimelineMilestone(activityId, milestoneId, direction);
+      const result = await moveTimelineMilestone(activityId, milestoneId, direction, accessToken);
       setMilestones(result.milestones);
       setNotice(`Milestone moved ${direction}.`);
     } catch (moveError) {
@@ -262,9 +272,9 @@ export function EventTimelineEditor({
   const handleUpdateMilestoneStatus = async (milestoneId: string, status: TimelineMilestoneStatus) => {
     setBusyMilestoneId(milestoneId);
     try {
-      const result = await updateTimelineMilestoneStatus(activityId, milestoneId, status);
+      const result = await updateTimelineMilestoneStatus(activityId, milestoneId, status, accessToken);
       setMilestones(result.milestones);
-      setNotice('Milestone status updated in frontend session.');
+      setNotice('Milestone status updated.');
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : 'Failed to update milestone status.');
     } finally {
@@ -408,7 +418,7 @@ export function EventTimelineEditor({
             <article className={`timeline-editor-item ${milestone.status === 'in_progress' ? 'is-current' : ''}`} key={milestone.id}>
               <div className="timeline-item-top">
                 <div>
-                  <p className="timeline-item-title">{milestone.title}</p>
+              <p className="timeline-item-title">{safeText(milestone.title, 'Untitled milestone')}</p>
                   <small className="timeline-item-time">{formatRange(milestone.startTime, milestone.endTime)}</small>
                 </div>
                 <TimelineStatusBadge status={milestone.status} />
@@ -418,7 +428,9 @@ export function EventTimelineEditor({
                 <Badge tone="neutral">{formatTypeLabel(milestone.type)}</Badge>
               </div>
 
-              {milestone.description ? <p className="timeline-item-description">{milestone.description}</p> : null}
+              {safeText(milestone.description) ? (
+                <p className="timeline-item-description">{safeText(milestone.description)}</p>
+              ) : null}
 
               <div className="timeline-item-controls">
                 <div className="timeline-item-order-controls">

@@ -39,6 +39,9 @@ export interface RecommendedActivityRecord {
   model_version?: string | null;
   provider?: string | null;
   model_kind?: string | null;
+  display_explanation?: string | null;
+  display_reasons?: string[] | null;
+  ai_badge_label?: string | null;
   feature_snapshot?: Record<string, unknown> | null;
   prediction_snapshot?: Record<string, unknown> | null;
 }
@@ -63,6 +66,9 @@ export interface RecommendedVolunteerRecord {
   model_version?: string | null;
   provider?: string | null;
   model_kind?: string | null;
+  display_explanation?: string | null;
+  display_reasons?: string[] | null;
+  ai_badge_label?: string | null;
   feature_snapshot?: Record<string, unknown> | null;
   prediction_snapshot?: Record<string, unknown> | null;
 }

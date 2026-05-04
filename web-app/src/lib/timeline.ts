@@ -1,4 +1,5 @@
-import { sortTimelineByTime } from './timelineValidation';
+import { apiRequest } from './api';
+import { normalizeTimelineItem, normalizeTimelineItems } from './timelineNormalization';
 import type {
   TimelineIntegrationMeta,
   TimelineMilestone,
@@ -6,68 +7,45 @@ import type {
   TimelineMilestoneStatus,
 } from '../types/timeline';
 
-const timelineStore = new Map<string, TimelineMilestone[]>();
-
 const integrationMeta: TimelineIntegrationMeta = {
-  mode: 'local_only',
-  pendingServerIntegration: true,
-  message: 'Timeline data is currently stored in frontend session only. Backend integration is pending.',
+  mode: 'server',
+  pendingServerIntegration: false,
+  message: '',
 };
 
-function cloneMilestone(item: TimelineMilestone): TimelineMilestone {
-  return { ...item };
+interface TimelineListResponse {
+  timeline?: unknown;
 }
 
-function createTimelineId() {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
+interface TimelineMilestoneResponse {
+  milestone?: unknown;
+}
+
+function assertAccessToken(accessToken?: string): asserts accessToken is string {
+  if (!accessToken) {
+    throw new Error('No active session token.');
   }
-  return `timeline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function normalizeMilestone(activityId: string, draft: TimelineMilestoneDraft, orderIndex: number): TimelineMilestone {
-  const now = new Date().toISOString();
+function toTimelinePayload(draft: TimelineMilestoneDraft, orderIndex?: number) {
   return {
-    id: draft.id ?? createTimelineId(),
-    activityId,
-    title: draft.title.trim(),
-    description: draft.description.trim(),
+    id: draft.id,
+    title: draft.title,
+    description: draft.description,
+    timelineChoice: draft.startTime,
     startTime: draft.startTime,
     endTime: draft.endTime,
     orderIndex,
     type: draft.type,
     status: draft.status ?? 'upcoming',
-    createdAt: now,
-    updatedAt: now,
-    source: 'local_only',
   };
 }
 
-function normalizeTimeline(activityId: string, rows: Array<TimelineMilestone | TimelineMilestoneDraft>) {
-  const normalized = rows.map((row, index) => {
-    if ('activityId' in row) {
-      return {
-        ...row,
-        activityId,
-      };
-    }
-    return normalizeMilestone(activityId, row, index);
+async function fetchTimeline(activityId: string, accessToken: string) {
+  const response = await apiRequest<TimelineListResponse>(`/activities/${activityId}/timeline`, {
+    accessToken,
   });
-
-  const sorted = sortTimelineByTime(normalized);
-  return sorted.map((item, index) => ({
-    ...item,
-    orderIndex: index,
-  }));
-}
-
-function writeTimeline(activityId: string, rows: TimelineMilestone[]) {
-  timelineStore.set(activityId, normalizeTimeline(activityId, rows));
-}
-
-function readTimeline(activityId: string): TimelineMilestone[] {
-  const rows = timelineStore.get(activityId) ?? [];
-  return normalizeTimeline(activityId, rows).map(cloneMilestone);
+  return normalizeTimelineItems(response.timeline ?? [], activityId);
 }
 
 export function supportsTimelineServerIntegration() {
@@ -78,63 +56,100 @@ export function getTimelineIntegrationMeta(): TimelineIntegrationMeta {
   return { ...integrationMeta };
 }
 
-export async function listActivityTimeline(activityId: string): Promise<{
+export async function listActivityTimeline(
+  activityId: string,
+  accessToken?: string
+): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
+  assertAccessToken(accessToken);
   return {
-    milestones: readTimeline(activityId),
+    milestones: await fetchTimeline(activityId, accessToken),
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function replaceActivityTimeline(
   activityId: string,
-  drafts: TimelineMilestoneDraft[]
+  drafts: TimelineMilestoneDraft[],
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const next = normalizeTimeline(activityId, drafts);
-  writeTimeline(activityId, next);
+  assertAccessToken(accessToken);
+  const existing = await fetchTimeline(activityId, accessToken);
+
+  await Promise.all(
+    existing.map((item) =>
+      apiRequest<{ success: boolean }>(`/activities/${activityId}/timeline/${item.id}`, {
+        method: 'DELETE',
+        accessToken,
+      })
+    )
+  );
+
+  for (let index = 0; index < drafts.length; index += 1) {
+    await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
+      method: 'POST',
+      accessToken,
+      body: toTimelinePayload(drafts[index], index),
+    });
+  }
+
   return {
-    milestones: readTimeline(activityId),
+    milestones: await fetchTimeline(activityId, accessToken),
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function appendActivityTimeline(
   activityId: string,
-  drafts: TimelineMilestoneDraft[]
+  drafts: TimelineMilestoneDraft[],
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const current = readTimeline(activityId);
-  const seeded = drafts.map((draft, index) => normalizeMilestone(activityId, draft, current.length + index));
-  const merged = normalizeTimeline(activityId, [...current, ...seeded]);
-  writeTimeline(activityId, merged);
+  assertAccessToken(accessToken);
+  const current = await fetchTimeline(activityId, accessToken);
+
+  for (let index = 0; index < drafts.length; index += 1) {
+    await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
+      method: 'POST',
+      accessToken,
+      body: toTimelinePayload(drafts[index], current.length + index),
+    });
+  }
+
   return {
-    milestones: readTimeline(activityId),
+    milestones: await fetchTimeline(activityId, accessToken),
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function createTimelineMilestone(
   activityId: string,
-  draft: TimelineMilestoneDraft
+  draft: TimelineMilestoneDraft,
+  accessToken?: string
 ): Promise<{
   milestone: TimelineMilestone;
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const current = readTimeline(activityId);
-  const milestone = normalizeMilestone(activityId, draft, current.length);
-  const merged = normalizeTimeline(activityId, [...current, milestone]);
-  writeTimeline(activityId, merged);
+  assertAccessToken(accessToken);
+  const current = await fetchTimeline(activityId, accessToken);
+  const response = await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline`, {
+    method: 'POST',
+    accessToken,
+    body: toTimelinePayload(draft, current.length),
+  });
+  const milestone = normalizeTimelineItem(response.milestone ?? {}, activityId, current.length);
+  const milestones = await fetchTimeline(activityId, accessToken);
   return {
     milestone,
-    milestones: readTimeline(activityId),
+    milestones,
     integration: getTimelineIntegrationMeta(),
   };
 }
@@ -142,38 +157,28 @@ export async function createTimelineMilestone(
 export async function updateTimelineMilestone(
   activityId: string,
   milestoneId: string,
-  draft: TimelineMilestoneDraft
+  draft: TimelineMilestoneDraft,
+  accessToken?: string
 ): Promise<{
   milestone: TimelineMilestone | null;
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const current = readTimeline(activityId);
-  const now = new Date().toISOString();
-  let updatedMilestone: TimelineMilestone | null = null;
-  const updated = current.map((item) => {
-    if (item.id !== milestoneId) {
-      return item;
-    }
-
-    updatedMilestone = {
-      ...item,
-      title: draft.title.trim(),
-      description: draft.description.trim(),
-      startTime: draft.startTime,
-      endTime: draft.endTime,
-      type: draft.type,
-      status: draft.status ?? item.status,
-      updatedAt: now,
-    };
-
-    return updatedMilestone;
+  assertAccessToken(accessToken);
+  const currentMilestones = await fetchTimeline(activityId, accessToken);
+  const current = currentMilestones.find((item) => item.id === milestoneId);
+  const response = await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${milestoneId}`, {
+    method: 'PATCH',
+    accessToken,
+    body: toTimelinePayload(draft, draft.orderIndex ?? current?.orderIndex ?? 0),
   });
 
-  writeTimeline(activityId, updated);
+  const milestones = await fetchTimeline(activityId, accessToken);
+  const milestone = milestones.find((item) => item.id === milestoneId) ?? normalizeTimelineItem(response.milestone ?? null, activityId, 0);
+
   return {
-    milestone: updatedMilestone,
-    milestones: readTimeline(activityId),
+    milestone,
+    milestones,
     integration: getTimelineIntegrationMeta(),
   };
 }
@@ -181,46 +186,63 @@ export async function updateTimelineMilestone(
 export async function updateTimelineMilestoneStatus(
   activityId: string,
   milestoneId: string,
-  status: TimelineMilestoneStatus
+  status: TimelineMilestoneStatus,
+  accessToken?: string
 ): Promise<{
   milestone: TimelineMilestone | null;
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const current = readTimeline(activityId);
-  const now = new Date().toISOString();
-  let updatedMilestone: TimelineMilestone | null = null;
-  const updated = current.map((item) => {
-    if (item.id !== milestoneId) {
-      return item;
-    }
-    updatedMilestone = {
-      ...item,
-      status,
-      updatedAt: now,
+  assertAccessToken(accessToken);
+  const currentMilestones = await fetchTimeline(activityId, accessToken);
+  const current = currentMilestones.find((item) => item.id === milestoneId);
+  if (!current) {
+    return {
+      milestone: null,
+      milestones: currentMilestones,
+      integration: getTimelineIntegrationMeta(),
     };
-    return updatedMilestone;
+  }
+
+  await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${milestoneId}`, {
+    method: 'PATCH',
+    accessToken,
+    body: {
+      title: current.title,
+      description: current.description,
+      timelineChoice: current.startTime,
+      startTime: current.startTime,
+      endTime: current.endTime,
+      orderIndex: current.orderIndex,
+      type: current.type,
+      status,
+    },
   });
-  writeTimeline(activityId, updated);
+
+  const milestones = await fetchTimeline(activityId, accessToken);
+  const milestone = milestones.find((item) => item.id === milestoneId) ?? null;
   return {
-    milestone: updatedMilestone,
-    milestones: readTimeline(activityId),
+    milestone,
+    milestones,
     integration: getTimelineIntegrationMeta(),
   };
 }
 
 export async function deleteTimelineMilestone(
   activityId: string,
-  milestoneId: string
+  milestoneId: string,
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const current = readTimeline(activityId);
-  const filtered = current.filter((item) => item.id !== milestoneId);
-  writeTimeline(activityId, filtered);
+  assertAccessToken(accessToken);
+  await apiRequest<{ success: boolean }>(`/activities/${activityId}/timeline/${milestoneId}`, {
+    method: 'DELETE',
+    accessToken,
+  });
   return {
-    milestones: readTimeline(activityId),
+    milestones: await fetchTimeline(activityId, accessToken),
     integration: getTimelineIntegrationMeta(),
   };
 }
@@ -228,36 +250,55 @@ export async function deleteTimelineMilestone(
 export async function moveTimelineMilestone(
   activityId: string,
   milestoneId: string,
-  direction: 'up' | 'down'
+  direction: 'up' | 'down',
+  accessToken?: string
 ): Promise<{
   milestones: TimelineMilestone[];
   integration: TimelineIntegrationMeta;
 }> {
-  const current = readTimeline(activityId);
-  const currentIndex = current.findIndex((item) => item.id === milestoneId);
+  assertAccessToken(accessToken);
+  const milestones = await fetchTimeline(activityId, accessToken);
+  const currentIndex = milestones.findIndex((item) => item.id === milestoneId);
   if (currentIndex < 0) {
     return {
-      milestones: current,
+      milestones,
       integration: getTimelineIntegrationMeta(),
     };
   }
 
-  const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-  if (swapIndex < 0 || swapIndex >= current.length) {
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= milestones.length) {
     return {
-      milestones: current,
+      milestones,
       integration: getTimelineIntegrationMeta(),
     };
   }
 
-  const next = [...current];
-  const temp = next[currentIndex];
-  next[currentIndex] = next[swapIndex];
-  next[swapIndex] = temp;
+  const reordered = [...milestones];
+  const current = reordered[currentIndex];
+  reordered[currentIndex] = reordered[targetIndex];
+  reordered[targetIndex] = current;
 
-  writeTimeline(activityId, next);
+  for (let index = 0; index < reordered.length; index += 1) {
+    const item = reordered[index];
+    await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${item.id}`, {
+      method: 'PATCH',
+      accessToken,
+      body: {
+        title: item.title,
+        description: item.description,
+        timelineChoice: item.startTime,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        orderIndex: index,
+        type: item.type,
+        status: item.status,
+      },
+    });
+  }
+
   return {
-    milestones: readTimeline(activityId),
+    milestones: await fetchTimeline(activityId, accessToken),
     integration: getTimelineIntegrationMeta(),
   };
 }
