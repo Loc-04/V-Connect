@@ -2,8 +2,7 @@ import type { TimelineMilestoneStatus } from '../types/timeline';
 
 const timelineStatusTransitions: Record<TimelineMilestoneStatus, TimelineMilestoneStatus[]> = {
   upcoming: ['in_progress', 'cancelled'],
-  in_progress: ['completed', 'delayed', 'cancelled'],
-  delayed: ['in_progress', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
   completed: [],
   cancelled: [],
 };

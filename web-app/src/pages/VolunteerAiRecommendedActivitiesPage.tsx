@@ -31,6 +31,11 @@ interface RecommendationViewModel {
   scoreBreakdown: RecommendationScoreBreakdown | null;
   featureContributions: RecommendationFeatureContribution[];
   modelVersion: string | null;
+  modelKind: string | null;
+  provider: string | null;
+  aiBadgeLabel: string | null;
+  displayExplanation: string;
+  displayReasons: string[];
   hasAiData: boolean;
   locationLabel: string;
   dateLabel: string;
@@ -151,6 +156,17 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
   const scoreBreakdown = normalizeScoreBreakdown(record.score_breakdown);
   const featureContributions = normalizeFeatureContributions(record.feature_contributions);
   const modelVersion = String(record.model_version ?? '').trim() || null;
+  const modelKind = String(record.model_kind ?? '').trim() || null;
+  const provider = String(record.provider ?? '').trim() || null;
+  const aiBadgeLabel = String(record.ai_badge_label ?? '').trim() || null;
+  const displayExplanation =
+    String(record.display_explanation ?? '').trim() || String(record.explanation ?? '').trim();
+  const displayReasonsRaw = Array.isArray(record.display_reasons) ? record.display_reasons : [];
+  const displayReasons =
+    displayReasonsRaw
+      .map((reason) => String(reason ?? '').trim())
+      .filter((reason) => reason.length > 0)
+      .slice(0, 3);
   const hasAiData = Boolean(scoreBreakdown || featureContributions.length > 0 || reasonCodes.length > 0 || modelVersion);
 
   return {
@@ -165,6 +181,11 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     scoreBreakdown,
     featureContributions,
     modelVersion,
+    modelKind,
+    provider,
+    aiBadgeLabel,
+    displayExplanation,
+    displayReasons,
     hasAiData,
     locationLabel: formatLocation(record.location),
     dateLabel,
@@ -458,16 +479,22 @@ export function VolunteerAiRecommendedActivitiesPage() {
                       {selectedRecommendation.locationLabel}
                     </span>
                     <span>{selectedRecommendation.hoursLabel}</span>
-                    {selectedRecommendation.modelVersion && <span>Model: {selectedRecommendation.modelVersion}</span>}
+                    {selectedRecommendation.aiBadgeLabel && <span>{selectedRecommendation.aiBadgeLabel}</span>}
                   </div>
 
                   <div className="ai-reco-why-card">
                     <p className="ai-reco-why-title">
                       {selectedRecommendation.hasAiData ? 'Why this was recommended' : 'Recommendation summary'}
                     </p>
-                    <p>{selectedRecommendation.explanation || 'Score is calculated from profile and activity signals.'}</p>
+                    <p>{selectedRecommendation.displayExplanation || 'Recommended from profile and activity matching signals.'}</p>
                     <div className="ai-reco-why-tags">
-                      {selectedRecommendation.reasonCodes.length > 0
+                      {selectedRecommendation.displayReasons.length > 0
+                        ? selectedRecommendation.displayReasons.map((reason) => (
+                            <Badge className="ai-reco-reason-tag" key={reason} tone="info">
+                              {reason}
+                            </Badge>
+                          ))
+                        : selectedRecommendation.reasonCodes.length > 0
                         ? selectedRecommendation.reasonCodes.map((reasonCode) => (
                             <Badge className="ai-reco-reason-tag" key={reasonCode} tone="info">
                               {humanizeReasonCode(reasonCode)}
@@ -480,36 +507,6 @@ export function VolunteerAiRecommendedActivitiesPage() {
                           ))}
                     </div>
                   </div>
-
-                  {selectedRecommendation.scoreBreakdown && (
-                    <div className="ai-reco-breakdown-card">
-                      <p className="ai-reco-why-title">Score breakdown</p>
-                      <div className="ai-reco-breakdown-grid">
-                        <span>Skills: {Math.round(selectedRecommendation.scoreBreakdown.skill_score)}</span>
-                        <span>Interests: {Math.round(selectedRecommendation.scoreBreakdown.interest_score)}</span>
-                        <span>Availability: {Math.round(selectedRecommendation.scoreBreakdown.availability_score)}</span>
-                        <span>Experience: {Math.round(selectedRecommendation.scoreBreakdown.experience_score)}</span>
-                        <span>History: {Math.round(selectedRecommendation.scoreBreakdown.history_score)}</span>
-                        <span>Total: {Math.round(selectedRecommendation.scoreBreakdown.final_score)}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedRecommendation.featureContributions.length > 0 && (
-                    <div className="ai-reco-breakdown-card">
-                      <p className="ai-reco-why-title">Feature contributions</p>
-                      <ul className="ai-reco-contribution-list">
-                        {selectedRecommendation.featureContributions.map((item) => (
-                          <li key={`${selectedRecommendation.activityId}-${item.feature}`}>
-                            <strong>
-                              {item.feature}: {Math.round(item.score)}/{Math.round(item.max_score)}
-                            </strong>
-                            <span>{item.detail}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
 
                   <div className="ai-reco-cta-row">
                     <Button
@@ -555,7 +552,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   </div>
                   <p className="ai-reco-why-title">Up next</p>
                   <h3>{secondaryRecommendation.title}</h3>
-                  <p className="muted">{secondaryRecommendation.explanation}</p>
+                  <p className="muted">{secondaryRecommendation.displayExplanation || secondaryRecommendation.explanation}</p>
                   <p className="muted">
                     {secondaryRecommendation.matchScore}% match - {secondaryRecommendation.dateLabel}
                   </p>

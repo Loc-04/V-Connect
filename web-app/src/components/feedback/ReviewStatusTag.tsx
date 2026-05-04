@@ -1,7 +1,7 @@
 import { Badge } from '../ui';
 import './FeedbackShared.css';
 
-export type ReviewStatus = 'Spam' | 'Pos' | 'Neu' | 'Neg' | string;
+export type ReviewStatus = 'Spam' | 'Positive' | 'Neutral' | 'Negative' | 'Incident' | 'Pos' | 'Neu' | 'Neg' | string;
 
 interface ReviewStatusTagProps {
   status: ReviewStatus;
@@ -12,7 +12,7 @@ function normalizeText(value: string) {
   return value.trim().toLowerCase();
 }
 
-function toCanonicalStatus(status: ReviewStatus): 'Spam' | 'Pos' | 'Neu' | 'Neg' {
+function toCanonicalStatus(status: ReviewStatus): 'Spam' | 'Positive' | 'Neutral' | 'Negative' | 'Incident' {
   const normalized = normalizeText(String(status ?? ''));
 
   if (
@@ -28,7 +28,7 @@ function toCanonicalStatus(status: ReviewStatus): 'Spam' | 'Pos' | 'Neu' | 'Neg'
   }
 
   if (normalized === 'pos' || normalized === 'positive' || normalized.includes('compliment') || normalized.includes('satisfied')) {
-    return 'Pos';
+    return 'Positive';
   }
 
   if (
@@ -40,27 +40,31 @@ function toCanonicalStatus(status: ReviewStatus): 'Spam' | 'Pos' | 'Neu' | 'Neg'
     normalized.includes('dissatisfied') ||
     normalized.includes('problem')
   ) {
-    return 'Neg';
+    return 'Negative';
   }
 
-  return 'Neu';
+  if (normalized === 'incident' || normalized.includes('safety') || normalized.includes('unsafe')) {
+    return 'Incident';
+  }
+
+  return 'Neutral';
 }
 
-function toTone(status: 'Spam' | 'Pos' | 'Neu' | 'Neg') {
-  if (status === 'Pos') {
+function toTone(status: 'Spam' | 'Positive' | 'Neutral' | 'Negative' | 'Incident') {
+  if (status === 'Positive') {
     return 'success' as const;
   }
-  if (status === 'Neg' || status === 'Spam') {
+  if (status === 'Negative' || status === 'Incident' || status === 'Spam') {
     return 'danger' as const;
   }
   return 'neutral' as const;
 }
 
-function toClassName(status: 'Spam' | 'Pos' | 'Neu' | 'Neg') {
-  if (status === 'Pos') {
+function toClassName(status: 'Spam' | 'Positive' | 'Neutral' | 'Negative' | 'Incident') {
+  if (status === 'Positive') {
     return 'is-pos';
   }
-  if (status === 'Neg') {
+  if (status === 'Negative' || status === 'Incident') {
     return 'is-neg';
   }
   if (status === 'Spam') {

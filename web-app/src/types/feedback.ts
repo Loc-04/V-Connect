@@ -19,8 +19,8 @@ export interface FeedbackRecord {
   ai_text_quality_is_low_signal?: boolean | null;
   ai_text_quality_label?: 'informative' | 'low_signal' | 'uninformative' | string | null;
   ai_text_quality_reasons?: string[] | null;
-  final_label?: 'Neu' | 'Pos' | 'Neg' | 'Spam' | string | null;
-  finalLabel?: 'Neu' | 'Pos' | 'Neg' | 'Spam' | string | null;
+  final_label?: 'Neutral' | 'Positive' | 'Negative' | 'Incident' | 'Spam' | 'Neu' | 'Pos' | 'Neg' | string | null;
+  finalLabel?: 'Neutral' | 'Positive' | 'Negative' | 'Incident' | 'Spam' | 'Neu' | 'Pos' | 'Neg' | string | null;
   ai_confidence?: {
     sentiment?: number;
     incident?: number;

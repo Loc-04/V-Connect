@@ -11,6 +11,29 @@ const SHOULD_LOG_PROVIDER =
   String(process.env.AI_DEBUG_PROVIDER ?? '').trim().toLowerCase() === 'true' &&
   String(process.env.NODE_ENV ?? '').trim().toLowerCase() !== 'production';
 
+function normalizeFallbackReason(error) {
+  const message = error instanceof Error ? error.message : String(error ?? 'external_error');
+  return message.trim().slice(0, 240) || 'external_error';
+}
+
+function attachAiMeta(result, aiMeta) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return {
+      data: result ?? null,
+      ai_meta: aiMeta,
+    };
+  }
+
+  const existing = result.ai_meta && typeof result.ai_meta === 'object' ? result.ai_meta : {};
+  return {
+    ...result,
+    ai_meta: {
+      ...existing,
+      ...aiMeta,
+    },
+  };
+}
+
 function getConfiguredProvider(feature) {
   if (feature === 'recommend') {
     return AI_PROVIDER_RECOMMEND === 'external' ? 'external' : 'internal';
@@ -44,17 +67,42 @@ async function executeFeature(feature, input) {
 
   if (provider === 'external') {
     try {
-      return await aiExternal[method](input);
+      const output = await aiExternal[method](input);
+      const existingMeta =
+        output?.ai_meta && typeof output.ai_meta === 'object' ? output.ai_meta : {};
+      return attachAiMeta(output, {
+        feature,
+        provider: existingMeta.provider ?? 'external',
+        external_provider: existingMeta.external_provider ?? AI_EXTERNAL_PROVIDER,
+        model: existingMeta.model ?? null,
+        fallback_used:
+          typeof existingMeta.fallback_used === 'boolean' ? existingMeta.fallback_used : false,
+        fallback_reason: existingMeta.fallback_reason ?? null,
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const fallbackReason = normalizeFallbackReason(error);
       console.error(
-        `[ai.router] external ${feature} failed (provider=${AI_EXTERNAL_PROVIDER}), fallback to internal: ${message}`
+        `[ai.router] feature=${feature} provider=${AI_EXTERNAL_PROVIDER} fallback_used=true reason="${fallbackReason}"`
       );
-      return aiInternal[method](input);
+      const output = await aiInternal[method](input);
+      return attachAiMeta(output, {
+        feature,
+        provider: 'internal',
+        external_provider: AI_EXTERNAL_PROVIDER,
+        fallback_used: true,
+        fallback_reason: fallbackReason,
+      });
     }
   }
 
-  return aiInternal[method](input);
+  const output = await aiInternal[method](input);
+  return attachAiMeta(output, {
+    feature,
+    provider: 'internal',
+    external_provider: null,
+    fallback_used: false,
+    fallback_reason: null,
+  });
 }
 
 async function recommend(input) {

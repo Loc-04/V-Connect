@@ -871,6 +871,7 @@ export function OrganizerActivityManagementPage() {
               </Card>
             ) : (
               <EventTimelineEditor
+                accessToken={session?.access_token}
                 activityEndTime={selectedActivity.end_time}
                 activityId={selectedActivity.id}
                 activityStartTime={selectedActivity.start_time}

@@ -75,6 +75,19 @@ function normalizeMatchResult(result) {
     !Array.isArray(result.prediction_snapshot)
       ? result.prediction_snapshot
       : null;
+  const displayReasons =
+    Array.isArray(result?.display_reasons) && result.display_reasons.length > 0
+      ? result.display_reasons
+          .map((value) => String(value ?? '').trim())
+          .filter((value) => value.length > 0)
+          .slice(0, 3)
+      : reasons.slice(0, 3);
+  const displayExplanation =
+    String(result?.display_explanation ?? '').trim() ||
+    (modelKind === 'heuristic'
+      ? 'Recommended based on profile matching from skills, interests, availability, and experience signals.'
+      : 'Recommended from structured profile and activity matching signals.');
+  const aiBadgeLabel = String(result?.ai_badge_label ?? '').trim() || (modelKind === 'heuristic' ? 'Profile Match' : 'Internal ML v1');
 
   return {
     matchScore: safeMatchScore,
@@ -88,6 +101,9 @@ function normalizeMatchResult(result) {
     model_kind: modelKind,
     feature_snapshot: featureSnapshot,
     prediction_snapshot: predictionSnapshot,
+    display_explanation: displayExplanation,
+    display_reasons: displayReasons,
+    ai_badge_label: aiBadgeLabel,
     explanation:
       explanation || 'Calculated from volunteer skills, interests, availability, and prior activity history.',
   };
@@ -150,6 +166,7 @@ async function classifyFeedback(input = {}) {
     isSpam: label === 'spam',
     feedbackBucket,
     sentimentLabel: semantics.sentimentLabel,
+    incidentLabel: semantics.incidentLabel,
     semanticLabel: semantics.semanticLabel,
     moderationLabels: Array.isArray(semantics.moderationLabels) ? semantics.moderationLabels : [],
     semanticLabels: Array.isArray(semantics.semanticLabels) ? semantics.semanticLabels : [],
