@@ -28,7 +28,7 @@ function assertAccessToken(accessToken?: string): asserts accessToken is string 
 }
 
 function toTimelinePayload(draft: TimelineMilestoneDraft, orderIndex?: number) {
-  return {
+  const payload: Record<string, unknown> = {
     id: draft.id,
     title: draft.title,
     description: draft.description,
@@ -37,7 +37,13 @@ function toTimelinePayload(draft: TimelineMilestoneDraft, orderIndex?: number) {
     endTime: draft.endTime,
     orderIndex,
     type: draft.type,
-    status: draft.status ?? 'upcoming',
+  };
+  if (draft.status === 'cancelled') {
+    payload.status = 'cancelled';
+  }
+
+  return {
+    ...payload,
   };
 }
 
@@ -204,6 +210,10 @@ export async function updateTimelineMilestoneStatus(
     };
   }
 
+  if (status !== 'cancelled') {
+    throw new Error('Only "cancelled" can be set manually for timeline milestones.');
+  }
+
   await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${milestoneId}`, {
     method: 'PATCH',
     accessToken,
@@ -281,19 +291,23 @@ export async function moveTimelineMilestone(
 
   for (let index = 0; index < reordered.length; index += 1) {
     const item = reordered[index];
+    const payload: Record<string, unknown> = {
+      title: item.title,
+      description: item.description,
+      timelineChoice: item.startTime,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      orderIndex: index,
+      type: item.type,
+    };
+    if (item.status === 'cancelled') {
+      payload.status = 'cancelled';
+    }
+
     await apiRequest<TimelineMilestoneResponse>(`/activities/${activityId}/timeline/${item.id}`, {
       method: 'PATCH',
       accessToken,
-      body: {
-        title: item.title,
-        description: item.description,
-        timelineChoice: item.startTime,
-        startTime: item.startTime,
-        endTime: item.endTime,
-        orderIndex: index,
-        type: item.type,
-        status: item.status,
-      },
+      body: payload,
     });
   }
 

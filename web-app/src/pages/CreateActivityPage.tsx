@@ -12,6 +12,7 @@ import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
 import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
 import { safeText } from '../lib/timelineNormalization';
+import { resolveTimelineMilestoneStatus } from '../lib/timelineStatus';
 import { replaceActivityTimeline } from '../lib/timeline';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../lib/timelineValidation';
 import type { ActivityPriorityLevel, ActivityRecord, ActivityStatus } from '../types/activity';
@@ -312,6 +313,7 @@ export function CreateActivityPage() {
   const [quickTimelineWarning, setQuickTimelineWarning] = useState<string | null>(null);
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [activeTimelineDraftId, setActiveTimelineDraftId] = useState<string | null>(null);
+  const [timelineNowMs, setTimelineNowMs] = useState(() => Date.now());
   const reverseGeocodeRequestId = useRef(0);
 
   const role = normalizeRole(profile?.role);
@@ -345,7 +347,6 @@ export function CreateActivityPage() {
         startTime: seedStart,
         endTime: seedEnd,
         type: 'session',
-        status: 'upcoming',
       };
     },
     [beginDate, endDate, endTime, startTime]
@@ -452,6 +453,15 @@ export function CreateActivityPage() {
       setActiveTimelineDraftId(quickMilestones[0].id ?? null);
     }
   }, [activeTimelineDraftId, quickMilestones]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setTimelineNowMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!session?.access_token) {
@@ -954,7 +964,6 @@ export function CreateActivityPage() {
     return sortedMilestones.map((item, index) => ({
       ...item,
       orderIndex: index,
-      status: 'upcoming' as const,
     }));
   };
 
@@ -1517,7 +1526,7 @@ export function CreateActivityPage() {
                 ) : (
                   <div className="activity-timeline-list">
                     {sortedTimelineDrafts.map((milestone, milestoneIndex) => {
-                      const previewStatus = milestone.status ?? 'upcoming';
+                      const previewStatus = resolveTimelineMilestoneStatus(milestone, timelineNowMs);
                       const description = safeText(milestone.description, '').trim();
                       return (
                         <article className="activity-timeline-item" key={milestone.id ?? `draft-${milestoneIndex}`}>

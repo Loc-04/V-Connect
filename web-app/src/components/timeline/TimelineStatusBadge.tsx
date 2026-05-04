@@ -22,7 +22,7 @@ function toTone(status: TimelineMilestoneStatus) {
     case 'cancelled':
       return 'danger' as const;
     case 'in_progress':
-      return 'accent' as const;
+      return 'warning' as const;
     case 'upcoming':
     default:
       return 'info' as const;
