@@ -409,9 +409,22 @@
   gap: 0.8rem;
   align-items: end;
   border: 1px solid var(--border);
+  border-left: 4px solid transparent;
   border-radius: 16px;
   padding: 0.8rem;
   background: rgba(255, 255, 255, 0.9);
+}
+
+.skill-requirement-row.priority-low {
+  border-left-color: #22c55e;
+}
+
+.skill-requirement-row.priority-normal {
+  border-left-color: #f59e0b;
+}
+
+.skill-requirement-row.priority-urgent {
+  border-left-color: #ef4444;
 }
 
 .skill-requirement-row .activity-field {
@@ -439,6 +452,22 @@
 
 .skill-requirement-footer {
   margin-top: 0.45rem;
+}
+
+.skill-requirement-footer input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0.92rem 1rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.skill-requirement-footer input:focus {
+  outline: 2px solid rgba(139, 92, 246, 0.23);
+  border-color: var(--grad-end);
 }
 
 .skill-requirement-add {
