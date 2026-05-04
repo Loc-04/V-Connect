@@ -68,8 +68,6 @@ function toIsoFromDateTimeLocal(value: string) {
 
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
 const maxCoverImageBytes = 10 * 1024 * 1024;
-const coverTargetWidth = 1280;
-const coverTargetHeight = 720;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['check_in', 'opening', 'session', 'break', 'closing', 'wrap_up', 'custom'];
 
 function formatTimelineTypeLabel(type: TimelineMilestoneType) {
@@ -387,19 +385,6 @@ export function CreateActivityPage() {
             : null
       ),
     [locationSummary, resolvedMapLocation, selectedProvince?.name, selectedWard?.name, streetAddress]
-  );
-  const currentDateTime = useMemo(() => {
-    const now = new Date();
-    const iso = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString();
-    return {
-      date: iso.slice(0, 10),
-      time: iso.slice(11, 16),
-    };
-  }, []);
-  const sortedTimelineDrafts = useMemo(() => sortTimelineByTime(quickMilestones), [quickMilestones]);
-  const activeTimelineDraft = useMemo(
-    () => sortedTimelineDrafts.find((item) => item.id === activeTimelineDraftId) ?? null,
-    [activeTimelineDraftId, sortedTimelineDrafts]
   );
 
   useEffect(() => {
@@ -1202,7 +1187,7 @@ export function CreateActivityPage() {
               <div className="activity-grid logistics-grid">
                 <label className="activity-field">
                   <span>Date</span>
-                  <input onChange={(event) => setBeginDate(event.target.value)} type="date" value={beginDate} />
+                  <input onChange={(event) => setDate(event.target.value)} type="date" value={date} />
                 </label>
                 <label className="activity-field">
                   <span>Start Time</span>

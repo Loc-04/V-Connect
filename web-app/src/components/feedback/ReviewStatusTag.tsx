@@ -1,81 +1,72 @@
 import { Badge } from '../ui';
 import './FeedbackShared.css';
 
-export type ReviewStatus = 'Spam' | 'Pos' | 'Neu' | 'Neg' | string;
+export type ReviewStatus = 'positive' | 'neutral' | 'negative' | 'flagged' | 'reviewed' | 'pending' | string;
 
 interface ReviewStatusTagProps {
   status: ReviewStatus;
+  label?: string;
   className?: string;
 }
 
-function normalizeText(value: string) {
-  return value.trim().toLowerCase();
+function normalizeStatus(status: string) {
+  return status.trim().toLowerCase();
 }
 
-function toCanonicalStatus(status: ReviewStatus): 'Spam' | 'Pos' | 'Neu' | 'Neg' {
-  const normalized = normalizeText(String(status ?? ''));
+function getTone(status: string) {
+  const normalized = normalizeStatus(status);
 
-  if (
-    normalized === 'spam' ||
-    normalized.includes('spam') ||
-    normalized.includes('abusive') ||
-    normalized.includes('irrelevant') ||
-    normalized.includes('duplicate') ||
-    normalized.includes('meaningless') ||
-    normalized.includes('toxic')
-  ) {
-    return 'Spam';
-  }
-
-  if (normalized === 'pos' || normalized === 'positive' || normalized.includes('compliment') || normalized.includes('satisfied')) {
-    return 'Pos';
-  }
-
-  if (
-    normalized === 'neg' ||
-    normalized === 'nega' ||
-    normalized === 'negative' ||
-    normalized.includes('complaint') ||
-    normalized.includes('issue') ||
-    normalized.includes('dissatisfied') ||
-    normalized.includes('problem')
-  ) {
-    return 'Neg';
-  }
-
-  return 'Neu';
-}
-
-function toTone(status: 'Spam' | 'Pos' | 'Neu' | 'Neg') {
-  if (status === 'Pos') {
+  if (normalized === 'positive') {
     return 'success' as const;
   }
-  if (status === 'Neg' || status === 'Spam') {
+  if (normalized === 'negative' || normalized === 'flagged') {
     return 'danger' as const;
+  }
+  if (normalized === 'reviewed') {
+    return 'accent' as const;
+  }
+  if (normalized === 'pending') {
+    return 'info' as const;
   }
   return 'neutral' as const;
 }
 
-function toClassName(status: 'Spam' | 'Pos' | 'Neu' | 'Neg') {
-  if (status === 'Pos') {
-    return 'is-pos';
+function getVariantClass(status: string) {
+  const normalized = normalizeStatus(status);
+
+  if (
+    normalized === 'positive' ||
+    normalized === 'neutral' ||
+    normalized === 'negative' ||
+    normalized === 'flagged' ||
+    normalized === 'reviewed' ||
+    normalized === 'pending'
+  ) {
+    return `is-${normalized}`;
   }
-  if (status === 'Neg') {
-    return 'is-neg';
-  }
-  if (status === 'Spam') {
-    return 'is-spam';
-  }
-  return 'is-neu';
+
+  return 'is-unknown';
 }
 
-export function ReviewStatusTag({ status, className = '' }: ReviewStatusTagProps) {
-  const canonical = toCanonicalStatus(status);
-  const classes = `feedback-shared-status ${toClassName(canonical)} ${className}`.trim();
+function toDefaultLabel(status: string) {
+  const normalized = normalizeStatus(status);
+  if (!normalized) {
+    return 'Unknown';
+  }
+
+  return normalized
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+export function ReviewStatusTag({ status, label, className = '' }: ReviewStatusTagProps) {
+  const classes = `feedback-shared-status ${getVariantClass(status)} ${className}`.trim();
 
   return (
-    <Badge className={classes} tone={toTone(canonical)}>
-      {canonical}
+    <Badge className={classes} tone={getTone(status)}>
+      {label ?? toDefaultLabel(status)}
     </Badge>
   );
 }

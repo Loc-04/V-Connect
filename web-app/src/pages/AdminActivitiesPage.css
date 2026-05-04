@@ -397,22 +397,6 @@
   color: #b42318;
 }
 
-.admin-activities-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.55rem;
-  flex-wrap: wrap;
-}
-
-.admin-activities-pagination-meta {
-  color: #475569;
-  font-size: 0.8rem;
-  font-weight: 700;
-  min-width: 90px;
-  text-align: center;
-}
-
 .admin-activities-spinner {
   animation: admin-activities-spin 0.9s linear infinite;
 }
@@ -558,17 +542,5 @@
   .admin-activities-filter-card.card,
   .admin-activities-table-card.card {
     padding: 0.78rem;
-  }
-
-  .admin-activities-pagination {
-    justify-content: stretch;
-  }
-
-  .admin-activities-pagination button {
-    flex: 1 1 130px;
-  }
-
-  .admin-activities-pagination-meta {
-    width: 100%;
   }
 }

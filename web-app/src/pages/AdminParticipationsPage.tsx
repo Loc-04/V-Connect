@@ -1,4 +1,4 @@
-﻿import {
+import {
   CheckCircle2,
   CircleDashed,
   ClipboardList,
@@ -21,8 +21,6 @@ import type { ParticipationRecord } from '../types/participation';
 import './AdminParticipationsPage.css';
 
 const BASE_STATUS_OPTIONS = ['assigned', 'pending', 'approved', 'rejected', 'cancelled', 'checked_in', 'completed'];
-
-type CheckInResultTone = 'success' | 'error';
 
 type AttendanceFilter = 'all' | 'checked_in' | 'not_checked_in';
 
@@ -192,10 +190,6 @@ export function AdminParticipationsPage() {
   const [activityFilter, setActivityFilter] = useState('all');
   const [organizerFilter, setOrganizerFilter] = useState('all');
   const [selectedParticipation, setSelectedParticipation] = useState<ParticipationViewModel | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [notice, setNotice] = useState<NoticeState | null>(null);
-  const [checkInCode, setCheckInCode] = useState('');
 
   const loadData = useCallback(async () => {
     if (!accessToken) {
@@ -248,6 +242,7 @@ export function AdminParticipationsPage() {
       if (target.closest('.row-action-wrap')) {
         return;
       }
+      setOpenMenuParticipationId(null);
     };
 
     window.addEventListener('click', handleWindowClick);
@@ -350,6 +345,7 @@ export function AdminParticipationsPage() {
       const result = await approveRegistration(row.id, accessToken);
       syncUpdatedParticipation(result.registration);
       setMessage(result.message ?? 'Registration approved successfully.');
+      setOpenMenuParticipationId(null);
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : 'Failed to approve registration.');
     } finally {
@@ -372,6 +368,7 @@ export function AdminParticipationsPage() {
       const result = await rejectRegistration(row.id, accessToken);
       syncUpdatedParticipation(result.registration);
       setMessage(result.message ?? 'Registration rejected successfully.');
+      setOpenMenuParticipationId(null);
     } catch (rejectError) {
       setError(rejectError instanceof Error ? rejectError.message : 'Failed to reject registration.');
     } finally {
@@ -583,19 +580,6 @@ export function AdminParticipationsPage() {
           <span className="admin-participations-limit-pill">Max 300 records</span>
         </div>
 
-        {message ? <p className="form-success">{message}</p> : null}
-        {notice ? (
-          <div className={notice.tone === 'success' ? 'form-success' : 'form-error'} role="status">
-            <strong>{notice.title}</strong>
-            {notice.description ? (
-              <>
-                <br />
-                {notice.description}
-              </>
-            ) : null}
-          </div>
-        ) : null}
-
         {isBlockingError ? (
           <div className="admin-participations-state admin-participations-state--error">
             <h3>Unable to load participations</h3>
@@ -687,15 +671,11 @@ export function AdminParticipationsPage() {
                     </td>
                     <td>
                       <div className="admin-participations-checkin-cell">
-                        {row.checkedInAt || row.status === 'checked_in' ? (
-                          <span aria-label="Checked in" className="admin-participations-checkin-mark is-checked" title={formatCheckInTime(row.checkedInAt)}>
-                            <CheckCircle2 size={18} />
-                          </span>
-                        ) : (
-                          <span aria-label="Not checked in" className="admin-participations-checkin-mark is-empty">
-                            ---
-                          </span>
-                        )}
+                        <span>{formatCheckInTime(row.checkedInAt)}</span>
+                        <AttendanceStatusBadge
+                          className="admin-participations-checkin-badge"
+                          status={row.checkedInAt || row.status === 'checked_in' ? 'checked_in' : 'not_checked_in'}
+                        />
                       </div>
                     </td>
                     <td>{formatDateTime(row.registeredAt)}</td>
@@ -753,38 +733,6 @@ export function AdminParticipationsPage() {
               </div>
             </div>
 
-            {(canApproveOrReject(selectedParticipation.status) || canCheckIn(selectedParticipation.status)) ? (
-              <div className="admin-participation-detail-actions">
-                {canCheckIn(selectedParticipation.status) ? (
-                  <>
-                    <Input
-                      aria-label="Check-in code"
-                      maxLength={5}
-                      onChange={(event) => setCheckInCode(event.target.value.replace(/\D+/g, '').slice(0, 5))}
-                      placeholder="Enter 5-digit code"
-                      value={checkInCode}
-                    />
-                    <Button
-                      disabled={updatingId === selectedParticipation.id || checkInCode.trim().length !== 5}
-                      onClick={() => void handleCheckIn(selectedParticipation)}
-                      type="button"
-                    >
-                      Check in
-                    </Button>
-                  </>
-                ) : null}
-                {canApproveOrReject(selectedParticipation.status) ? (
-                  <>
-                    <Button disabled={updatingId === selectedParticipation.id} onClick={() => void handleApprove(selectedParticipation)} type="button">
-                      Approve
-                    </Button>
-                    <Button disabled={updatingId === selectedParticipation.id} onClick={() => void handleReject(selectedParticipation)} type="button" variant="secondary">
-                      Reject
-                    </Button>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
             <div className="admin-participation-detail-actions is-footer">
               <Button onClick={() => setSelectedParticipation(null)} type="button" variant="secondary">
                 Close
@@ -796,4 +744,3 @@ export function AdminParticipationsPage() {
     </section>
   );
 }
-
