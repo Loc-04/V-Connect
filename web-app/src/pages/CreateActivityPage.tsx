@@ -850,8 +850,9 @@ export function CreateActivityPage() {
   const removeSkill = (skillToRemove: string) => {
     setRequiredSkills((current) => current.filter((skill) => skill !== skillToRemove));
     setSkillPriorities((current) => {
-      const { [skillToRemove]: _ignored, ...rest } = current;
-      return rest;
+      const next = { ...current };
+      delete next[skillToRemove];
+      return next;
     });
   };
 

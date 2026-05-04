@@ -15,7 +15,7 @@ import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Input, Select, Table, type BadgeTone } from '../components/ui';
 import { apiRequest } from '../lib/api';
 import { formatActivityLocation } from '../lib/activityLocation';
-import { deleteActivity, listActivities, updateActivity } from '../lib/activities';
+import { deleteActivity, listActivities } from '../lib/activities';
 import { listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { UserRecord } from '../types/domain';
@@ -111,37 +111,6 @@ function getStatusTone(status: string): BadgeTone {
 function getLocationLabel(location: ActivityRecord['location']) {
   const label = formatActivityLocation(location);
   return label && label !== 'Location TBD' ? label : 'Location not set';
-}
-
-function getOrganizerName(activity: ActivityRecord, organizer: UserRecord | null | undefined) {
-  const fullName = String(organizer?.full_name ?? '').trim();
-  if (fullName) {
-    return fullName;
-  }
-  return `Organizer ${formatShortId(activity.organizer_id)}`;
-}
-
-function getOrganizerContact(organizer: UserRecord | null | undefined) {
-  const email = String(organizer?.email ?? '').trim();
-  if (email) {
-    return {
-      label: email,
-      href: `mailto:${email}`,
-    };
-  }
-
-  const phone = String(organizer?.phone ?? '').trim();
-  if (phone) {
-    return {
-      label: phone,
-      href: `tel:${phone}`,
-    };
-  }
-
-  return {
-    label: '--',
-    href: null,
-  };
 }
 
 function getActivitySkills(activity: ActivityRecord) {
@@ -367,11 +336,6 @@ export function AdminActivitiesPage() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
-
-  const selectedOrganizer = selectedActivity ? organizerById.get(selectedActivity.organizer_id) ?? null : null;
-  const selectedOrganizerName =
-    String(selectedOrganizer?.full_name ?? '').trim() || String(selectedOrganizer?.email ?? '').trim() || 'Organizer unavailable';
-  const selectedOrganizerEmail = String(selectedOrganizer?.email ?? '').trim();
 
   const handleDelete = async (activityId: string) => {
     if (!accessToken) {

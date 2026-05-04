@@ -553,6 +553,11 @@ export function OrganizerReportSummaryPage() {
       });
   }, [effectiveFeedbackCounts.isSpamOnly, effectiveFeedbackCounts.spam, navigate, report, requestedActivityId, selectedActivityId]);
 
+  const analyticsFacts = report?.analyticsFacts ?? [];
+  const issueHighlights = report?.issueHighlights ?? [];
+  const strengths = report?.strengths ?? [];
+  const weaknesses = report?.weaknesses ?? [];
+
   const filteredActionItems = useMemo(() => {
     const normalized = searchTerm.trim();
     if (!normalized) {
@@ -742,6 +747,14 @@ export function OrganizerReportSummaryPage() {
                   rows={breakdownRows}
                   title="Participation Breakdown"
                 />
+                <IssueHighlightsCard
+                  emptyMessage={
+                    searchTerm.trim()
+                      ? 'No action items match your current search.'
+                      : 'All key metrics look good. No action needed right now.'
+                  }
+                  issues={filteredActionItems}
+                />
               </div>
 
               <div className="org-report-main-col">
@@ -767,9 +780,9 @@ export function OrganizerReportSummaryPage() {
                     <div className="org-report-strength-grid">
                       <div>
                         <h4>Strengths</h4>
-                        {report.strengths && report.strengths.length > 0 ? (
+                        {strengths.length > 0 ? (
                           <ul className="org-report-list">
-                            {report.strengths.map((item) => (
+                            {strengths.map((item) => (
                               <li key={`strength-${item}`}>{item}</li>
                             ))}
                           </ul>
@@ -779,9 +792,9 @@ export function OrganizerReportSummaryPage() {
                       </div>
                       <div>
                         <h4>Weaknesses</h4>
-                        {report.weaknesses && report.weaknesses.length > 0 ? (
+                        {weaknesses.length > 0 ? (
                           <ul className="org-report-list">
-                            {report.weaknesses.map((item) => (
+                            {weaknesses.map((item) => (
                               <li key={`weakness-${item}`}>{item}</li>
                             ))}
                           </ul>
@@ -824,13 +837,16 @@ export function OrganizerReportSummaryPage() {
 
               <FeedbackOverviewCard
                 ariaLabel="Open feedback review"
+                spamFeedbackCount={effectiveFeedbackCounts.spam}
+                totalFeedbackCount={effectiveFeedbackCounts.total}
+                validFeedbackCount={effectiveFeedbackCounts.valid}
                 onClick={() => {
                   const nextActivityId = selectedActivityId || requestedActivityId;
                   navigate(nextActivityId ? `/feedback?activityId=${encodeURIComponent(nextActivityId)}` : '/feedback');
                 }}
-                quote={report.feedbackQuote}
-                rating={report.feedbackRating}
-                sentiments={report.sentimentChips}
+                quote={effectiveQuote}
+                rating={effectiveRating}
+                sentiments={sentimentCounts}
               />
 
               <Card as="section" className="org-report-lower-card org-report-facts-card">
