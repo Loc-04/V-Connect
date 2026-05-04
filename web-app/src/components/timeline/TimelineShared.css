@@ -26,8 +26,8 @@
 }
 
 .timeline-readonly-item.is-current.card {
-  border-color: rgba(139, 92, 246, 0.38);
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
+  border-color: rgba(249, 115, 22, 0.42);
+  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.16);
 }
 
 .timeline-readonly-item.is-next.card {
@@ -150,8 +150,8 @@
 }
 
 .timeline-editor-item.is-current {
-  border-color: rgba(139, 92, 246, 0.42);
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.14);
+  border-color: rgba(249, 115, 22, 0.45);
+  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.15);
 }
 
 .timeline-item-top {

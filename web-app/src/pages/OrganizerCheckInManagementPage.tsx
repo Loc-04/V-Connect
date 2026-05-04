@@ -69,6 +69,24 @@ function formatActivityDate(value: string | null | undefined) {
   });
 }
 
+function isActivityExpired(activity: ActivityRecord): boolean {
+  const now = new Date();
+  const endTime = activity.end_time ? new Date(activity.end_time) : null;
+  const startTime = activity.start_time ? new Date(activity.start_time) : null;
+
+  if (endTime && !Number.isNaN(endTime.getTime())) {
+    return endTime.getTime() < now.getTime();
+  }
+
+  if (startTime && !Number.isNaN(startTime.getTime())) {
+    const toDateOnlyStr = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return toDateOnlyStr(startTime) < toDateOnlyStr(now);
+  }
+
+  return false;
+}
+
 interface CheckInNoticeState {
   tone: CheckInResultTone;
   title: string;
@@ -187,10 +205,13 @@ export function OrganizerCheckInManagementPage() {
   );
   const todayDateKey = useMemo(() => toDateKey(new Date()), []);
   const selectedStartDateKey = useMemo(() => toDateKey(selectedActivity?.start_time), [selectedActivity?.start_time]);
-  const checkInOpenToday = Boolean(selectedStartDateKey) && selectedStartDateKey === todayDateKey;
-  const checkInLockedHint = selectedStartDateKey
-    ? `Check-in is available only on ${selectedStartDateKey}.`
-    : 'Check-in is available only on the activity start date.';
+  const isExpired = selectedActivity ? isActivityExpired(selectedActivity) : false;
+  const checkInOpenToday = !isExpired && Boolean(selectedStartDateKey) && selectedStartDateKey === todayDateKey;
+  const checkInLockedHint = isExpired
+    ? 'This activity has ended. Check-in is permanently closed.'
+    : selectedStartDateKey
+      ? `Check-in is available only on ${selectedStartDateKey}.`
+      : 'Check-in is available only on the activity start date.';
 
   const metrics = useMemo(() => {
     const activeStatuses = new Set(['approved', 'checked_in']);
@@ -369,7 +390,7 @@ export function OrganizerCheckInManagementPage() {
               ) : (
                 activities.map((activity) => (
                   <option key={activity.id} value={activity.id}>
-                    {activity.title}
+                    {activity.title}{isActivityExpired(activity) ? ' (Expired)' : ''}
                   </option>
                 ))
               )}
@@ -463,7 +484,7 @@ export function OrganizerCheckInManagementPage() {
               </label>
             </div>
           </div>
-          {!checkInOpenToday ? <p className="org-checkin-lock-note">{checkInLockedHint}</p> : null}
+          {!checkInOpenToday ? <p className={`org-checkin-lock-note${isExpired ? ' is-expired' : ''}`}>{checkInLockedHint}</p> : null}
 
           {notice ? <CheckInResultState description={notice.description} title={notice.title} tone={notice.tone} /> : null}
 

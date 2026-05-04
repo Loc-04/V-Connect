@@ -8,6 +8,7 @@ import { Badge, Button, Card } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
 import { listActivityTimeline } from '../lib/timeline';
+import { resolveTimelineMilestoneStatus } from '../lib/timelineStatus';
 import type { ActivityRecord } from '../types/activity';
 import type { TimelineMilestone } from '../types/timeline';
 import './OrganizerDashboardPage.css';
@@ -39,6 +40,7 @@ export function OrganizerDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [bundles, setBundles] = useState<ActivityTimelineBundle[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     if (!session?.access_token) {
@@ -102,19 +104,28 @@ export function OrganizerDashboardPage() {
     };
   }, [session?.access_token]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const flattenedMilestones = useMemo(
     () =>
       bundles.flatMap((bundle) =>
         bundle.milestones.map((milestone) => ({
           ...milestone,
+          status: resolveTimelineMilestoneStatus(milestone, nowMs),
           activityTitle: bundle.activity.title,
           activityId: bundle.activity.id,
         }))
       ),
-    [bundles]
+    [bundles, nowMs]
   );
 
-  const now = Date.now();
   const inProgressMilestones = useMemo(
     () => flattenedMilestones.filter((milestone) => milestone.status === 'in_progress'),
     [flattenedMilestones]
@@ -127,11 +138,11 @@ export function OrganizerDashboardPage() {
             return false;
           }
           const startTime = new Date(milestone.startTime).getTime();
-          return Number.isFinite(startTime) && startTime >= now;
+          return Number.isFinite(startTime) && startTime >= nowMs;
         })
         .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime())
         .slice(0, 5),
-    [flattenedMilestones, now]
+    [flattenedMilestones, nowMs]
   );
   const completedMilestones = useMemo(
     () => flattenedMilestones.filter((milestone) => milestone.status === 'completed').length,

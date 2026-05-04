@@ -3,22 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createTimelineMilestone, deleteTimelineMilestone, listActivityTimeline, moveTimelineMilestone, updateTimelineMilestone, updateTimelineMilestoneStatus } from '../../lib/timeline';
 import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
+import { resolveTimelineMilestoneStatus } from '../../lib/timelineStatus';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../../lib/timelineValidation';
 import type { TimelineIntegrationMeta, TimelineMilestone, TimelineMilestoneDraft, TimelineMilestoneStatus, TimelineMilestoneType } from '../../types/timeline';
 import { Badge, Button, Card, Input, Select } from '../ui';
 import { TimelineStatusBadge } from './TimelineStatusBadge';
 
-const statusOptions: TimelineMilestoneStatus[] = ['upcoming', 'in_progress', 'completed', 'cancelled'];
 const typeOptions: TimelineMilestoneType[] = ['opening', 'session', 'break', 'closing', 'other'];
 
 function formatTypeLabel(type: TimelineMilestoneType) {
   return type
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatStatusLabel(status: TimelineMilestoneStatus) {
-  return status
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -78,7 +72,6 @@ function createInitialDraft(activityStartTime?: string | null, activityEndTime?:
     startTime: startValue ? toIsoDateTime(startValue) : '',
     endTime: endValue ? toIsoDateTime(endValue) : '',
     type: 'session',
-    status: 'upcoming',
   };
 }
 
@@ -112,6 +105,7 @@ export function EventTimelineEditor({
   const [formErrorMessages, setFormErrorMessages] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyMilestoneId, setBusyMilestoneId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const resetForm = useCallback(() => {
     setEditingMilestoneId(null);
@@ -153,7 +147,25 @@ export function EventTimelineEditor({
     resetForm();
   }, [activityId, loadTimeline, resetForm]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30_000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const orderedMilestones = useMemo(() => sortTimelineByTime(milestones), [milestones]);
+  const displayedMilestones = useMemo(
+    () =>
+      orderedMilestones.map((item) => ({
+        ...item,
+        status: resolveTimelineMilestoneStatus(item, nowMs),
+      })),
+    [nowMs, orderedMilestones]
+  );
   const timelineIssues = useMemo(
     () =>
       validateTimelineDrafts(
@@ -197,7 +209,7 @@ export function EventTimelineEditor({
       startTime: normalized.startTime,
       endTime: normalized.endTime,
       type: normalized.type,
-      status: normalized.status,
+      status: normalized.status === 'cancelled' ? 'cancelled' : undefined,
     });
     setFormErrorMessages([]);
     setNotice(null);
@@ -222,7 +234,7 @@ export function EventTimelineEditor({
       description: formDraft.description.trim(),
       startTime: formDraft.startTime,
       endTime: formDraft.endTime,
-      status: formDraft.status ?? 'upcoming',
+      status: formDraft.status === 'cancelled' ? 'cancelled' : undefined,
     };
 
     try {
@@ -276,6 +288,10 @@ export function EventTimelineEditor({
   };
 
   const handleUpdateMilestoneStatus = async (milestoneId: string, status: TimelineMilestoneStatus) => {
+    if (status !== 'cancelled') {
+      return;
+    }
+
     setBusyMilestoneId(milestoneId);
     try {
       const result = await updateTimelineMilestoneStatus(activityId, milestoneId, status, accessToken);
@@ -292,6 +308,7 @@ export function EventTimelineEditor({
   const startFieldError = getInlineFieldError(formErrorMessages, 'start time');
   const endFieldError = getInlineFieldError(formErrorMessages, 'end time');
   const timeRangeError = getInlineFieldError(formErrorMessages, 'end time must be later');
+  const activeDraftStatus = resolveTimelineMilestoneStatus(formDraft, nowMs);
 
   return (
     <Card as="section" className="timeline-editor-shell">
@@ -339,20 +356,6 @@ export function EventTimelineEditor({
           </label>
 
           <label>
-            <span>Status</span>
-            <Select
-              onChange={(event) => handleDraftChange('status', event.target.value as TimelineMilestoneStatus)}
-              value={formDraft.status ?? 'upcoming'}
-            >
-              {statusOptions.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatusLabel(option)}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <label>
             <span>Start time</span>
             <Input
               onChange={(event) => handleDraftChange('startTime', toIsoDateTime(event.target.value))}
@@ -384,6 +387,10 @@ export function EventTimelineEditor({
           />
         </label>
         {timeRangeError ? <small className="form-error">{timeRangeError}</small> : null}
+        <p className="muted">
+          Status updates automatically from milestone time range. Manual override is available only for Cancelled.
+        </p>
+        <TimelineStatusBadge status={activeDraftStatus} />
 
         <div className="timeline-form-actions">
           <Button onClick={() => void handleSubmitDraft()} type="button">
@@ -414,13 +421,13 @@ export function EventTimelineEditor({
         <h3>Milestones</h3>
         {loading ? (
           <p className="muted">Loading timeline milestones...</p>
-        ) : orderedMilestones.length === 0 ? (
+        ) : displayedMilestones.length === 0 ? (
           <div className="timeline-empty-state">
             <p>No milestones yet.</p>
             <small>Add the first timeline milestone to plan event flow.</small>
           </div>
         ) : (
-          orderedMilestones.map((milestone, index) => (
+          displayedMilestones.map((milestone, index) => (
             <article className={`timeline-editor-item ${milestone.status === 'in_progress' ? 'is-current' : ''}`} key={milestone.id}>
               <div className="timeline-item-top">
                 <div>
@@ -461,17 +468,18 @@ export function EventTimelineEditor({
                 </div>
 
                 <div className="timeline-item-status-controls">
-                  <Select
-                    onChange={(event) => void handleUpdateMilestoneStatus(milestone.id, event.target.value as TimelineMilestoneStatus)}
-                    sizeMode="small"
-                    value={milestone.status}
-                  >
-                    {statusOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {formatStatusLabel(option)}
-                      </option>
-                    ))}
-                  </Select>
+                  {milestone.status === 'cancelled' ? (
+                    <Badge tone="danger">Cancelled</Badge>
+                  ) : (
+                    <Button
+                      disabled={busyMilestoneId === milestone.id}
+                      onClick={() => void handleUpdateMilestoneStatus(milestone.id, 'cancelled')}
+                      type="button"
+                      variant="danger"
+                    >
+                      Cancel
+                    </Button>
+                  )}
                 </div>
 
                 <div className="timeline-item-action-controls">

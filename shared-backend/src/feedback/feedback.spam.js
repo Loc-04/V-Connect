@@ -28,7 +28,10 @@ const repeatedSingleCharPattern = /^(.)(\1{4,})$/;
 const repeatedDigitGroupPattern = /^(\d{1,3})\1{2,}$/;
 const keyboardJunkPattern =
   /\b(?:asdf(?:asdf)*|qwer(?:qwer)*|qwe(?:qwe)*|zxcv?(?:zxcv?)*|hjkl(?:hjkl)*|test(?:ing)?(?:\s*[\d/-]+)?|sample|demo|dummy)\b/i;
-const safeShortNeutralTokens = new Set(['ok', 'okay']);
+const safeShortNeutralTokens = new Set([
+  'ok', 'okay', 'tot', 'hay', 'vui', 'dep', 'on', 'te', 'kem',
+  'good', 'nice', 'bad', 'duoc', 'tam', 'okey',
+]);
 
 function normalizeText(text) {
   return String(text ?? '')

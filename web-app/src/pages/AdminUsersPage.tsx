@@ -614,64 +614,68 @@ export function AdminUsersPage() {
                         )}
                       </td>
                       <td>
-                        <div className="row-action-wrap">
-                          <button
-                            aria-expanded={menuUserId === user.id}
-                            aria-haspopup="menu"
-                            aria-label="Open row actions"
-                            className="row-menu-btn"
-                            disabled={savingUserId === user.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMenuUserId((current) => (current === user.id ? null : user.id));
-                            }}
-                            type="button"
-                          >
-                            <MoreVertical className="users-icon-sm" />
-                          </button>
-                          {menuUserId === user.id && (
-                            <div aria-label="User row actions" className="row-action-menu" role="menu">
-                              {!isEditing && (
+                        {session?.user?.id !== user.id ? (
+                          <div className="row-action-wrap">
+                            <button
+                              aria-expanded={menuUserId === user.id}
+                              aria-haspopup="menu"
+                              aria-label="Open row actions"
+                              className="row-menu-btn"
+                              disabled={savingUserId === user.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMenuUserId((current) => (current === user.id ? null : user.id));
+                              }}
+                              type="button"
+                            >
+                              <MoreVertical className="users-icon-sm" />
+                            </button>
+                            {menuUserId === user.id && (
+                              <div aria-label="User row actions" className="row-action-menu" role="menu">
+                                {!isEditing && (
+                                  <button
+                                    className="row-action-item"
+                                    disabled={savingUserId === user.id}
+                                    onClick={() => handleStartEdit(user.id)}
+                                    type="button"
+                                  >
+                                    Edit role/status
+                                  </button>
+                                )}
+                                {isEditing && (
+                                  <button
+                                    className="row-action-item"
+                                    disabled={savingUserId === user.id || !hasDraftChanges}
+                                    onClick={() => void handleSave(user.id)}
+                                    type="button"
+                                  >
+                                    {hasDraftChanges ? 'Save changes' : 'No changes'}
+                                  </button>
+                                )}
+                                {isEditing && (
+                                  <button
+                                    className="row-action-item"
+                                    disabled={savingUserId === user.id}
+                                    onClick={() => handleCancelEdit(user.id)}
+                                    type="button"
+                                  >
+                                    Cancel edit
+                                  </button>
+                                )}
                                 <button
-                                  className="row-action-item"
-                                  disabled={savingUserId === user.id}
-                                  onClick={() => handleStartEdit(user.id)}
+                                  className="row-action-item danger"
+                                  disabled={deletingUserId === user.id}
+                                  onClick={() => handleDeletePlaceholder(user.id)}
                                   type="button"
                                 >
-                                  Edit role/status
+                                  {deletingUserId === user.id ? 'Deleting...' : 'Delete'}
                                 </button>
-                              )}
-                              {isEditing && (
-                                <button
-                                  className="row-action-item"
-                                  disabled={savingUserId === user.id || !hasDraftChanges}
-                                  onClick={() => void handleSave(user.id)}
-                                  type="button"
-                                >
-                                  {hasDraftChanges ? 'Save changes' : 'No changes'}
-                                </button>
-                              )}
-                              {isEditing && (
-                                <button
-                                  className="row-action-item"
-                                  disabled={savingUserId === user.id}
-                                  onClick={() => handleCancelEdit(user.id)}
-                                  type="button"
-                                >
-                                  Cancel edit
-                                </button>
-                              )}
-                              <button
-                                className="row-action-item danger"
-                                disabled={deletingUserId === user.id}
-                                onClick={() => handleDeletePlaceholder(user.id)}
-                                type="button"
-                              >
-                                {deletingUserId === user.id ? 'Deleting...' : 'Delete'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="muted" style={{ fontSize: '0.85rem' }}>Current User</span>
+                        )}
                       </td>
                     </tr>
                   );

@@ -55,9 +55,30 @@ function getInitials(name: string) {
     .join('');
 }
 
+function isActivityExpired(activity: ActivityRecord): boolean {
+  const now = new Date();
+  const endTime = activity.end_time ? new Date(activity.end_time) : null;
+  const startTime = activity.start_time ? new Date(activity.start_time) : null;
+
+  if (endTime && !Number.isNaN(endTime.getTime())) {
+    return endTime.getTime() < now.getTime();
+  }
+
+  if (startTime && !Number.isNaN(startTime.getTime())) {
+    const toDateOnly = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return toDateOnly(startTime) < toDateOnly(now);
+  }
+
+  return false;
+}
+
 function activityCanUseRecommendations(activity: ActivityRecord) {
   const status = String(activity.status ?? '').toLowerCase();
-  return status === 'draft' || status === 'published';
+  if (status !== 'draft' && status !== 'published') {
+    return false;
+  }
+  return !isActivityExpired(activity);
 }
 
 function availabilityLabel(volunteer: RecommendedVolunteerRecord) {
