@@ -19,11 +19,15 @@ interface ApplicantViewModel {
   activity: ActivityRecord | null;
   name: string;
   email: string;
+  phone: string;
   avatarUrl: string | null;
   status: string;
   matchScore: number;
   skills: string[];
 }
+
+const NO_EMAIL_TEXT = 'No email provided';
+const NO_PHONE_TEXT = 'No phone provided';
 
 function normalizeMatchScore(value: number | null | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -61,6 +65,11 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+function normalizeContactValue(value: string | null | undefined, fallback: string) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length > 0 ? normalized : fallback;
 }
 
 function isActivityExpired(activity: ActivityRecord): boolean {
@@ -189,7 +198,8 @@ export function OrganizerRegistrationApprovalPage() {
         const activityId = participation.activityId ?? participation.activity_id ?? '';
         const activity = activityById.get(activityId) ?? null;
         const fullName = participation.volunteer?.full_name?.trim() || 'Volunteer';
-        const email = participation.volunteer?.phone?.trim() || `volunteer.${participation.id.slice(0, 6)}@example.com`;
+        const email = normalizeContactValue(participation.volunteer?.email, NO_EMAIL_TEXT);
+        const phone = normalizeContactValue(participation.volunteer?.phone, NO_PHONE_TEXT);
         const status = String(participation.status ?? 'pending').toLowerCase();
 
         const skills =
@@ -202,6 +212,7 @@ export function OrganizerRegistrationApprovalPage() {
           activity,
           name: fullName,
           email,
+          phone,
           avatarUrl: participation.volunteer?.avatar_url ?? null,
           status,
           matchScore: normalizeMatchScore(participation.ai_match_score),
@@ -233,6 +244,7 @@ export function OrganizerRegistrationApprovalPage() {
       return (
         item.name.toLowerCase().includes(normalized) ||
         item.email.toLowerCase().includes(normalized) ||
+        item.phone.toLowerCase().includes(normalized) ||
         (item.activity?.title ?? '').toLowerCase().includes(normalized)
       );
     });
@@ -562,7 +574,8 @@ export function OrganizerRegistrationApprovalPage() {
                             )}
                             <div>
                               <strong>{item.name}</strong>
-                              <small>{item.email}</small>
+                              <small>Email: {item.email}</small>
+                              <small>Phone: {item.phone}</small>
                             </div>
                           </div>
                         </td>
@@ -700,6 +713,12 @@ export function OrganizerRegistrationApprovalPage() {
                   <div className="org-approval-score-track">
                     <div className="org-approval-score-fill" style={{ width: `${historicalFit}%` }} />
                   </div>
+                </div>
+
+                <div className="org-approval-insight">
+                  <h4>Contact</h4>
+                  <p>Email: {selectedApplicant.email}</p>
+                  <p>Phone: {selectedApplicant.phone}</p>
                 </div>
 
                 <div className="org-approval-insight">

@@ -189,7 +189,7 @@ export function VolunteerHomePage() {
       headerActions={
         <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
           <Compass size={16} />
-          <span>Browse Activities</span>
+          <span>Browse Opportunities</span>
         </Button>
       }
       pageEyebrow="Volunteer Workspace"
@@ -232,7 +232,7 @@ export function VolunteerHomePage() {
 
             <div className="vol-home-action-list">
               <Button onClick={() => navigate('/browse')} type="button" variant="primary">
-                Browse Activities
+                Browse Opportunities
               </Button>
               <Button onClick={() => navigate('/volunteer/ai-recommended-activities')} type="button" variant="secondary">
                 View Recommendations

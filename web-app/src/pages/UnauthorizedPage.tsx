@@ -31,7 +31,7 @@ export function UnauthorizedPage() {
 
         {session && (
           <button className="danger-btn" onClick={handleSignOut} type="button">
-            Logout
+            Sign Out
           </button>
         )}
       </section>

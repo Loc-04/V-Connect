@@ -33,7 +33,7 @@ interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   { key: 'dashboard', label: 'Dashboard', to: '/volunteer/home', icon: LayoutDashboard },
-  { key: 'activities', label: 'Activities / Opportunities', to: '/browse', icon: Activity },
+  { key: 'activities', label: 'Browse Opportunities', to: '/browse', icon: Activity },
   {
     key: 'ai-recommendations',
     label: 'AI Recommended Activities',
@@ -98,7 +98,7 @@ export function VolunteerSidebar({ activeKey, fullName, roleLabel, onSignOut }: 
         </div>
         <button className="vol-shell-signout" onClick={() => void onSignOut()} type="button">
           <LogOut className="vol-shell-nav-icon" />
-          <span>Logout</span>
+          <span>Sign Out</span>
         </button>
       </div>
     </aside>

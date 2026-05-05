@@ -525,7 +525,7 @@ export function OrganizerSettingsPage() {
               </Button>
               <Button onClick={() => void handleSignOut()} type="button" variant="danger">
                 <LogOut size={15} />
-                <span>Logout</span>
+                <span>Sign Out</span>
               </Button>
             </div>
           </SettingsSection>

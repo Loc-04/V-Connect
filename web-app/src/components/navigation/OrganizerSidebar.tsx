@@ -125,7 +125,7 @@ export function OrganizerSidebar({
         </div>
         <button className="org-shell-signout" onClick={() => void onSignOut()} type="button">
           <LogOut className="org-shell-nav-icon" />
-          <span>Logout</span>
+          <span>Sign Out</span>
         </button>
       </div>
     </aside>

@@ -181,10 +181,15 @@ export function EventTimelineEditor({
         {
           activityStartTime,
           activityEndTime,
-          enforceActivityWindow: false,
+          enforceActivityWindow: true,
         }
       ),
     [activityEndTime, activityStartTime, orderedMilestones]
+  );
+
+  const timelineErrorMessages = useMemo(
+    () => Array.from(new Set(timelineIssues.filter((issue) => issue.level === 'error').map((issue) => issue.message))),
+    [timelineIssues]
   );
 
   const warningMessages = useMemo(
@@ -219,7 +224,7 @@ export function EventTimelineEditor({
     const issues = validateTimelineDrafts([formDraft], {
       activityStartTime,
       activityEndTime,
-      enforceActivityWindow: false,
+      enforceActivityWindow: true,
     });
 
     const errorMessages = issues.filter((issue) => issue.level === 'error').map((issue) => issue.message);
@@ -308,6 +313,7 @@ export function EventTimelineEditor({
   const startFieldError = getInlineFieldError(formErrorMessages, 'start time');
   const endFieldError = getInlineFieldError(formErrorMessages, 'end time');
   const timeRangeError = getInlineFieldError(formErrorMessages, 'end time must be later');
+  const activityRangeError = getInlineFieldError(formErrorMessages, 'activity time range');
   const activeDraftStatus = resolveTimelineMilestoneStatus(formDraft, nowMs);
 
   return (
@@ -329,6 +335,7 @@ export function EventTimelineEditor({
 
       {notice ? <p className="form-success">{notice}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {timelineErrorMessages.length > 0 ? <p className="form-error">{timelineErrorMessages[0]}</p> : null}
       {warningMessages.length > 0 ? <p className="timeline-warning-text">{warningMessages[0]}</p> : null}
 
       <div className="timeline-editor-form">
@@ -387,6 +394,7 @@ export function EventTimelineEditor({
           />
         </label>
         {timeRangeError ? <small className="form-error">{timeRangeError}</small> : null}
+        {activityRangeError ? <small className="form-error">{activityRangeError}</small> : null}
         <p className="muted">
           Status updates automatically from milestone time range. Manual override is available only for Cancelled.
         </p>

@@ -28,6 +28,36 @@ function combineDateAndTime(date: string, time: string) {
   return localDate.toISOString();
 }
 
+function getPastStartDateTimeValidationError(beginDate: string, startTime: string, nowMs: number): string | null {
+  if (!beginDate) {
+    return null;
+  }
+
+  const selectedStartDate = new Date(`${beginDate}T00:00`);
+  if (Number.isNaN(selectedStartDate.getTime())) {
+    return null;
+  }
+
+  const now = new Date(nowMs);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (selectedStartDate.getTime() < today.getTime()) {
+    return 'Begin date cannot be in the past.';
+  }
+
+  if (!startTime) {
+    return null;
+  }
+
+  if (selectedStartDate.getTime() === today.getTime()) {
+    const selectedStartDateTime = new Date(`${beginDate}T${startTime}`);
+    if (!Number.isNaN(selectedStartDateTime.getTime()) && selectedStartDateTime.getTime() <= now.getTime()) {
+      return 'For today, start time must be later than the current time.';
+    }
+  }
+
+  return null;
+}
+
 function splitDateAndTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -417,7 +447,13 @@ export function CreateActivityPage() {
       date: iso.slice(0, 10),
       time: iso.slice(11, 16),
     };
-  }, []);
+  }, [timelineNowMs]);
+  const startDateTimeValidationError = useMemo(() => {
+    if (isEditing) {
+      return null;
+    }
+    return getPastStartDateTimeValidationError(beginDate, startTime, timelineNowMs);
+  }, [beginDate, isEditing, startTime, timelineNowMs]);
   const sortedTimelineDrafts = useMemo(() => sortTimelineByTime(quickMilestones), [quickMilestones]);
   const activeTimelineDraft = useMemo(
     () => sortedTimelineDrafts.find((item) => item.id === activeTimelineDraftId) ?? null,
@@ -1019,6 +1055,11 @@ export function CreateActivityPage() {
         throw new Error('Begin date, start time, end date, and end time are required.');
       }
 
+      const startDateTimeError = isEditing ? null : getPastStartDateTimeValidationError(beginDate, startTime, Date.now());
+      if (startDateTimeError) {
+        throw new Error(startDateTimeError);
+      }
+
       const startIso = combineDateAndTime(beginDate, startTime);
       const endIso = combineDateAndTime(endDate, endTime);
       if (new Date(endIso) <= new Date(startIso)) {
@@ -1318,7 +1359,12 @@ export function CreateActivityPage() {
               <div className="activity-grid logistics-grid">
                 <label className="activity-field">
                   <span>Date</span>
-                  <input onChange={(event) => setBeginDate(event.target.value)} type="date" value={beginDate} />
+                  <input
+                    min={currentDateTime.date}
+                    onChange={(event) => setBeginDate(event.target.value)}
+                    type="date"
+                    value={beginDate}
+                  />
                 </label>
                 <label className="activity-field">
                   <span>Start Time</span>
@@ -1350,6 +1396,7 @@ export function CreateActivityPage() {
                   />
                 </label>
               </div>
+              {startDateTimeValidationError ? <p className="form-error">{startDateTimeValidationError}</p> : null}
 
               <div className="activity-grid three-cols location-grid">
                 <label className="activity-field location-grid__wide">
@@ -1687,7 +1734,7 @@ export function CreateActivityPage() {
                 {!isEditing && role === 'organizer' && (
                   <button
                     className="action-btn is-secondary"
-                    disabled={saving || !canManageActivities || loadingActivity}
+                    disabled={saving || !canManageActivities || loadingActivity || Boolean(startDateTimeValidationError)}
                     onClick={() => void handleSave('draft', { openTimelineAfterSave: true })}
                     type="button"
                   >
@@ -1696,7 +1743,7 @@ export function CreateActivityPage() {
                 )}
                 <button
                   className="action-btn is-secondary"
-                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled}
+                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled || Boolean(startDateTimeValidationError)}
                   onClick={() => void handleSave('draft')}
                   type="button"
                 >
@@ -1704,7 +1751,7 @@ export function CreateActivityPage() {
                 </button>
                 <button
                   className="action-btn is-primary"
-                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled}
+                  disabled={saving || !canManageActivities || loadingActivity || isEditingDisabled || Boolean(startDateTimeValidationError)}
                   onClick={() => void handleSave('published')}
                   type="button"
                 >

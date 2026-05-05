@@ -255,6 +255,17 @@
   object-fit: cover;
 }
 
+.guest-detail-organizer-fallback-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #dce8ef;
+  color: #355265;
+  font-weight: 700;
+}
+
 .guest-detail-organizer-head strong {
   display: block;
   color: var(--text);

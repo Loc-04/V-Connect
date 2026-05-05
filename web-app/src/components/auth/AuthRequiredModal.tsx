@@ -60,7 +60,9 @@ export function AuthRequiredModal({ open, onClose, action, nextPath }: AuthRequi
   const navigateToAuth = (pathname: '/login' | '/register') => {
     const params = new URLSearchParams();
     params.set('next', destination);
-    navigate(`${pathname}?${params.toString()}`);
+    navigate(`${pathname}?${params.toString()}`, {
+      state: { from: destination },
+    });
   };
 
   return (

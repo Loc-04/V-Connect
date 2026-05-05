@@ -3,17 +3,18 @@ import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { getAuthErrorMessage } from '../auth/authErrors';
-import { getRoleHomePath } from '../auth/rolePaths';
+import { canRoleAccessPath, getRoleHomePath } from '../auth/rolePaths';
 import { useAuth } from '../auth/useAuth';
 import type { RegisterInput } from '../types/domain';
 
+const PUBLIC_SIGNUP_ROLE: RegisterInput['role'] = 'volunteer';
 const initialForm: RegisterInput & { confirmPassword: string } = {
   email: '',
   password: '',
   confirmPassword: '',
   fullName: '',
   phone: '',
-  role: 'volunteer',
+  role: PUBLIC_SIGNUP_ROLE,
 };
 const GUEST_ENTRY_LABEL = 'Continue as Guest';
 
@@ -60,7 +61,7 @@ export function RegisterPage() {
         password: form.password,
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
-        role: form.role,
+        role: PUBLIC_SIGNUP_ROLE,
       });
 
       if (result.requiresEmailConfirmation) {
@@ -70,8 +71,12 @@ export function RegisterPage() {
       }
 
       if (result.profile) {
-        const nextPath = resolveSafeNextPath(new URLSearchParams(location.search).get('next'));
-        navigate(nextPath ?? getRoleHomePath(result.profile.role), { replace: true });
+        const queryTarget = resolveSafeNextPath(new URLSearchParams(location.search).get('next'));
+        const stateTarget = resolveSafeNextPath((location.state as { from?: string } | null)?.from);
+        const candidateTarget = queryTarget ?? stateTarget;
+        const target = canRoleAccessPath(result.profile.role, candidateTarget) ? candidateTarget : null;
+
+        navigate(target ?? getRoleHomePath(result.profile.role), { replace: true });
         return;
       }
 
@@ -111,18 +116,16 @@ export function RegisterPage() {
           value={form.phone}
         />
 
-        <label className="field-label" htmlFor="role">
+        <label className="field-label" htmlFor="publicRole">
           Role
         </label>
-        <select
+        <input
           className="text-input"
-          id="role"
-          onChange={(event) => handleChange('role', event.target.value as RegisterInput['role'])}
-          value={form.role}
-        >
-          <option value="volunteer">Volunteer</option>
-          <option value="organizer">Organizer</option>
-        </select>
+          id="publicRole"
+          readOnly
+          value="Volunteer"
+        />
+        <p className="muted">Organizer accounts are not available through public self-signup.</p>
 
         <label className="field-label" htmlFor="registerEmail">
           Email

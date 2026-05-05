@@ -175,7 +175,7 @@ export function ResetPasswordPage() {
             />
           </figure>
 
-          <p className="password-hero-footer">(c) {currentYear} V-Connect Platform. All rights reserved.</p>
+          <p className="password-hero-footer">© {currentYear} V-Connect Platform. All rights reserved.</p>
         </div>
       </section>
 
@@ -235,7 +235,7 @@ export function ResetPasswordPage() {
               </Link>
             )}
             <Link className="password-back-link" to="/login">
-              {'<- Back to Login'}
+              {'← Back to Login'}
             </Link>
           </div>
         </form>

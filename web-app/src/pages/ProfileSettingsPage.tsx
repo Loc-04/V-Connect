@@ -1,4 +1,4 @@
-import './ProfileUiPage.css';
+import './ProfileShared.css';
 
 import { CalendarDays, Heart, Save, Sparkles, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';

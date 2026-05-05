@@ -18,15 +18,14 @@ import {
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { cancelParticipation, listParticipations } from '../lib/participations';
-import { getMockActivityDetailById } from '../lib/participationMocks';
 import { listActivityTimeline } from '../lib/timeline';
-import type { ActivityDetailMock } from '../lib/participationMocks';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import type { TimelineMilestone } from '../types/timeline';
 import './ActivityDetailPage.css';
 
 type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published' | 'expired';
+type ActivityLoadState = 'loading' | 'success' | 'error' | 'not_found';
 
 interface ActivityDetailViewModel {
   id: string;
@@ -117,56 +116,29 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
-function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
-  const { dateLabel, timeLabel } = formatDateAndTime(mock.startTime, mock.endTime);
-  return {
-    id: mock.id,
-    title: mock.title,
-    organization: mock.organization,
-    description: mock.description,
-    locationName: mock.locationName,
-    locationAddress: mock.locationAddress,
-    dateLabel,
-    timeLabel,
-    volunteerHours: mock.volunteerHours,
-    maxParticipants: mock.maxParticipants,
-    currentParticipants: mock.currentParticipants,
-    status: toStatus(mock.status, mock.endTime),
-    level: mock.level,
-    categories: mock.categories,
-    requirements: mock.requirements,
-    heroImageUrl: mock.heroImageUrl,
-    locationCoordinates: null,
-    mapUrl: mock.locationAddress
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mock.locationAddress)}`
-      : null,
-  };
-}
-
-function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | null): ActivityDetailViewModel {
+function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
   const { dateLabel, timeLabel } = formatDateAndTime(activity.start_time, activity.end_time);
   const skills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
-  const categories = skills.length > 0 ? skills.slice(0, 2).map(titleCase) : fallback?.categories ?? ['Community'];
-  const requirements = skills.length > 0 ? skills.slice(0, 3).map(titleCase) : fallback?.requirements ?? ['Teamwork'];
-  const maxParticipants = Number(activity.capacity ?? fallback?.maxParticipants ?? 0);
+  const categories = skills.length > 0 ? skills.slice(0, 2).map(titleCase) : ['Community'];
+  const requirements = skills.length > 0 ? skills.slice(0, 3).map(titleCase) : ['Teamwork'];
+  const maxParticipants = Number(activity.capacity ?? 0);
 
   return {
     id: activity.id,
-    title: activity.title || fallback?.title || 'Untitled Activity',
-    organization: fallback?.organization || 'Community Organizer',
+    title: activity.title || 'Untitled Activity',
+    organization: 'Community Organizer',
     description:
       activity.description?.trim() ||
-      fallback?.description ||
       'Details for this activity are being updated by the organizer.',
     locationName: locationLabel(activity.location),
-    locationAddress: getActivityAddressLine(activity.location) || fallback?.locationAddress || locationLabel(activity.location),
+    locationAddress: getActivityAddressLine(activity.location) || locationLabel(activity.location),
     dateLabel,
     timeLabel,
     volunteerHours: toHours(activity.start_time, activity.end_time),
     maxParticipants,
-    currentParticipants: fallback?.currentParticipants ?? null,
+    currentParticipants: null,
     status: toStatus(String(activity.status ?? 'upcoming'), activity.end_time),
-    level: fallback?.level || 'Open to all levels',
+    level: 'Open to all levels',
     categories,
     requirements,
     heroImageUrl: String(activity.cover_image_url ?? '').trim(),
@@ -189,6 +161,10 @@ function getStatusTone(status: ViewStatus) {
     return 'accent' as const;
   }
   return 'info' as const;
+}
+
+function isActivityRegisterable(status: ViewStatus) {
+  return status === 'published';
 }
 
 function getGuestIntentMessage(action: GuestProtectedAction, canRegister: boolean) {
@@ -217,12 +193,13 @@ export function ActivityDetailPage() {
   const { session, profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activityLoadState, setActivityLoadState] = useState<ActivityLoadState>('loading');
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [intentNotice, setIntentNotice] = useState<{ action: GuestProtectedAction; message: string } | null>(null);
   const [activity, setActivity] = useState<ActivityDetailViewModel | null>(null);
-  const [usingMockFallback, setUsingMockFallback] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [participation, setParticipation] = useState<ParticipationRecord | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
@@ -238,26 +215,37 @@ export function ActivityDetailPage() {
     () => readGuestIntent(searchParams.get(getGuestIntentParamName())),
     [searchParams]
   );
+  const isLoading = activityLoadState === 'loading';
+  const hasLoadError = activityLoadState === 'error';
+  const isNotFound = activityLoadState === 'not_found';
+  const isLoaded = activityLoadState === 'success' && Boolean(activity);
+
+  const handleRetryLoad = () => {
+    setActionError(null);
+    setMessage(null);
+    setLoadErrorMessage(null);
+    setReloadToken((current) => current + 1);
+  };
 
   useEffect(() => {
     if (!id) {
-      setLoading(false);
-      setError('Missing activity id.');
+      setActivity(null);
+      setLoadErrorMessage(null);
+      setActivityLoadState('not_found');
       return;
     }
 
     if (!session?.access_token) {
-      setLoading(false);
-      setError('No active session token.');
+      setActivity(null);
+      setLoadErrorMessage('No active session token.');
+      setActivityLoadState('error');
       return;
     }
 
     let cancelled = false;
-    const fallback = getMockActivityDetailById(id);
-
-    setLoading(true);
-    setError(null);
-    setUsingMockFallback(false);
+    setActivityLoadState('loading');
+    setLoadErrorMessage(null);
+    setActionError(null);
 
     void (async () => {
       try {
@@ -265,33 +253,28 @@ export function ActivityDetailPage() {
         if (cancelled) {
           return;
         }
-        setActivity(mapFromApi(response, fallback));
+        setActivity(mapFromApi(response));
+        setActivityLoadState('success');
       } catch (loadError) {
         if (cancelled) {
           return;
         }
-
-        if (fallback) {
-          setActivity(mapFromMock(fallback));
-          setUsingMockFallback(true);
-          return;
-        }
-
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load activity detail.');
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        const errorMessage = loadError instanceof Error ? loadError.message : 'Failed to load activity detail.';
+        const normalizedMessage = errorMessage.toLowerCase();
+        const notFound = normalizedMessage.includes('not found') || normalizedMessage.includes('(404)');
+        setActivity(null);
+        setLoadErrorMessage(notFound ? null : errorMessage);
+        setActivityLoadState(notFound ? 'not_found' : 'error');
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [id, session?.access_token]);
+  }, [id, reloadToken, session?.access_token]);
 
   useEffect(() => {
-    if (!id || !session?.access_token || !canRegister) {
+    if (!id || !session?.access_token || !canRegister || !isLoaded) {
       setParticipation(null);
       return;
     }
@@ -311,7 +294,7 @@ export function ActivityDetailPage() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to load your registration status.');
+          setActionError(loadError instanceof Error ? loadError.message : 'Failed to load your registration status.');
         }
       }
     })();
@@ -319,10 +302,10 @@ export function ActivityDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [canRegister, id, session?.access_token]);
+  }, [canRegister, id, isLoaded, session?.access_token]);
 
   useEffect(() => {
-    if (!activity?.id) {
+    if (!isLoaded || !activity?.id) {
       setTimelineMilestones([]);
       setTimelineError(null);
       setTimelineLoading(false);
@@ -363,7 +346,7 @@ export function ActivityDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [activity?.id, session?.access_token]);
+  }, [activity?.id, isLoaded, session?.access_token]);
 
   useEffect(() => {
     if (!guestIntent) {
@@ -381,22 +364,22 @@ export function ActivityDetailPage() {
   }, [canRegister, guestIntent, searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (loading || error || !activity || intentNotice?.action !== 'join' || !registrationPanelRef.current) {
+    if (isLoading || hasLoadError || isNotFound || !activity || intentNotice?.action !== 'join' || !registrationPanelRef.current) {
       return;
     }
 
     registrationPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activity, error, intentNotice, loading]);
+  }, [activity, hasLoadError, intentNotice, isLoading, isNotFound]);
 
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {
-      setError(nextMessage);
+      setActionError(nextMessage);
       setMessage(null);
       return;
     }
 
     setMessage(nextMessage);
-    setError(null);
+    setActionError(null);
   };
 
   const handleShareActivity = async () => {
@@ -415,26 +398,26 @@ export function ActivityDetailPage() {
       if (typeof navigator.share === 'function') {
         await navigator.share(shareData);
         setMessage('Activity link shared.');
-        setError(null);
+        setActionError(null);
         return;
       }
 
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(pageUrl);
         setMessage('Activity link copied to clipboard.');
-        setError(null);
+        setActionError(null);
         return;
       }
 
       window.open(`mailto:?subject=${encodeURIComponent(activity.title)}&body=${encodeURIComponent(pageUrl)}`, '_blank');
       setMessage('Opened email share draft.');
-      setError(null);
+      setActionError(null);
     } catch (shareError) {
       if (shareError instanceof Error && shareError.name === 'AbortError') {
         return;
       }
       setMessage(null);
-      setError(shareError instanceof Error ? shareError.message : 'Unable to share this activity right now.');
+      setActionError(shareError instanceof Error ? shareError.message : 'Unable to share this activity right now.');
     }
   };
 
@@ -445,7 +428,7 @@ export function ActivityDetailPage() {
 
     if (!activity.mapUrl) {
       setMessage(null);
-      setError('No location data is available to open map.');
+      setActionError('No location data is available to open map.');
       return;
     }
 
@@ -462,7 +445,7 @@ export function ActivityDetailPage() {
     return `${activity.currentParticipants} / ${activity.maxParticipants}`;
   }, [activity]);
 
-  const canSubmitRegistration = canRegister && activity?.status !== 'expired';
+  const canSubmitRegistration = canRegister && (activity ? isActivityRegisterable(activity.status) : false);
 
   return (
     <VolunteerShell
@@ -472,7 +455,13 @@ export function ActivityDetailPage() {
           <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
             Back to History
           </Button>
-          <Button aria-label="Share activity" onClick={() => void handleShareActivity()} type="button" variant="secondary">
+          <Button
+            aria-label="Share activity"
+            disabled={!isLoaded}
+            onClick={() => void handleShareActivity()}
+            type="button"
+            variant="secondary"
+          >
             <Share2 size={16} />
           </Button>
           <Button
@@ -517,30 +506,41 @@ export function ActivityDetailPage() {
           </Card>
         ) : null}
         {message && <p className="form-success">{message}</p>}
+        {actionError && <p className="form-error">{actionError}</p>}
 
-        {loading && (
+        {isLoading && (
           <Card className="activity-detail-state-card">
             <p>Loading activity detail...</p>
           </Card>
         )}
 
-        {!loading && error && (
+        {hasLoadError && (
           <Card className="activity-detail-state-card">
-            <p className="form-error">{error}</p>
-            <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
-              Back to Participation History
-            </Button>
+            <p className="form-error">{loadErrorMessage ?? "We couldn't load this activity right now."}</p>
+            <div className="activity-detail-state-actions">
+              <Button onClick={handleRetryLoad} type="button">
+                Retry
+              </Button>
+              <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                Back to Browse
+              </Button>
+            </div>
           </Card>
         )}
 
-        {!loading && !error && activity && (
-          <>
-            {usingMockFallback && (
-              <p className="activity-detail-note">
-                Live activity details are temporarily unavailable. Showing the best available preview.
-              </p>
-            )}
+        {isNotFound && (
+          <Card className="activity-detail-state-card">
+            <p>This activity could not be found.</p>
+            <div className="activity-detail-state-actions">
+              <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                Back to Browse
+              </Button>
+            </div>
+          </Card>
+        )}
 
+        {isLoaded && activity && (
+          <>
             <div className="activity-detail-grid">
               <Card as="section" className="activity-detail-main">
                 <img alt={activity.title} className="activity-detail-hero-image" src={activity.heroImageUrl} />
@@ -566,15 +566,6 @@ export function ActivityDetailPage() {
                     <p>{activity.organization}</p>
                     <small>Verified Organizer</small>
                   </div>
-                  <Button
-                    aria-label="Follow organizer is not available yet"
-                    disabled
-                    title="Follow organizer is not available yet."
-                    type="button"
-                    variant="secondary"
-                  >
-                    Follow (Soon)
-                  </Button>
                 </article>
 
                 <section className="activity-detail-section">

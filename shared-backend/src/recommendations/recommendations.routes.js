@@ -31,7 +31,12 @@ function buildServingKey({ rankPosition, candidateActivityId, candidateVolunteer
 }
 
 async function persistServingForUserResult({ result, requesterUserId, targetUserId }) {
-  const activities = Array.isArray(result?.activities) ? result.activities : null;
+  const activities = Array.isArray(result?.activities)
+    ? result.activities
+    : Array.isArray(result?.items)
+      ? result.items
+      : null;
+  const items = Array.isArray(result?.items) ? result.items : null;
   const volunteers = Array.isArray(result?.volunteers) ? result.volunteers : null;
 
   let rows = [];
@@ -105,6 +110,21 @@ async function persistServingForUserResult({ result, requesterUserId, targetUser
             })
           ) ?? null,
       })),
+      ...(items
+        ? {
+            items: items.map((item, index) => ({
+              ...item,
+              recommendation_item_id:
+                insertedByKey.get(
+                  buildServingKey({
+                    rankPosition: index + 1,
+                    candidateActivityId: asUuidOrNull(item?.activityId ?? item?.activity_id),
+                    candidateVolunteerId: null,
+                  })
+                ) ?? null,
+            })),
+          }
+        : {}),
     };
   }
 

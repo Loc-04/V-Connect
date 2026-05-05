@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BriefcaseBusiness,
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { apiRequest } from '../lib/api';
 import type { UserRecord } from '../types/domain';
 
@@ -37,7 +38,65 @@ interface AdminUserDeleteResponse {
   userId: string;
 }
 
+interface AdminUserCreateResponse {
+  user: UserRecord;
+  message?: string;
+}
+
+interface AddUserFormState {
+  fullName: string;
+  email: string;
+  role: string;
+  phone: string;
+  password: string;
+}
+
+interface AddUserFieldErrors {
+  fullName?: string;
+  email?: string;
+  role?: string;
+  password?: string;
+}
+
 type PageItem = number | 'ellipsis';
+
+function createInitialAddUserForm(): AddUserFormState {
+  return {
+    fullName: '',
+    email: '',
+    role: 'volunteer',
+    phone: '',
+    password: '',
+  };
+}
+
+function validateAddUserForm(form: AddUserFormState): AddUserFieldErrors {
+  const errors: AddUserFieldErrors = {};
+  const normalizedRole = form.role.trim().toLowerCase();
+
+  if (!form.fullName.trim()) {
+    errors.fullName = 'Full name is required.';
+  }
+
+  const email = form.email.trim().toLowerCase();
+  if (!email) {
+    errors.email = 'Email is required.';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = 'Please provide a valid email address.';
+  }
+
+  if (!roleOptions.includes(normalizedRole)) {
+    errors.role = 'Please choose a valid role.';
+  }
+
+  if (!form.password) {
+    errors.password = 'Password is required.';
+  } else if (form.password.length < 8) {
+    errors.password = 'Password must be at least 8 characters.';
+  }
+
+  return errors;
+}
 
 function formatRelativeDate(date: string | null): string {
   if (!date) {
@@ -131,6 +190,12 @@ export function AdminUsersPage() {
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [addUserSubmitting, setAddUserSubmitting] = useState(false);
+  const [addUserSubmitError, setAddUserSubmitError] = useState<string | null>(null);
+  const [addUserForm, setAddUserForm] = useState<AddUserFormState>(() => createInitialAddUserForm());
+  const [addUserErrors, setAddUserErrors] = useState<AddUserFieldErrors>({});
 
   const loadUsers = useCallback(async () => {
     if (!session?.access_token) {
@@ -391,6 +456,88 @@ export function AdminUsersPage() {
     })();
   };
 
+  const openAddUserModal = () => {
+    setNotice(null);
+    setError(null);
+    setAddUserSubmitError(null);
+    setAddUserErrors({});
+    setAddUserForm(createInitialAddUserForm());
+    setIsAddUserModalOpen(true);
+  };
+
+  const closeAddUserModal = () => {
+    if (addUserSubmitting) {
+      return;
+    }
+    setIsAddUserModalOpen(false);
+    setAddUserSubmitError(null);
+    setAddUserErrors({});
+    setAddUserForm(createInitialAddUserForm());
+  };
+
+  const handleAddUserFieldChange = (field: keyof AddUserFormState, value: string) => {
+    setAddUserForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+
+    setAddUserErrors((current) => {
+      if (!current[field as keyof AddUserFieldErrors]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[field as keyof AddUserFieldErrors];
+      return next;
+    });
+  };
+
+  const handleAddUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!session?.access_token) {
+      setAddUserSubmitError('No active session token.');
+      return;
+    }
+
+    const validationErrors = validateAddUserForm(addUserForm);
+    if (Object.keys(validationErrors).length > 0) {
+      setAddUserErrors(validationErrors);
+      return;
+    }
+
+    setAddUserSubmitting(true);
+    setAddUserSubmitError(null);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const payload = {
+        fullName: addUserForm.fullName.trim(),
+        email: addUserForm.email.trim().toLowerCase(),
+        role: addUserForm.role.trim().toLowerCase(),
+        phone: addUserForm.phone.trim(),
+        password: addUserForm.password,
+      };
+
+      const response = await apiRequest<AdminUserCreateResponse>('/admin/users', {
+        method: 'POST',
+        accessToken: session.access_token,
+        body: payload,
+      });
+
+      await loadUsers();
+      setNotice(response.message ?? `User "${payload.fullName}" created successfully.`);
+      setIsAddUserModalOpen(false);
+      setAddUserSubmitError(null);
+      setAddUserErrors({});
+      setAddUserForm(createInitialAddUserForm());
+    } catch (submitError) {
+      setAddUserSubmitError(submitError instanceof Error ? submitError.message : 'Failed to create user.');
+    } finally {
+      setAddUserSubmitting(false);
+    }
+  };
+
   return (
     <section className="admin-users-page">
       <p className="users-caption">Admin User Management Main Dashboard</p>
@@ -410,14 +557,8 @@ export function AdminUsersPage() {
               value={searchTerm}
             />
           </label>
-          <button
-            aria-label="Add user is not available yet"
-            className="primary-btn add-user-btn"
-            disabled
-            title="Creating users from admin panel requires backend support."
-            type="button"
-          >
-            + Add User (Soon)
+          <button className="primary-btn add-user-btn" onClick={openAddUserModal} type="button">
+            + Add User
           </button>
         </div>
       </div>
@@ -528,10 +669,26 @@ export function AdminUsersPage() {
           </div>
         </div>
 
-        {error && <p className="form-error">{error}</p>}
+        {notice && <p className="form-success">{notice}</p>}
+        {error && users.length > 0 ? <p className="form-error">{error}</p> : null}
 
         {loading ? (
-          <p className="muted">Loading users...</p>
+          <EmptyLoadingErrorState
+            description="Loading users and role data for administration."
+            state="loading"
+            title="Loading users"
+          />
+        ) : error && users.length === 0 ? (
+          <EmptyLoadingErrorState
+            action={
+              <button className="ghost-btn" onClick={() => void loadUsers()} type="button">
+                Retry
+              </button>
+            }
+            description={error}
+            state="error"
+            title="Unable to load users"
+          />
         ) : (
           <div className="table-wrap users-table-wrap">
             <table className="users-table">
@@ -731,6 +888,106 @@ export function AdminUsersPage() {
           </div>
         )}
       </section>
+
+      {isAddUserModalOpen && (
+        <div className="admin-user-modal-backdrop" onClick={closeAddUserModal} role="presentation">
+          <section
+            aria-labelledby="admin-add-user-title"
+            aria-modal="true"
+            className="admin-user-modal card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="admin-user-modal-head">
+              <div>
+                <h3 id="admin-add-user-title">Add User</h3>
+                <p>Create a new user account with role access.</p>
+              </div>
+              <button className="ghost-btn small" onClick={closeAddUserModal} type="button">
+                Close
+              </button>
+            </div>
+
+            <form className="admin-user-modal-form" onSubmit={(event) => void handleAddUserSubmit(event)}>
+              {addUserSubmitError && <p className="form-error">{addUserSubmitError}</p>}
+              <label>
+                Full Name
+                <input
+                  autoComplete="name"
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('fullName', event.target.value)}
+                  placeholder="Enter full name"
+                  value={addUserForm.fullName}
+                />
+                {addUserErrors.fullName && <small className="form-error">{addUserErrors.fullName}</small>}
+              </label>
+
+              <label>
+                Email
+                <input
+                  autoComplete="email"
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('email', event.target.value)}
+                  placeholder="name@example.com"
+                  type="email"
+                  value={addUserForm.email}
+                />
+                {addUserErrors.email && <small className="form-error">{addUserErrors.email}</small>}
+              </label>
+
+              <label>
+                Role
+                <select
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('role', event.target.value)}
+                  value={addUserForm.role}
+                >
+                  {roleOptions.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+                {addUserErrors.role && <small className="form-error">{addUserErrors.role}</small>}
+              </label>
+
+              <label>
+                Phone (Optional)
+                <input
+                  autoComplete="tel"
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('phone', event.target.value)}
+                  placeholder="Enter phone number"
+                  value={addUserForm.phone}
+                />
+              </label>
+
+              <label>
+                Temporary Password
+                <input
+                  autoComplete="new-password"
+                  className="text-input small"
+                  minLength={8}
+                  onChange={(event) => handleAddUserFieldChange('password', event.target.value)}
+                  placeholder="At least 8 characters"
+                  type="password"
+                  value={addUserForm.password}
+                />
+                {addUserErrors.password && <small className="form-error">{addUserErrors.password}</small>}
+              </label>
+
+              <div className="admin-user-modal-actions">
+                <button className="ghost-btn" disabled={addUserSubmitting} onClick={closeAddUserModal} type="button">
+                  Cancel
+                </button>
+                <button className="primary-btn" disabled={addUserSubmitting} type="submit">
+                  {addUserSubmitting ? 'Creating...' : 'Create User'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

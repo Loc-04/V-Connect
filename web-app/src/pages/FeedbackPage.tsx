@@ -12,7 +12,6 @@ import type { ParticipationRecord } from '../types/participation';
 import './FeedbackPage.css';
 
 const categoryOptions = ['Organization', 'Activity Quality', 'Venue', 'Management', 'Staff Support'];
-const REQUIRE_FEEDBACK_CATEGORIES = true;
 
 const ratingLabels: Record<number, string> = {
   1: 'Needs major improvement',
@@ -43,7 +42,6 @@ interface FeedbackHistoryItem {
 interface FeedbackFieldErrors {
   activityId?: string;
   rating?: string;
-  categories?: string;
   details?: string;
 }
 
@@ -83,7 +81,6 @@ function validateFeedbackFields(input: {
   activityId: string;
   rating: number;
   details: string;
-  selectedCategories: string[];
 }): FeedbackFieldErrors {
   const errors: FeedbackFieldErrors = {};
   const normalizedDetails = input.details.trim();
@@ -94,10 +91,6 @@ function validateFeedbackFields(input: {
 
   if (input.rating <= 0) {
     errors.rating = 'Please select an overall experience rating.';
-  }
-
-  if (REQUIRE_FEEDBACK_CATEGORIES && input.selectedCategories.length === 0) {
-    errors.categories = 'Please choose at least one highlight category.';
   }
 
   if (!normalizedDetails) {
@@ -210,7 +203,7 @@ export function FeedbackPage() {
 
   const updateFieldError = (
     field: keyof FeedbackFieldErrors,
-    overrides: Partial<{ activityId: string; rating: number; details: string; selectedCategories: string[] }>
+    overrides: Partial<{ activityId: string; rating: number; details: string }>
   ) => {
     setFieldErrors((current) => {
       if (!current[field]) {
@@ -221,7 +214,6 @@ export function FeedbackPage() {
         activityId,
         rating,
         details,
-        selectedCategories,
         ...overrides,
       });
 
@@ -240,12 +232,7 @@ export function FeedbackPage() {
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((current) => {
-      const nextCategories = current.includes(category)
-        ? current.filter((item) => item !== category)
-        : [...current, category];
-
-      updateFieldError('categories', { selectedCategories: nextCategories });
-      return nextCategories;
+      return current.includes(category) ? current.filter((item) => item !== category) : [...current, category];
     });
   };
 
@@ -254,7 +241,6 @@ export function FeedbackPage() {
       activityId,
       rating,
       details,
-      selectedCategories,
     });
 
     setError(null);
@@ -361,8 +347,8 @@ export function FeedbackPage() {
             </div>
 
             <div>
-              <p className="feedback-label">Highlight Categories</p>
-              <div className={fieldErrors.categories ? 'feedback-category-wrap is-invalid' : 'feedback-category-wrap'}>
+              <p className="feedback-label">Highlight Categories (Optional)</p>
+              <div className="feedback-category-wrap">
                 {categoryOptions.map((category) => {
                   const isSelected = selectedCategories.includes(category);
                   return (
@@ -378,7 +364,7 @@ export function FeedbackPage() {
                   );
                 })}
               </div>
-              {fieldErrors.categories && <p className="feedback-field-error">{fieldErrors.categories}</p>}
+              <p className="feedback-inline-note">Optional tags for your drafting flow. Current submission saves rating and detailed feedback only.</p>
             </div>
 
             <label className="feedback-label" htmlFor="feedback-details">

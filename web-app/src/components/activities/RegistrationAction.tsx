@@ -168,15 +168,25 @@ export function RegistrationAction({
   }
 
   if (isRegisterable) {
+    if (!canRegister) {
+      return (
+        <span className={`registration-action registration-action--full ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
+          <Badge className="registration-action-badge" tone="danger">
+            {registerDisabledLabel}
+          </Badge>
+        </span>
+      );
+    }
+
     return (
       <span className={`registration-action registration-action--full ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
         <Button
           className="registration-action-btn"
-          disabled={disabled || !canRegister || registering}
+          disabled={disabled || registering}
           onClick={(event) => void handleRegister(event)}
           type="button"
         >
-          {registering ? 'Registering...' : canRegister ? 'Register' : registerDisabledLabel}
+          {registering ? 'Registering...' : 'Register'}
         </Button>
       </span>
     );

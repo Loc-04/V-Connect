@@ -69,7 +69,8 @@ export function RequireRoleRoute({
   }
 
   if (!session) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    const fullDestination = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" state={{ from: fullDestination }} replace />;
   }
 
   const normalizedRole = normalizeRole(profile?.role);

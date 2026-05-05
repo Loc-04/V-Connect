@@ -23,6 +23,7 @@ import { OrganizerActivityManagementPage } from './pages/OrganizerActivityManage
 import { OrganizerCheckInManagementPage } from './pages/OrganizerCheckInManagementPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { OrganizerNotificationsPage } from './pages/OrganizerNotificationsPage';
+import { OrganizerFeedbackReviewPage } from './pages/OrganizerFeedbackReviewPage';
 import { OrganizerRecommendationsPage } from './pages/OrganizerRecommendationsPage';
 import { OrganizerRegistrationApprovalPage } from './pages/OrganizerRegistrationApprovalPage';
 import { OrganizerReportSummaryPage } from './pages/OrganizerReportSummaryPage';
@@ -74,7 +75,7 @@ function FeedbackRouteEntry() {
   }
 
   if (role === 'organizer') {
-    return <AdminFeedbackPage />;
+    return <Navigate replace to="/organizer/feedback" />;
   }
 
   return <FeedbackPage />;
@@ -237,6 +238,14 @@ function App() {
             element={
               <RequireRoleRoute allowedRoles={['organizer']}>
                 <OrganizerRegistrationApprovalPage />
+              </RequireRoleRoute>
+            }
+          />
+          <Route
+            path="/organizer/feedback"
+            element={
+              <RequireRoleRoute allowedRoles={['organizer']}>
+                <OrganizerFeedbackReviewPage />
               </RequireRoleRoute>
             }
           />

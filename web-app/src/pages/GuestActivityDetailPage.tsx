@@ -1,13 +1,15 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarClock, Heart, MapPin, Share2, Sparkles, Star } from 'lucide-react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { AuthRequiredModal } from '../components/auth/AuthRequiredModal';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { GuestFooter } from '../components/guest';
 import { Badge, Button, Card } from '../components/ui';
-import { buildGuestActivityIntentPath, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
-import { getGuestActivityById, getGuestAvailabilityMeta } from '../lib/guestActivities';
+import { appendGuestIntentToPath, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
+import { getGuestAvailabilityMeta, type GuestActivityRecord } from '../lib/guestActivities';
+import { getPublicGuestActivityById } from '../lib/publicGuestActivities';
 import { GuestShell } from '../layouts/GuestShell';
 import './GuestActivityDetailPage.css';
 
@@ -32,33 +34,124 @@ function formatDateAndTime(startTime: string, endTime: string) {
   };
 }
 
+function isNotFoundError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes('not found') || normalized.includes('404');
+}
+
 export function GuestActivityDetailPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { session, profile } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [authPrompt, setAuthPrompt] = useState<GuestProtectedAction | null>(null);
-  const activity = useMemo(() => (id ? getGuestActivityById(id) : null), [id]);
+  const [activity, setActivity] = useState<GuestActivityRecord | null>(null);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(true);
+  const [activityLoadError, setActivityLoadError] = useState<string | null>(null);
+  const [isActivityNotFound, setIsActivityNotFound] = useState(false);
   const guestIntent = readGuestIntent(searchParams.get('guestIntent'));
+
+  const loadActivity = async (activityId: string) => {
+    setIsLoadingActivity(true);
+    setActivityLoadError(null);
+    setIsActivityNotFound(false);
+
+    try {
+      const nextActivity = await getPublicGuestActivityById(activityId);
+      setActivity(nextActivity);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load activity.';
+      setActivity(null);
+      if (isNotFoundError(message)) {
+        setIsActivityNotFound(true);
+      } else {
+        setActivityLoadError(message);
+      }
+    } finally {
+      setIsLoadingActivity(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!id) {
+      setActivity(null);
+      setActivityLoadError(null);
+      setIsActivityNotFound(true);
+      setIsLoadingActivity(false);
+      return;
+    }
+
+    void loadActivity(id);
+  }, [id]);
 
   useEffect(() => {
     if (!activity || !session || !profile || !guestIntent) {
       return;
     }
 
+    if (String(profile.role ?? '').toLowerCase() !== 'volunteer') {
+      return;
+    }
+
     navigate(`/volunteer/activity/${activity.id}?guestIntent=${guestIntent}`, { replace: true });
   }, [activity, guestIntent, navigate, profile, session]);
 
-  if (!activity) {
+  if (isLoadingActivity) {
     return (
       <GuestShell activeNav="browse">
         <section className="guest-activity-state">
           <Card className="guest-activity-state-card">
-            <p className="form-error">This public activity could not be found.</p>
-            <Button onClick={() => navigate('/guest/browse')} type="button" variant="secondary">
-              Back to Browse Activities
-            </Button>
+            <EmptyLoadingErrorState
+              description="Loading activity details..."
+              state="loading"
+              title="Loading activity"
+            />
+          </Card>
+        </section>
+        <GuestFooter />
+      </GuestShell>
+    );
+  }
+
+  if (activityLoadError) {
+    return (
+      <GuestShell activeNav="browse">
+        <section className="guest-activity-state">
+          <Card className="guest-activity-state-card">
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => (id ? void loadActivity(id) : undefined)} type="button" variant="secondary">
+                  Retry
+                </Button>
+              }
+              description="We couldn't load this activity right now."
+              state="error"
+              title="Unable to load activity"
+            />
+          </Card>
+        </section>
+        <GuestFooter />
+      </GuestShell>
+    );
+  }
+
+  if (!activity || isActivityNotFound) {
+    return (
+      <GuestShell activeNav="browse">
+        <section className="guest-activity-state">
+          <Card className="guest-activity-state-card">
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => navigate('/guest/browse')} type="button" variant="secondary">
+                  Back to Browse Activities
+                </Button>
+              }
+              description="The activity may have been removed or the link may be invalid."
+              state="error"
+              title="This public activity could not be found"
+            />
           </Card>
         </section>
         <GuestFooter />
@@ -68,6 +161,10 @@ export function GuestActivityDetailPage() {
 
   const availability = getGuestAvailabilityMeta(activity);
   const { dateLabel, timeLabel } = formatDateAndTime(activity.startTime, activity.endTime);
+  const hasOrganizerRating = Number.isFinite(activity.organizerRating) && activity.organizerRating > 0;
+  const hasOrganizerNote = typeof activity.organizerNote === 'string' && activity.organizerNote.trim().length > 0;
+  const organizerInitial = activity.organizerName.trim().charAt(0).toUpperCase();
+  const currentPath = `${location.pathname}${location.search}${location.hash}`;
 
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}/guest/activity/${activity.id}`;
@@ -191,19 +288,27 @@ export function GuestActivityDetailPage() {
             <Card as="section" className="guest-detail-organizer-card">
               <p className="guest-detail-side-label">Organizer</p>
               <div className="guest-detail-organizer-head">
-                <img alt={activity.organizerName} src={activity.organizerAvatarUrl} />
+                {activity.organizerAvatarUrl ? (
+                  <img alt={activity.organizerName} src={activity.organizerAvatarUrl} />
+                ) : (
+                  <div className="guest-detail-organizer-fallback-avatar" aria-hidden="true">
+                    {organizerInitial || 'O'}
+                  </div>
+                )}
                 <div>
                   <strong>{activity.organizerName}</strong>
                   <p>{activity.organizerTitle}</p>
                 </div>
               </div>
-              <div className="guest-detail-organizer-rating">
-                <span>
-                  <Star size={14} />
-                  {activity.organizerRating.toFixed(1)} rating
-                </span>
-              </div>
-              <p className="guest-detail-organizer-note">{activity.organizerNote}</p>
+              {hasOrganizerRating ? (
+                <div className="guest-detail-organizer-rating">
+                  <span>
+                    <Star size={14} />
+                    {activity.organizerRating.toFixed(1)} rating
+                  </span>
+                </div>
+              ) : null}
+              {hasOrganizerNote ? <p className="guest-detail-organizer-note">{activity.organizerNote}</p> : null}
               <Button onClick={() => setAuthPrompt('contact')} type="button" variant="secondary">
                 Contact Organizer
               </Button>
@@ -224,7 +329,7 @@ export function GuestActivityDetailPage() {
 
       <AuthRequiredModal
         action={authPrompt ?? undefined}
-        nextPath={buildGuestActivityIntentPath(activity.id, authPrompt ?? 'join')}
+        nextPath={appendGuestIntentToPath(currentPath, authPrompt ?? 'join')}
         onClose={() => setAuthPrompt(null)}
         open={Boolean(authPrompt)}
       />
