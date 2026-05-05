@@ -8,6 +8,7 @@ import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { searchActivities } from '../lib/activities';
+import { formatActivityCardDateLabel } from '../lib/dateTimeFormat';
 import { cancelParticipation, listParticipations } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
@@ -51,20 +52,6 @@ function mapStatusToTone(status: string): CategoryTone {
   }
 }
 
-function formatDateLabel(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Date TBD';
-  }
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 function getLocationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
@@ -87,7 +74,7 @@ function toOpportunity(activity: ActivityRecord): OpportunityViewModel {
     categoryTone: mapStatusToTone(status),
     isRegisterable,
     imageUrl: String(activity.cover_image_url ?? '').trim(),
-    date: formatDateLabel(activity.start_time),
+    date: formatActivityCardDateLabel(activity.start_time, activity.end_time, { includeWeekday: true }),
     title: activity.title ?? 'Untitled activity',
     location: getLocationLabel(activity.location),
     tags: requiredSkills.slice(0, 3),

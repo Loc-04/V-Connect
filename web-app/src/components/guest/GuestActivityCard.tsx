@@ -1,6 +1,7 @@
 import { CalendarDays, MapPin } from 'lucide-react';
 
 import { Badge, Button, Card } from '../ui';
+import { formatActivityCardDateLabel } from '../../lib/dateTimeFormat';
 import type { GuestProtectedAction } from '../../lib/guestAuth';
 import { getGuestAvailabilityMeta, type GuestActivityRecord } from '../../lib/guestActivities';
 import './GuestShared.css';
@@ -10,21 +11,6 @@ interface GuestActivityCardProps {
   variant?: 'browse' | 'featured';
   onViewDetails: (activityId: string) => void;
   onProtectedAction?: (action: GuestProtectedAction, activity: GuestActivityRecord) => void;
-}
-
-function formatDateLabel(startTime: string) {
-  const date = new Date(startTime);
-  if (Number.isNaN(date.getTime())) {
-    return 'Date TBD';
-  }
-
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 function getLocationLabel(activity: GuestActivityRecord) {
@@ -59,7 +45,7 @@ export function GuestActivityCard({
         <div className="guest-opportunity-topline">
           <span>
             <CalendarDays size={14} />
-            {formatDateLabel(activity.startTime)}
+            {formatActivityCardDateLabel(activity.startTime, activity.endTime, { includeWeekday: true })}
           </span>
           <span>
             {activity.currentParticipants}/{activity.capacity}

@@ -159,6 +159,19 @@ function compareTimelineItem(left: TimelineMilestone, right: TimelineMilestone) 
   return leftTime - rightTime;
 }
 
+function normalizeDuplicateText(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function buildTimelineSignature(item: TimelineMilestone) {
+  return JSON.stringify({
+    title: normalizeDuplicateText(item.title),
+    type: item.type,
+    startTime: item.startTime,
+    endTime: item.endTime,
+  });
+}
+
 export function normalizeTimelineItems(input: unknown, activityId = ''): TimelineMilestone[] {
   let rows: unknown[] = [];
 
@@ -171,11 +184,34 @@ export function normalizeTimelineItems(input: unknown, activityId = ''): Timelin
     rows = Array.isArray(parsed) ? parsed : [];
   }
 
-  return rows
+  const normalized = rows
     .map((item, index) => normalizeTimelineItem(item, activityId, index))
     .sort(compareTimelineItem)
     .map((item, index) => ({
       ...item,
       orderIndex: index,
     }));
+
+  const byId = new Map<string, TimelineMilestone>();
+  const bySignature = new Set<string>();
+  const deduped: TimelineMilestone[] = [];
+
+  for (const item of normalized) {
+    if (item.id && byId.has(item.id)) {
+      continue;
+    }
+    const signature = buildTimelineSignature(item);
+    if (bySignature.has(signature)) {
+      continue;
+    }
+
+    byId.set(item.id, item);
+    bySignature.add(signature);
+    deduped.push(item);
+  }
+
+  return deduped.map((item, index) => ({
+    ...item,
+    orderIndex: index,
+  }));
 }

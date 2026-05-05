@@ -9,30 +9,10 @@ import { GuestFooter } from '../components/guest';
 import { Badge, Button, Card } from '../components/ui';
 import { appendGuestIntentToPath, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { getGuestAvailabilityMeta, type GuestActivityRecord } from '../lib/guestActivities';
+import { formatDateAndTimeLabels } from '../lib/dateTimeFormat';
 import { getPublicGuestActivityById } from '../lib/publicGuestActivities';
 import { GuestShell } from '../layouts/GuestShell';
 import './GuestActivityDetailPage.css';
-
-function formatDateAndTime(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return { dateLabel: 'Date TBD', timeLabel: 'Time TBD' };
-  }
-
-  return {
-    dateLabel: start.toLocaleDateString(undefined, {
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-    }),
-    timeLabel: `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    })}`,
-  };
-}
 
 function isNotFoundError(message: string) {
   const normalized = message.toLowerCase();
@@ -160,7 +140,9 @@ export function GuestActivityDetailPage() {
   }
 
   const availability = getGuestAvailabilityMeta(activity);
-  const { dateLabel, timeLabel } = formatDateAndTime(activity.startTime, activity.endTime);
+  const { dateLabel, timeLabel } = formatDateAndTimeLabels(activity.startTime, activity.endTime, {
+    includeWeekday: true,
+  });
   const hasOrganizerRating = Number.isFinite(activity.organizerRating) && activity.organizerRating > 0;
   const hasOrganizerNote = typeof activity.organizerNote === 'string' && activity.organizerNote.trim().length > 0;
   const organizerInitial = activity.organizerName.trim().charAt(0).toUpperCase();
@@ -198,8 +180,9 @@ export function GuestActivityDetailPage() {
             <div>
               <h1>{activity.title}</h1>
               <p>
-                <CalendarClock size={16} /> {dateLabel} - {timeLabel}
+                <CalendarClock size={16} /> {dateLabel}
               </p>
+              <p>{timeLabel}</p>
               <p>
                 <MapPin size={16} /> {activity.location.address}, {activity.location.city}
               </p>
