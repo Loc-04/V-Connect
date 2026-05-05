@@ -53,14 +53,23 @@ router.get('/auth/me', requireAuth, (req, res) => {
 });
 
 router.post('/auth/register-profile', requireAuth, async (req, res) => {
-  const role = req.body?.role;
+  const role = typeof req.body?.role === 'string' ? req.body.role.trim().toLowerCase() : '';
   const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim() : '';
   const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+  const requesterRole = String(req.auth?.profile?.role ?? '')
+    .trim()
+    .toLowerCase();
 
   if (!validRoles.has(role)) {
     res.status(400).json({ message: 'Invalid role.' });
     return;
   }
+
+  if (requesterRole !== 'admin' && role !== 'volunteer') {
+    res.status(403).json({ message: 'Public self-signup can only create volunteer accounts.' });
+    return;
+  }
+
   if (role === 'admin' && req.auth?.profile?.role !== 'admin') {
     res.status(403).json({ message: 'You cannot self-assign admin role.' });
     return;

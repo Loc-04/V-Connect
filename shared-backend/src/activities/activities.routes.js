@@ -10,7 +10,14 @@ import {
   resolveActivityCoverImageUrl,
   withResolvedActivityCoverImage,
 } from './activities.cover.js';
-import { canWriteActivities, getActivityById } from './activities.service.js';
+import {
+  canWriteActivities,
+  getActivityById,
+  listPublishedActivitiesForGuest,
+  getPublishedActivityForGuestById,
+  getOrganizerPublicProfilesByIds,
+  getActiveParticipationCountsByActivityIds,
+} from './activities.service.js';
 
 const router = Router();
 
@@ -165,6 +172,105 @@ function matchesLocationFilter(activity, locationFilter) {
     .toLowerCase();
 
   return text.includes(normalizedLocationFilter);
+}
+
+function toSafeGuestLocation(location) {
+  if (!location || typeof location !== 'object') {
+    return {
+      address: '',
+      city: '',
+      meetingPoint: '',
+      lat: null,
+      lng: null,
+    };
+  }
+
+  const address = typeof location.address === 'string' ? location.address : '';
+  const city =
+    typeof location.city === 'string'
+      ? location.city
+      : typeof location.province === 'string'
+        ? location.province
+        : '';
+  const meetingPoint =
+    typeof location.formattedAddress === 'string' && location.formattedAddress.trim().length > 0
+      ? location.formattedAddress
+      : address;
+  const lat = Number.isFinite(Number(location.lat)) ? Number(location.lat) : null;
+  const lng = Number.isFinite(Number(location.lng)) ? Number(location.lng) : null;
+
+  return {
+    address,
+    city,
+    meetingPoint,
+    lat,
+    lng,
+  };
+}
+
+function mapGuestPublishedActivity(activity, organizerById, participationCountByActivityId) {
+  const organizer = organizerById.get(activity.organizer_id) ?? null;
+  const requiredSkills = Array.isArray(activity.required_skills)
+    ? activity.required_skills.map((skill) => String(skill).trim()).filter(Boolean)
+    : [];
+
+  return {
+    id: activity.id,
+    title: String(activity.title ?? ''),
+    description: typeof activity.description === 'string' ? activity.description : '',
+    coverImageUrl: String(activity.cover_image_url ?? ''),
+    location: toSafeGuestLocation(activity.location),
+    startTime: activity.start_time,
+    endTime: activity.end_time,
+    capacity: Number.isFinite(Number(activity.capacity)) ? Number(activity.capacity) : 0,
+    currentParticipants: participationCountByActivityId.get(activity.id) ?? 0,
+    requiredSkills,
+    status: 'published',
+    organizer: {
+      id: activity.organizer_id ?? null,
+      name: typeof organizer?.full_name === 'string' && organizer.full_name.trim().length > 0 ? organizer.full_name : 'Organizer',
+      avatarUrl: typeof organizer?.avatar_url === 'string' ? organizer.avatar_url : '',
+    },
+  };
+}
+
+function safeMapGuestPublishedActivity(activity, organizerById, participationCountByActivityId) {
+  try {
+    return mapGuestPublishedActivity(activity, organizerById, participationCountByActivityId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to map public activity ${String(activity?.id ?? 'unknown')}: ${message}`);
+
+    const fallbackId = String(activity?.id ?? '').trim();
+    const fallbackTitle = String(activity?.title ?? '').trim() || 'Untitled activity';
+    const fallbackCapacity = Number.isFinite(Number(activity?.capacity)) ? Number(activity.capacity) : 0;
+    const fallbackCover = typeof activity?.cover_image_url === 'string' ? activity.cover_image_url : '';
+
+    return {
+      id: fallbackId,
+      title: fallbackTitle,
+      description: typeof activity?.description === 'string' ? activity.description : '',
+      coverImageUrl: fallbackCover,
+      location: {
+        address: '',
+        city: '',
+        meetingPoint: '',
+        lat: null,
+        lng: null,
+      },
+      startTime: typeof activity?.start_time === 'string' ? activity.start_time : '',
+      endTime: typeof activity?.end_time === 'string' ? activity.end_time : '',
+      capacity: fallbackCapacity,
+      currentParticipants: 0,
+      requiredSkills: [],
+      status: 'published',
+      organizer: {
+        id: null,
+        name: 'Organizer',
+        avatarUrl: '',
+      },
+    };
+  }
 }
 
 function applyActivityReadVisibility({
@@ -544,6 +650,52 @@ function normalizeTimelinePayload(body, { partial = false } = {}) {
   return payload;
 }
 
+function extractTimelineEndTimeFromDescription(descriptionValue) {
+  const meta = normalizeTimelineDescriptionMeta(descriptionValue);
+  if (!meta) {
+    return '';
+  }
+  return normalizeTimelineIsoString(meta.endTime ?? meta.end_time);
+}
+
+function assertTimelineWithinActivityWindow({
+  activity,
+  milestoneStartTime,
+  milestoneEndTime,
+}) {
+  const activityStart = normalizeTimelineIsoString(activity?.start_time);
+  const activityEnd = normalizeTimelineIsoString(activity?.end_time);
+  const milestoneStart = normalizeTimelineIsoString(milestoneStartTime);
+  const milestoneEnd = normalizeTimelineIsoString(milestoneEndTime);
+
+  if (!activityStart || !activityEnd) {
+    throw new Error('Activity time window is invalid.');
+  }
+
+  if (!milestoneStart) {
+    throw new Error('timelineChoice is required.');
+  }
+
+  const activityStartMs = new Date(activityStart).getTime();
+  const activityEndMs = new Date(activityEnd).getTime();
+  const milestoneStartMs = new Date(milestoneStart).getTime();
+
+  if (milestoneStartMs < activityStartMs) {
+    throw new Error('Timeline milestone start time must be within the activity time window.');
+  }
+
+  if (milestoneStartMs > activityEndMs) {
+    throw new Error('Timeline milestone start time must be within the activity time window.');
+  }
+
+  if (milestoneEnd) {
+    const milestoneEndMs = new Date(milestoneEnd).getTime();
+    if (milestoneEndMs > activityEndMs) {
+      throw new Error('Timeline milestone end time must be within the activity time window.');
+    }
+  }
+}
+
 function normalizeTimelineItem(row, fallbackIndex = 0) {
   const item = isPlainObject(row) ? row : {};
   const descriptionSource = item.description ?? item.detail ?? item.notes ?? item.content ?? item.metadata ?? null;
@@ -632,6 +784,79 @@ function canEditTimeline(activity, role, userId) {
   }
   return activity.organizer_id === userId;
 }
+
+router.get('/public/activities', async (req, res) => {
+  const requestedLimit = Number(req.query.limit ?? 120);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 300)
+    : 120;
+
+  try {
+    const activities = await listPublishedActivitiesForGuest(limit);
+    const activityIds = activities.map((activity) => activity.id).filter(Boolean);
+    const organizerIds = activities.map((activity) => activity.organizer_id).filter(Boolean);
+
+    let organizerById = new Map();
+    let participationCountByActivityId = new Map();
+
+    try {
+      organizerById = await getOrganizerPublicProfilesByIds(organizerIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Public organizer lookup failed. Falling back to safe defaults. ${message}`);
+    }
+
+    try {
+      participationCountByActivityId = await getActiveParticipationCountsByActivityIds(activityIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Public participation count lookup failed. Falling back to zero counts. ${message}`);
+    }
+
+    const publishedActivities = activities.map((activity) =>
+      safeMapGuestPublishedActivity(activity, organizerById, participationCountByActivityId)
+    );
+
+    res.json({ activities: publishedActivities });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load public activities.';
+    res.status(500).json({ message });
+  }
+});
+
+router.get('/public/activities/:id', async (req, res) => {
+  try {
+    const activity = await getPublishedActivityForGuestById(req.params.id);
+    if (!activity) {
+      res.status(404).json({ message: 'Activity not found.' });
+      return;
+    }
+
+    let organizerById = new Map();
+    let participationCountByActivityId = new Map();
+
+    try {
+      organizerById = await getOrganizerPublicProfilesByIds([activity.organizer_id]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Public detail organizer lookup failed. Falling back to safe defaults. ${message}`);
+    }
+
+    try {
+      participationCountByActivityId = await getActiveParticipationCountsByActivityIds([activity.id]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Public detail participation lookup failed. Falling back to zero count. ${message}`);
+    }
+
+    res.json({
+      activity: safeMapGuestPublishedActivity(activity, organizerById, participationCountByActivityId),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load public activity.';
+    res.status(500).json({ message });
+  }
+});
 
 async function handleActivityDetail(req, res) {
   const activityId = req.params.id;
@@ -725,6 +950,11 @@ router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
   let payload;
   try {
     payload = normalizeTimelinePayload(req.body, { partial: false });
+    assertTimelineWithinActivityWindow({
+      activity,
+      milestoneStartTime: payload.timeline_choice,
+      milestoneEndTime: extractTimelineEndTimeFromDescription(payload.description),
+    });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
     return;
@@ -779,6 +1009,39 @@ router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, re
   let payload;
   try {
     payload = normalizeTimelinePayload(req.body, { partial: true });
+  } catch (error) {
+    res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
+    return;
+  }
+
+  const { data: existingMilestone, error: existingMilestoneError } = await supabaseAdmin
+    .from('activities_timeline')
+    .select(timelineColumns)
+    .eq('id', timelineId)
+    .eq('activity_id', activityId)
+    .maybeSingle();
+
+  if (existingMilestoneError) {
+    res.status(500).json({ message: existingMilestoneError.message });
+    return;
+  }
+
+  if (!existingMilestone) {
+    res.status(404).json({ message: 'Timeline milestone not found.' });
+    return;
+  }
+
+  try {
+    const mergedMilestoneStartTime = payload.timeline_choice ?? existingMilestone.timeline_choice;
+    const mergedMilestoneEndTime = Object.hasOwn(payload, 'description')
+      ? extractTimelineEndTimeFromDescription(payload.description)
+      : extractTimelineEndTimeFromDescription(existingMilestone.description);
+
+    assertTimelineWithinActivityWindow({
+      activity,
+      milestoneStartTime: mergedMilestoneStartTime,
+      milestoneEndTime: mergedMilestoneEndTime,
+    });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
     return;
@@ -1048,8 +1311,14 @@ router.post('/activities', requireAuth, async (req, res) => {
   }
 
   const activityStartTime = new Date(payload.start_time);
-  if (activityStartTime < new Date()) {
-    res.status(400).json({ message: 'startTime cannot be in the past for new activities.' });
+  const activityStartTimestamp = activityStartTime.getTime();
+  if (!Number.isFinite(activityStartTimestamp)) {
+    res.status(400).json({ message: 'startTime must be a valid date-time.' });
+    return;
+  }
+
+  if (activityStartTimestamp <= Date.now()) {
+    res.status(400).json({ message: 'startTime must be in the future for new activities.' });
     return;
   }
 

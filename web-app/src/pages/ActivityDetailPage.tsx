@@ -18,15 +18,14 @@ import {
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { cancelParticipation, listParticipations } from '../lib/participations';
-import { getMockActivityDetailById } from '../lib/participationMocks';
 import { listActivityTimeline } from '../lib/timeline';
-import type { ActivityDetailMock } from '../lib/participationMocks';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import type { TimelineMilestone } from '../types/timeline';
 import './ActivityDetailPage.css';
 
 type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published' | 'expired';
+type ActivityLoadState = 'loading' | 'success' | 'error' | 'not_found';
 
 interface ActivityDetailViewModel {
   id: string;
@@ -117,56 +116,29 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
-function mapFromMock(mock: ActivityDetailMock): ActivityDetailViewModel {
-  const { dateLabel, timeLabel } = formatDateAndTime(mock.startTime, mock.endTime);
-  return {
-    id: mock.id,
-    title: mock.title,
-    organization: mock.organization,
-    description: mock.description,
-    locationName: mock.locationName,
-    locationAddress: mock.locationAddress,
-    dateLabel,
-    timeLabel,
-    volunteerHours: mock.volunteerHours,
-    maxParticipants: mock.maxParticipants,
-    currentParticipants: mock.currentParticipants,
-    status: toStatus(mock.status, mock.endTime),
-    level: mock.level,
-    categories: mock.categories,
-    requirements: mock.requirements,
-    heroImageUrl: mock.heroImageUrl,
-    locationCoordinates: null,
-    mapUrl: mock.locationAddress
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mock.locationAddress)}`
-      : null,
-  };
-}
-
-function mapFromApi(activity: ActivityRecord, fallback: ActivityDetailMock | null): ActivityDetailViewModel {
+function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
   const { dateLabel, timeLabel } = formatDateAndTime(activity.start_time, activity.end_time);
   const skills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
-  const categories = skills.length > 0 ? skills.slice(0, 2).map(titleCase) : fallback?.categories ?? ['Community'];
-  const requirements = skills.length > 0 ? skills.slice(0, 3).map(titleCase) : fallback?.requirements ?? ['Teamwork'];
-  const maxParticipants = Number(activity.capacity ?? fallback?.maxParticipants ?? 0);
+  const categories = skills.length > 0 ? skills.slice(0, 2).map(titleCase) : ['Community'];
+  const requirements = skills.length > 0 ? skills.slice(0, 3).map(titleCase) : ['Teamwork'];
+  const maxParticipants = Number(activity.capacity ?? 0);
 
   return {
     id: activity.id,
-    title: activity.title || fallback?.title || 'Untitled Activity',
-    organization: fallback?.organization || 'Community Organizer',
+    title: activity.title || 'Untitled Activity',
+    organization: 'Community Organizer',
     description:
       activity.description?.trim() ||
-      fallback?.description ||
       'Details for this activity are being updated by the organizer.',
     locationName: locationLabel(activity.location),
-    locationAddress: getActivityAddressLine(activity.location) || fallback?.locationAddress || locationLabel(activity.location),
+    locationAddress: getActivityAddressLine(activity.location) || locationLabel(activity.location),
     dateLabel,
     timeLabel,
     volunteerHours: toHours(activity.start_time, activity.end_time),
     maxParticipants,
-    currentParticipants: fallback?.currentParticipants ?? null,
+    currentParticipants: null,
     status: toStatus(String(activity.status ?? 'upcoming'), activity.end_time),
-    level: fallback?.level || 'Open to all levels',
+    level: 'Open to all levels',
     categories,
     requirements,
     heroImageUrl: String(activity.cover_image_url ?? '').trim(),
@@ -189,6 +161,10 @@ function getStatusTone(status: ViewStatus) {
     return 'accent' as const;
   }
   return 'info' as const;
+}
+
+function isActivityRegisterable(status: ViewStatus) {
+  return status === 'published';
 }
 
 function getGuestIntentMessage(action: GuestProtectedAction, canRegister: boolean) {
@@ -217,12 +193,13 @@ export function ActivityDetailPage() {
   const { session, profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activityLoadState, setActivityLoadState] = useState<ActivityLoadState>('loading');
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [intentNotice, setIntentNotice] = useState<{ action: GuestProtectedAction; message: string } | null>(null);
   const [activity, setActivity] = useState<ActivityDetailViewModel | null>(null);
-  const [usingMockFallback, setUsingMockFallback] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [participation, setParticipation] = useState<ParticipationRecord | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineError, setTimelineError] = useState<string | null>(null);
@@ -238,61 +215,70 @@ export function ActivityDetailPage() {
     () => readGuestIntent(searchParams.get(getGuestIntentParamName())),
     [searchParams]
   );
+  const sessionToken = session?.access_token ?? null;
+  const resolvedActivityLoadState: ActivityLoadState = !id ? 'not_found' : !sessionToken ? 'error' : activityLoadState;
+  const resolvedLoadErrorMessage = !id ? null : !sessionToken ? 'No active session token.' : loadErrorMessage;
+  const resolvedActivity = resolvedActivityLoadState === 'success' ? activity : null;
+  const resolvedParticipation = id && sessionToken && canRegister && resolvedActivity ? participation : null;
+  const resolvedTimelineLoading = resolvedActivity?.id && sessionToken ? timelineLoading : false;
+  const resolvedTimelineError = resolvedActivity?.id ? (sessionToken ? timelineError : 'No active session token.') : null;
+  const resolvedTimelineMilestones = resolvedActivity?.id && sessionToken ? timelineMilestones : [];
+  const isLoading = resolvedActivityLoadState === 'loading';
+  const hasLoadError = resolvedActivityLoadState === 'error';
+  const isNotFound = resolvedActivityLoadState === 'not_found';
+  const isLoaded = resolvedActivityLoadState === 'success' && Boolean(resolvedActivity);
+
+  const handleRetryLoad = () => {
+    setActionError(null);
+    setMessage(null);
+    setLoadErrorMessage(null);
+    setReloadToken((current) => current + 1);
+  };
 
   useEffect(() => {
-    if (!id) {
-      setLoading(false);
-      setError('Missing activity id.');
-      return;
-    }
-
-    if (!session?.access_token) {
-      setLoading(false);
-      setError('No active session token.');
+    if (!id || !sessionToken) {
       return;
     }
 
     let cancelled = false;
-    const fallback = getMockActivityDetailById(id);
-
-    setLoading(true);
-    setError(null);
-    setUsingMockFallback(false);
+    const loadStateTimeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      setActivityLoadState('loading');
+      setLoadErrorMessage(null);
+      setActionError(null);
+    }, 0);
 
     void (async () => {
       try {
-        const response = await getActivityById(id, session.access_token);
+        const response = await getActivityById(id, sessionToken);
         if (cancelled) {
           return;
         }
-        setActivity(mapFromApi(response, fallback));
+        setActivity(mapFromApi(response));
+        setActivityLoadState('success');
       } catch (loadError) {
         if (cancelled) {
           return;
         }
-
-        if (fallback) {
-          setActivity(mapFromMock(fallback));
-          setUsingMockFallback(true);
-          return;
-        }
-
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load activity detail.');
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        const errorMessage = loadError instanceof Error ? loadError.message : 'Failed to load activity detail.';
+        const normalizedMessage = errorMessage.toLowerCase();
+        const notFound = normalizedMessage.includes('not found') || normalizedMessage.includes('(404)');
+        setActivity(null);
+        setLoadErrorMessage(notFound ? null : errorMessage);
+        setActivityLoadState(notFound ? 'not_found' : 'error');
       }
     })();
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadStateTimeoutId);
     };
-  }, [id, session?.access_token]);
+  }, [id, reloadToken, sessionToken]);
 
   useEffect(() => {
-    if (!id || !session?.access_token || !canRegister) {
-      setParticipation(null);
+    if (!id || !sessionToken || !canRegister || !isLoaded) {
       return;
     }
 
@@ -300,7 +286,7 @@ export function ActivityDetailPage() {
     void (async () => {
       try {
         const rows = await listParticipations({
-          accessToken: session.access_token,
+          accessToken: sessionToken,
           mine: true,
           activityId: id,
           limit: 1,
@@ -311,7 +297,7 @@ export function ActivityDetailPage() {
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to load your registration status.');
+          setActionError(loadError instanceof Error ? loadError.message : 'Failed to load your registration status.');
         }
       }
     })();
@@ -319,27 +305,23 @@ export function ActivityDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [canRegister, id, session?.access_token]);
+  }, [canRegister, id, isLoaded, sessionToken]);
 
   useEffect(() => {
-    if (!activity?.id) {
-      setTimelineMilestones([]);
-      setTimelineError(null);
-      setTimelineLoading(false);
-      return;
-    }
-    if (!session?.access_token) {
-      setTimelineMilestones([]);
-      setTimelineError('No active session token.');
-      setTimelineLoading(false);
+    if (!isLoaded || !resolvedActivity?.id || !sessionToken) {
       return;
     }
 
     let cancelled = false;
-    setTimelineLoading(true);
-    setTimelineError(null);
+    const timelineLoadTimeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      setTimelineLoading(true);
+      setTimelineError(null);
+    }, 0);
 
-    void listActivityTimeline(activity.id, session.access_token)
+    void listActivityTimeline(resolvedActivity.id, sessionToken)
       .then((response) => {
         if (cancelled) {
           return;
@@ -362,52 +344,66 @@ export function ActivityDetailPage() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timelineLoadTimeoutId);
     };
-  }, [activity?.id, session?.access_token]);
+  }, [isLoaded, resolvedActivity?.id, sessionToken]);
 
   useEffect(() => {
     if (!guestIntent) {
       return;
     }
 
-    setIntentNotice({
-      action: guestIntent,
-      message: getGuestIntentMessage(guestIntent, canRegister),
-    });
+    const timeoutId = window.setTimeout(() => {
+      setIntentNotice({
+        action: guestIntent,
+        message: getGuestIntentMessage(guestIntent, canRegister),
+      });
+    }, 0);
 
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete(getGuestIntentParamName());
     setSearchParams(nextParams, { replace: true });
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [canRegister, guestIntent, searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (loading || error || !activity || intentNotice?.action !== 'join' || !registrationPanelRef.current) {
+    if (
+      isLoading ||
+      hasLoadError ||
+      isNotFound ||
+      !resolvedActivity ||
+      intentNotice?.action !== 'join' ||
+      !registrationPanelRef.current
+    ) {
       return;
     }
 
     registrationPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activity, error, intentNotice, loading]);
+  }, [resolvedActivity, hasLoadError, intentNotice, isLoading, isNotFound]);
 
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {
-      setError(nextMessage);
+      setActionError(nextMessage);
       setMessage(null);
       return;
     }
 
     setMessage(nextMessage);
-    setError(null);
+    setActionError(null);
   };
 
   const handleShareActivity = async () => {
-    if (!activity) {
+    if (!resolvedActivity) {
       return;
     }
 
     const pageUrl = window.location.href;
     const shareData = {
-      title: activity.title,
-      text: `${activity.title} - ${activity.organization}`,
+      title: resolvedActivity.title,
+      text: `${resolvedActivity.title} - ${resolvedActivity.organization}`,
       url: pageUrl,
     };
 
@@ -415,54 +411,54 @@ export function ActivityDetailPage() {
       if (typeof navigator.share === 'function') {
         await navigator.share(shareData);
         setMessage('Activity link shared.');
-        setError(null);
+        setActionError(null);
         return;
       }
 
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(pageUrl);
         setMessage('Activity link copied to clipboard.');
-        setError(null);
+        setActionError(null);
         return;
       }
 
-      window.open(`mailto:?subject=${encodeURIComponent(activity.title)}&body=${encodeURIComponent(pageUrl)}`, '_blank');
+      window.open(`mailto:?subject=${encodeURIComponent(resolvedActivity.title)}&body=${encodeURIComponent(pageUrl)}`, '_blank');
       setMessage('Opened email share draft.');
-      setError(null);
+      setActionError(null);
     } catch (shareError) {
       if (shareError instanceof Error && shareError.name === 'AbortError') {
         return;
       }
       setMessage(null);
-      setError(shareError instanceof Error ? shareError.message : 'Unable to share this activity right now.');
+      setActionError(shareError instanceof Error ? shareError.message : 'Unable to share this activity right now.');
     }
   };
 
   const handleOpenMap = () => {
-    if (!activity) {
+    if (!resolvedActivity) {
       return;
     }
 
-    if (!activity.mapUrl) {
+    if (!resolvedActivity.mapUrl) {
       setMessage(null);
-      setError('No location data is available to open map.');
+      setActionError('No location data is available to open map.');
       return;
     }
 
-    window.open(activity.mapUrl, '_blank', 'noopener,noreferrer');
+    window.open(resolvedActivity.mapUrl, '_blank', 'noopener,noreferrer');
   };
 
   const openSlotsLabel = useMemo(() => {
-    if (!activity) {
+    if (!resolvedActivity) {
       return '--';
     }
-    if (activity.currentParticipants === null) {
-      return `-- / ${activity.maxParticipants}`;
+    if (resolvedActivity.currentParticipants === null) {
+      return `-- / ${resolvedActivity.maxParticipants}`;
     }
-    return `${activity.currentParticipants} / ${activity.maxParticipants}`;
-  }, [activity]);
+    return `${resolvedActivity.currentParticipants} / ${resolvedActivity.maxParticipants}`;
+  }, [resolvedActivity]);
 
-  const canSubmitRegistration = canRegister && activity?.status !== 'expired';
+  const canSubmitRegistration = canRegister && (resolvedActivity ? isActivityRegisterable(resolvedActivity.status) : false);
 
   return (
     <VolunteerShell
@@ -472,7 +468,13 @@ export function ActivityDetailPage() {
           <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
             Back to History
           </Button>
-          <Button aria-label="Share activity" onClick={() => void handleShareActivity()} type="button" variant="secondary">
+          <Button
+            aria-label="Share activity"
+            disabled={!isLoaded}
+            onClick={() => void handleShareActivity()}
+            type="button"
+            variant="secondary"
+          >
             <Share2 size={16} />
           </Button>
           <Button
@@ -487,11 +489,11 @@ export function ActivityDetailPage() {
         </div>
       }
       pageSubtitle={
-        activity
-          ? `${activity.organization} - ${activity.dateLabel}`
+        resolvedActivity
+          ? `${resolvedActivity.organization} - ${resolvedActivity.dateLabel}`
           : 'Review the schedule, requirements, and participation details before joining.'
       }
-      pageTitle={activity?.title ?? 'Activity Details'}
+      pageTitle={resolvedActivity?.title ?? 'Activity Details'}
     >
       <section className="activity-detail-page">
         {intentNotice ? (
@@ -517,69 +519,71 @@ export function ActivityDetailPage() {
           </Card>
         ) : null}
         {message && <p className="form-success">{message}</p>}
+        {actionError && <p className="form-error">{actionError}</p>}
 
-        {loading && (
+        {isLoading && (
           <Card className="activity-detail-state-card">
             <p>Loading activity detail...</p>
           </Card>
         )}
 
-        {!loading && error && (
+        {hasLoadError && (
           <Card className="activity-detail-state-card">
-            <p className="form-error">{error}</p>
-            <Button onClick={() => navigate('/volunteer/participation-history')} type="button" variant="secondary">
-              Back to Participation History
-            </Button>
+            <p className="form-error">{resolvedLoadErrorMessage ?? "We couldn't load this activity right now."}</p>
+            <div className="activity-detail-state-actions">
+              <Button onClick={handleRetryLoad} type="button">
+                Retry
+              </Button>
+              <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                Back to Browse
+              </Button>
+            </div>
           </Card>
         )}
 
-        {!loading && !error && activity && (
-          <>
-            {usingMockFallback && (
-              <p className="activity-detail-note">
-                Live activity details are temporarily unavailable. Showing the best available preview.
-              </p>
-            )}
+        {isNotFound && (
+          <Card className="activity-detail-state-card">
+            <p>This activity could not be found.</p>
+            <div className="activity-detail-state-actions">
+              <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                Back to Browse
+              </Button>
+            </div>
+          </Card>
+        )}
 
+        {isLoaded && resolvedActivity && (
+          <>
             <div className="activity-detail-grid">
               <Card as="section" className="activity-detail-main">
-                <img alt={activity.title} className="activity-detail-hero-image" src={activity.heroImageUrl} />
+                <img alt={resolvedActivity.title} className="activity-detail-hero-image" src={resolvedActivity.heroImageUrl} />
 
                 <div className="activity-detail-tags">
-                  <Badge className="activity-detail-tag" tone={getStatusTone(activity.status)}>
-                    {titleCase(activity.status)}
+                  <Badge className="activity-detail-tag" tone={getStatusTone(resolvedActivity.status)}>
+                    {titleCase(resolvedActivity.status)}
                   </Badge>
-                  {activity.categories.map((category) => (
+                  {resolvedActivity.categories.map((category) => (
                     <Badge className="activity-detail-tag" key={category} tone="accent">
                       {category}
                     </Badge>
                   ))}
                 </div>
 
-                <h1>{activity.title}</h1>
+                <h1>{resolvedActivity.title}</h1>
 
                 <article className="activity-detail-organizer-card">
                   <div className="activity-detail-org-avatar" aria-hidden="true">
-                    {activity.organization.slice(0, 1).toUpperCase()}
+                    {resolvedActivity.organization.slice(0, 1).toUpperCase()}
                   </div>
                   <div>
-                    <p>{activity.organization}</p>
+                    <p>{resolvedActivity.organization}</p>
                     <small>Verified Organizer</small>
                   </div>
-                  <Button
-                    aria-label="Follow organizer is not available yet"
-                    disabled
-                    title="Follow organizer is not available yet."
-                    type="button"
-                    variant="secondary"
-                  >
-                    Follow (Soon)
-                  </Button>
                 </article>
 
                 <section className="activity-detail-section">
                   <h2>About this activity</h2>
-                  <p>{activity.description}</p>
+                  <p>{resolvedActivity.description}</p>
                 </section>
 
                 <section className="activity-detail-timeline">
@@ -589,16 +593,16 @@ export function ActivityDetailPage() {
                   </div>
                   <EventTimelineReadOnly
                     emptyDescription="No timeline milestones available yet."
-                    milestones={timelineMilestones}
-                    loading={timelineLoading}
-                    error={timelineError}
+                    milestones={resolvedTimelineMilestones}
+                    loading={resolvedTimelineLoading}
+                    error={resolvedTimelineError}
                   />
                 </section>
 
                 <section className="activity-detail-requirements">
                   <h3>Volunteer Requirements</h3>
                   <div>
-                    {activity.requirements.map((requirement) => (
+                    {resolvedActivity.requirements.map((requirement) => (
                       <Badge className="activity-detail-pill" key={requirement} tone="neutral">
                         {requirement}
                       </Badge>
@@ -609,7 +613,7 @@ export function ActivityDetailPage() {
                 <div className="activity-detail-stats">
                   <div>
                     <small>Duration</small>
-                    <strong>{activity.volunteerHours} Hours</strong>
+                    <strong>{resolvedActivity.volunteerHours} Hours</strong>
                   </div>
                   <div>
                     <small>Open Slots</small>
@@ -617,7 +621,7 @@ export function ActivityDetailPage() {
                   </div>
                   <div>
                     <small>Level</small>
-                    <strong>{activity.level}</strong>
+                    <strong>{resolvedActivity.level}</strong>
                   </div>
                 </div>
               </Card>
@@ -628,16 +632,16 @@ export function ActivityDetailPage() {
                     <small>
                       <CalendarClock className="activity-detail-side-icon" /> Date &amp; Time
                     </small>
-                    <strong>{activity.dateLabel}</strong>
-                    <p>{activity.timeLabel}</p>
+                    <strong>{resolvedActivity.dateLabel}</strong>
+                    <p>{resolvedActivity.timeLabel}</p>
                   </div>
 
                   <div className="activity-detail-side-block">
                     <small>
                       <MapPin className="activity-detail-side-icon" /> Location
                     </small>
-                    <strong>{activity.locationName}</strong>
-                    <p>{activity.locationAddress}</p>
+                    <strong>{resolvedActivity.locationName}</strong>
+                    <p>{resolvedActivity.locationAddress}</p>
                   </div>
 
                   <div className="activity-detail-side-block">
@@ -649,7 +653,7 @@ export function ActivityDetailPage() {
                         <img alt="" key={avatar} src={avatar} />
                       ))}
                       <span>
-                        +{activity.currentParticipants === null ? '--' : Math.max(activity.currentParticipants - 4, 0)}
+                        +{resolvedActivity.currentParticipants === null ? '--' : Math.max(resolvedActivity.currentParticipants - 4, 0)}
                       </span>
                     </div>
                   </div>
@@ -664,11 +668,11 @@ export function ActivityDetailPage() {
                   >
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
-                      activityId={activity.id}
+                      activityId={resolvedActivity.id}
                       canRegister={canSubmitRegistration}
                       className="activity-detail-registration-action"
                       recommendationItemId={recommendationItemIdFromQuery}
-                      currentStatus={participation?.status ?? 'none'}
+                      currentStatus={resolvedParticipation?.status ?? 'none'}
                       confirmCancelMessage="Cancel this registration for the activity?"
                       registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
                       onCancel={async ({ activityId }) => {
@@ -690,17 +694,17 @@ export function ActivityDetailPage() {
 
                 <Card as="article" className="activity-detail-map-card">
                   <ActivityLocationMap
-                    address={activity.locationAddress || activity.locationName}
+                    address={resolvedActivity.locationAddress || resolvedActivity.locationName}
                     compact
-                    coordinates={activity.locationCoordinates}
+                    coordinates={resolvedActivity.locationCoordinates}
                     emptyMessage="The organizer has not saved map coordinates for this activity yet. You can still open the address in your maps app."
                     emptyTitle="Live map preview is not available"
                     interactive
-                    title={activity.title}
+                    title={resolvedActivity.title}
                   />
                   <Button
                     className="activity-detail-map-btn"
-                    disabled={!activity.mapUrl}
+                    disabled={!resolvedActivity.mapUrl}
                     onClick={handleOpenMap}
                     type="button"
                     variant="secondary"

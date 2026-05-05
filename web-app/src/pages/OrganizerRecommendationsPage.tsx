@@ -21,6 +21,7 @@ import './OrganizerRecommendationsPage.css';
 
 type RecommendationFilter = 'all' | 'strong-fit' | 'weekend' | 'experienced';
 type AssignmentStatusChange = 'assigned' | 'approved' | 'rejected' | 'cancelled';
+type MatchTier = 'strong_match' | 'good_match' | 'potential_match' | 'low_match';
 
 const assignmentStatusOrder: Record<string, number> = {
   assigned: 0,
@@ -86,7 +87,7 @@ function availabilityLabel(volunteer: RecommendedVolunteerRecord) {
 }
 
 function isStrongFit(volunteer: RecommendedVolunteerRecord) {
-  return volunteer.matchScore >= 60;
+  return getVolunteerMatchTier(volunteer) === 'strong_match' || getVolunteerMatchTier(volunteer) === 'good_match';
 }
 
 function isWeekendReady(volunteer: RecommendedVolunteerRecord) {
@@ -109,6 +110,45 @@ function humanizeReasonCode(code: string) {
   };
   const normalized = String(code ?? '').trim().toLowerCase();
   return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
+}
+
+function resolveMatchTier(rawTier: unknown, score: number): MatchTier {
+  const normalized = String(rawTier ?? '').trim().toLowerCase();
+  if (
+    normalized === 'strong_match' ||
+    normalized === 'good_match' ||
+    normalized === 'potential_match' ||
+    normalized === 'low_match'
+  ) {
+    return normalized;
+  }
+  if (score >= 75) {
+    return 'strong_match';
+  }
+  if (score >= 50) {
+    return 'good_match';
+  }
+  if (score >= 35) {
+    return 'potential_match';
+  }
+  return 'low_match';
+}
+
+function getVolunteerMatchTier(volunteer: RecommendedVolunteerRecord): MatchTier {
+  return resolveMatchTier(volunteer.match_tier, Number(volunteer.matchScore ?? 0));
+}
+
+function getMatchTierLabel(tier: MatchTier): string {
+  if (tier === 'strong_match') {
+    return 'Strong match';
+  }
+  if (tier === 'good_match') {
+    return 'Good match';
+  }
+  if (tier === 'potential_match') {
+    return 'Potential match';
+  }
+  return 'Explore option';
 }
 
 function getDisplayExplanation(volunteer: RecommendedVolunteerRecord) {
@@ -605,7 +645,12 @@ export function OrganizerRecommendationsPage() {
                         </div>
                       </td>
                       <td>
-                        <span className="org-reco-match-pill">{volunteer.matchScore}% Match</span>
+                        <div className="org-reco-badge-list">
+                          <span className="org-reco-match-pill">{volunteer.matchScore}% Match</span>
+                          <Badge className="org-reco-mini-badge" tone={getVolunteerMatchTier(volunteer) === 'low_match' ? 'neutral' : 'success'}>
+                            {getMatchTierLabel(getVolunteerMatchTier(volunteer))}
+                          </Badge>
+                        </div>
                       </td>
                       <td>{volunteer.totalHours}h</td>
                       <td>{availabilityLabel(volunteer)}</td>
@@ -638,7 +683,10 @@ export function OrganizerRecommendationsPage() {
                     <span className="org-reco-detail-avatar-fallback">{getInitials(selectedVolunteer.fullName)}</span>
                   )}
                   <strong>{selectedVolunteer.fullName}</strong>
-                  <p>{selectedVolunteer.matchScore}% Match Score</p>
+                  <p>
+                    {selectedVolunteer.matchScore}% Match Score -{' '}
+                    {getMatchTierLabel(getVolunteerMatchTier(selectedVolunteer))}
+                  </p>
                 </div>
 
                 <div className="org-reco-detail-actions">

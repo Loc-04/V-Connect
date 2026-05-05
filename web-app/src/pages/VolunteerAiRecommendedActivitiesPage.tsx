@@ -7,9 +7,11 @@ import { Badge, Button, Card, Select } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { createParticipation } from '../lib/participations';
-import { getRecommendedActivitiesForVolunteer, logRecommendationInteraction } from '../lib/recommendations';
+import { getVolunteerRecommendationPayload, logRecommendationInteraction } from '../lib/recommendations';
 import type { ActivityLocation } from '../types/activity';
 import type {
+  RecommendationAiDecision,
+  RecommendationControllerSession,
   RecommendationFeatureContribution,
   RecommendationScoreBreakdown,
   RecommendedActivityRecord,
@@ -18,6 +20,7 @@ import './VolunteerAiRecommendedActivitiesPage.css';
 
 type MatchFilter = 'all' | 'high' | 'weekend' | 'skill-based';
 type SortMode = 'best-match' | 'soonest';
+type MatchTier = 'strong_match' | 'good_match' | 'potential_match' | 'low_match';
 
 interface RecommendationViewModel {
   activityId: string;
@@ -25,6 +28,7 @@ interface RecommendationViewModel {
   title: string;
   organizerName: string;
   matchScore: number;
+  matchTier: MatchTier;
   explanation: string;
   reasons: string[];
   reasonCodes: string[];
@@ -37,6 +41,11 @@ interface RecommendationViewModel {
   displayExplanation: string;
   displayReasons: string[];
   hasAiData: boolean;
+  aiDecision: RecommendationAiDecision | null;
+  recommendationGroup: string;
+  ctaLabel: string;
+  priorityLabel: string;
+  decision: string;
   locationLabel: string;
   dateLabel: string;
   timeLabel: string;
@@ -44,6 +53,55 @@ interface RecommendationViewModel {
   categories: string[];
   heroImageUrl: string;
   startTime: string;
+}
+
+function resolveMatchTier(rawTier: unknown, score: number): MatchTier {
+  const normalized = String(rawTier ?? '').trim().toLowerCase();
+  if (
+    normalized === 'strong_match' ||
+    normalized === 'good_match' ||
+    normalized === 'potential_match' ||
+    normalized === 'low_match'
+  ) {
+    return normalized;
+  }
+
+  if (score >= 75) {
+    return 'strong_match';
+  }
+  if (score >= 50) {
+    return 'good_match';
+  }
+  if (score >= 35) {
+    return 'potential_match';
+  }
+  return 'low_match';
+}
+
+function matchTierLabel(tier: MatchTier): string {
+  if (tier === 'strong_match') {
+    return 'Strong match';
+  }
+  if (tier === 'good_match') {
+    return 'Good match';
+  }
+  if (tier === 'potential_match') {
+    return 'Potential match';
+  }
+  return 'Explore option';
+}
+
+function matchTierWeight(tier: MatchTier): number {
+  if (tier === 'strong_match') {
+    return 4;
+  }
+  if (tier === 'good_match') {
+    return 3;
+  }
+  if (tier === 'potential_match') {
+    return 2;
+  }
+  return 1;
 }
 
 function formatLocation(location: ActivityLocation | string | null): string {
@@ -168,13 +226,29 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
       .filter((reason) => reason.length > 0)
       .slice(0, 3);
   const hasAiData = Boolean(scoreBreakdown || featureContributions.length > 0 || reasonCodes.length > 0 || modelVersion);
+  const matchScore = Math.max(0, Math.min(100, Math.round(record.matchScore)));
+  const aiDecision =
+    record.ai_decision && typeof record.ai_decision === 'object' ? record.ai_decision : null;
+  const decision = String(aiDecision?.decision ?? '').trim().toLowerCase() || 'recommend';
+  const recommendationGroup = String(aiDecision?.recommendation_group ?? '').trim().toLowerCase() || 'recommended';
+  const matchTier = resolveMatchTier(aiDecision?.match_tier ?? record.match_tier, matchScore);
+  const decisionDisplayExplanation = String(aiDecision?.display_explanation ?? '').trim();
+  const decisionDisplayReasons = Array.isArray(aiDecision?.display_reasons)
+    ? aiDecision.display_reasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter((reason) => reason.length > 0)
+        .slice(0, 3)
+    : [];
+  const ctaLabel = String(aiDecision?.cta_label ?? '').trim();
+  const priorityLabel = String(aiDecision?.priority_label ?? '').trim();
 
   return {
     activityId: record.activityId,
     recommendationItemId: typeof record.recommendation_item_id === 'string' ? record.recommendation_item_id : null,
     title: record.title,
     organizerName: record.organizerName || 'Organizer',
-    matchScore: Math.max(0, Math.min(100, Math.round(record.matchScore))),
+    matchScore,
+    matchTier,
     explanation: record.explanation,
     reasons: Array.isArray(record.reasons) ? record.reasons.slice(0, 4) : [],
     reasonCodes,
@@ -184,9 +258,14 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     modelKind,
     provider,
     aiBadgeLabel,
-    displayExplanation,
-    displayReasons,
+    displayExplanation: decisionDisplayExplanation || displayExplanation,
+    displayReasons: decisionDisplayReasons.length > 0 ? decisionDisplayReasons : displayReasons,
     hasAiData,
+    aiDecision,
+    recommendationGroup,
+    ctaLabel: ctaLabel || (decision === 'consider' ? 'Explore option' : 'Join now'),
+    priorityLabel: priorityLabel || matchTierLabel(matchTier),
+    decision,
     locationLabel: formatLocation(record.location),
     dateLabel,
     timeLabel,
@@ -218,6 +297,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
   const { profile, session } = useAuth();
 
   const [recommendations, setRecommendations] = useState<RecommendationViewModel[]>([]);
+  const [recommendationSession, setRecommendationSession] = useState<RecommendationControllerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -241,13 +321,19 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
     void (async () => {
       try {
-        const rows = await getRecommendedActivitiesForVolunteer(profile.id, session.access_token, 12);
+        const payload = await getVolunteerRecommendationPayload(profile.id, session.access_token, 24);
         if (cancelled) {
           return;
         }
 
+        const rows = Array.isArray(payload.activities) ? payload.activities : [];
         const mapped = rows.map((row) => toViewModel(row));
         setRecommendations(mapped);
+        setRecommendationSession(
+          payload.ai_recommendation_session && typeof payload.ai_recommendation_session === 'object'
+            ? payload.ai_recommendation_session
+            : null
+        );
         setSelectedActivityId((current) => {
           if (current && mapped.some((item) => item.activityId === current)) {
             return current;
@@ -259,6 +345,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
           return;
         }
         setRecommendations([]);
+        setRecommendationSession(null);
         setError(loadError instanceof Error ? loadError.message : 'Failed to load recommended activities.');
       } finally {
         if (!cancelled) {
@@ -291,7 +378,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
       if (sortMode === 'soonest') {
         return new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
       }
-      return right.matchScore - left.matchScore || new Date(left.startTime).getTime() - new Date(right.startTime).getTime();
+      return (
+        matchTierWeight(right.matchTier) - matchTierWeight(left.matchTier) ||
+        right.matchScore - left.matchScore ||
+        new Date(left.startTime).getTime() - new Date(right.startTime).getTime()
+      );
     });
     return sorted;
   }, [recommendations, matchFilter, sortMode]);
@@ -300,24 +391,39 @@ export function VolunteerAiRecommendedActivitiesPage() {
     () => recommendations.some((item) => item.hasAiData),
     [recommendations]
   );
-
+  const recommendedItems = useMemo(
+    () => filteredRecommendations.filter((item) => item.decision === 'recommend'),
+    [filteredRecommendations]
+  );
+  const considerItems = useMemo(
+    () => filteredRecommendations.filter((item) => item.decision === 'consider'),
+    [filteredRecommendations]
+  );
+  const selectableRecommendations = recommendedItems;
   const selectedRecommendation = useMemo(() => {
-    if (filteredRecommendations.length === 0) {
+    const candidateList = selectableRecommendations;
+    if (candidateList.length === 0) {
       return null;
     }
 
     return (
-      filteredRecommendations.find((item) => item.activityId === selectedActivityId) ??
-      filteredRecommendations[0]
+      candidateList.find((item) => item.activityId === selectedActivityId) ??
+      candidateList[0]
     );
-  }, [filteredRecommendations, selectedActivityId]);
+  }, [selectableRecommendations, selectedActivityId]);
 
   const secondaryRecommendation = useMemo(() => {
     if (!selectedRecommendation) {
       return null;
     }
-    return filteredRecommendations.find((item) => item.activityId !== selectedRecommendation.activityId) ?? null;
-  }, [filteredRecommendations, selectedRecommendation]);
+    const candidateList = selectableRecommendations;
+    return candidateList.find((item) => item.activityId !== selectedRecommendation.activityId) ?? null;
+  }, [selectableRecommendations, selectedRecommendation]);
+  const considerOptions = useMemo(
+    () =>
+      considerItems.filter((item) => item.activityId !== selectedRecommendation?.activityId).slice(0, 5),
+    [considerItems, selectedRecommendation?.activityId]
+  );
 
   useEffect(() => {
     if (!selectedRecommendation) {
@@ -381,9 +487,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
         </Button>
       }
       pageSubtitle={
-        hasStructuredAiData
-          ? 'Recommendations are ranked from structured profile/activity signals with score breakdowns.'
-          : 'Recommendations are ranked from profile and activity signals.'
+        recommendationSession
+          ? `${recommendationSession.recommended_count} recommended out of ${recommendationSession.candidate_count} candidates (${recommendationSession.model_kind}).`
+          : hasStructuredAiData
+            ? 'Recommendations are ranked from structured profile/activity signals.'
+            : 'Recommendations are ranked from profile and activity signals.'
       }
       pageTitle={hasStructuredAiData ? 'AI Recommended Activities' : 'Recommended Activities'}
     >
@@ -399,7 +507,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                 onChange={(event) => setMatchFilter(event.target.value as MatchFilter)}
                 value={matchFilter}
               >
-                <option value="all">All recommendations</option>
+                <option value="all">AI-selected items</option>
                 <option value="high">High match only</option>
                 <option value="weekend">Weekend fit</option>
                 <option value="skill-based">Skill-based</option>
@@ -416,14 +524,14 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
               <Select
                 className="ai-reco-filter-select"
-                disabled={filteredRecommendations.length === 0}
+                disabled={selectableRecommendations.length === 0}
                 onChange={(event) => setSelectedActivityId(event.target.value)}
                 value={selectedRecommendation?.activityId ?? ''}
               >
-                {filteredRecommendations.length === 0 ? (
+                {selectableRecommendations.length === 0 ? (
                   <option value="">No recommendations available</option>
                 ) : (
-                  filteredRecommendations.map((item) => (
+                  selectableRecommendations.map((item) => (
                     <option key={item.activityId} value={item.activityId}>
                       {item.title}
                     </option>
@@ -457,6 +565,14 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
                 <div className="ai-reco-featured-body">
                   <div className="ai-reco-category-row">
+                    {selectedRecommendation.priorityLabel && (
+                      <Badge className="ai-reco-category-badge" tone="accent">
+                        {selectedRecommendation.priorityLabel}
+                      </Badge>
+                    )}
+                    <Badge className="ai-reco-category-badge" tone={selectedRecommendation.matchTier === 'low_match' ? 'neutral' : 'success'}>
+                      {matchTierLabel(selectedRecommendation.matchTier)}
+                    </Badge>
                     {selectedRecommendation.categories.map((category) => (
                       <Badge className="ai-reco-category-badge" key={category} tone="accent">
                         {category}
@@ -484,7 +600,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
                   <div className="ai-reco-why-card">
                     <p className="ai-reco-why-title">
-                      {selectedRecommendation.hasAiData ? 'Why this was recommended' : 'Recommendation summary'}
+                      {selectedRecommendation.decision === 'consider'
+                        ? 'Why this is a potential match'
+                        : selectedRecommendation.hasAiData
+                          ? 'Why this is recommended'
+                          : 'Recommendation summary'}
                     </p>
                     <p>{selectedRecommendation.displayExplanation || 'Recommended from profile and activity matching signals.'}</p>
                     <div className="ai-reco-why-tags">
@@ -533,14 +653,19 @@ export function VolunteerAiRecommendedActivitiesPage() {
                       type="button"
                       variant="secondary"
                     >
-                      {joiningActivityId === selectedRecommendation.activityId ? 'Joining...' : 'Join now'}
+                      {joiningActivityId === selectedRecommendation.activityId
+                        ? 'Joining...'
+                        : selectedRecommendation.ctaLabel}
                     </Button>
                   </div>
                 </div>
               </Card>
             ) : (
               <Card className="ai-reco-missing-selected">
-                <p className="muted">No activities matched the current filters. Try broadening the filter set.</p>
+                <p className="muted">No strong recommendations yet. Update your skills, interests, or availability to improve matches.</p>
+                <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                  Browse all opportunities
+                </Button>
               </Card>
             )}
 
@@ -554,7 +679,8 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   <h3>{secondaryRecommendation.title}</h3>
                   <p className="muted">{secondaryRecommendation.displayExplanation || secondaryRecommendation.explanation}</p>
                   <p className="muted">
-                    {secondaryRecommendation.matchScore}% match - {secondaryRecommendation.dateLabel}
+                    {matchTierLabel(secondaryRecommendation.matchTier)} - {secondaryRecommendation.matchScore}% match -{' '}
+                    {secondaryRecommendation.dateLabel}
                   </p>
                   <Button onClick={() => setSelectedActivityId(secondaryRecommendation.activityId)} type="button" variant="secondary">
                     Preview next recommendation
@@ -578,6 +704,25 @@ export function VolunteerAiRecommendedActivitiesPage() {
               )}
             </Card>
           </div>
+        )}
+
+        {!loading && considerOptions.length > 0 && (
+          <Card as="section" className="ai-reco-next-card">
+            <p className="ai-reco-why-title">Good matches to consider</p>
+            <p className="muted">These activities have partial alignment and may still be worth exploring.</p>
+            <div className="ai-reco-why-tags">
+              {considerOptions.map((item) => (
+                <button
+                  className="ai-reco-reason-tag"
+                  key={item.activityId}
+                  onClick={() => handleViewDetails(item.activityId, item.recommendationItemId)}
+                  type="button"
+                >
+                  {item.title} ({item.matchScore}%)
+                </button>
+              ))}
+            </div>
+          </Card>
         )}
       </section>
     </VolunteerShell>

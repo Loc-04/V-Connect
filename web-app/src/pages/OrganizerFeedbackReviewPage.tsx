@@ -1,5 +1,5 @@
 ﻿import { FeedbackReviewPage } from './FeedbackReviewPage';
 
-export function AdminFeedbackPage() {
+export function OrganizerFeedbackReviewPage() {
   return <FeedbackReviewPage />;
 }

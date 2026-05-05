@@ -785,6 +785,78 @@ p {
   box-shadow: none;
 }
 
+.admin-user-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.admin-user-modal.card {
+  width: min(620px, 100%);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.admin-user-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.admin-user-modal-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.admin-user-modal-head p {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.admin-user-modal-form {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-user-modal-form label {
+  display: grid;
+  gap: 0.38rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.admin-user-modal-form label:nth-of-type(1),
+.admin-user-modal-form label:nth-of-type(2),
+.admin-user-modal-form label:nth-of-type(5) {
+  grid-column: 1 / -1;
+}
+
+.admin-user-modal-form .form-error {
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.admin-user-modal-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .users-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr));
@@ -2058,6 +2130,20 @@ p {
 
   .users-head-actions .add-user-btn {
     flex: 1;
+  }
+
+  .admin-user-modal.card {
+    padding: 0.85rem;
+  }
+
+  .admin-user-modal-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-user-modal-form label:nth-of-type(1),
+  .admin-user-modal-form label:nth-of-type(2),
+  .admin-user-modal-form label:nth-of-type(5) {
+    grid-column: auto;
   }
 
   .users-stat-grid {

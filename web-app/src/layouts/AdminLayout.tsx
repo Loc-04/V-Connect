@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, Bell, CalendarDays, ClipboardList, LayoutDashboard, LogOut, Settings, Users } from 'lucide-react';
+import { Activity, Bell, CalendarDays, ClipboardList, LayoutDashboard, LogOut, Users } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { BrandIcon } from '../components/brand';
@@ -51,14 +51,6 @@ export function AdminLayout() {
             <ClipboardList className="sidebar-link-icon" />
             Participations
           </NavLink>
-          <button className="sidebar-link placeholder" disabled title="Coming soon" type="button">
-            <BarChart3 className="sidebar-link-icon" />
-            Reports (Soon)
-          </button>
-          <button className="sidebar-link placeholder" disabled title="Coming soon" type="button">
-            <Settings className="sidebar-link-icon" />
-            Settings (Soon)
-          </button>
         </nav>
 
         <div className="admin-sidebar-bottom">

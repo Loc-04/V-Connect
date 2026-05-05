@@ -131,7 +131,7 @@ export function validateTimelineDrafts(
           milestoneId: draftId,
           field: 'activityRange',
           level: context.enforceActivityWindow ? 'error' : 'warning',
-          message: 'Milestone should stay within the activity time range.',
+          message: 'Milestone must stay within the activity time range.',
         });
       }
     }

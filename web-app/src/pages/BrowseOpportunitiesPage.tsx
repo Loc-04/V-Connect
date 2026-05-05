@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, FilterX, Heart, MapPin, Search } from 'lucide-react';
+import { CalendarDays, FilterX, MapPin, Search } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
@@ -19,7 +19,7 @@ interface OpportunityViewModel {
   id: string;
   category: string;
   categoryTone: CategoryTone;
-  isExpired: boolean;
+  isRegisterable: boolean;
   imageUrl: string;
   date: string;
   title: string;
@@ -78,13 +78,14 @@ function toOpportunity(activity: ActivityRecord): OpportunityViewModel {
   const baseStatus = String(activity.status ?? '').toLowerCase();
   const isExpired = baseStatus === 'published' && isActivityExpired(activity);
   const status = isExpired ? 'expired' : baseStatus;
+  const isRegisterable = status === 'published';
   const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
 
   return {
     id: activity.id,
     category: status || 'opportunity',
     categoryTone: mapStatusToTone(status),
-    isExpired,
+    isRegisterable,
     imageUrl: String(activity.cover_image_url ?? '').trim(),
     date: formatDateLabel(activity.start_time),
     title: activity.title ?? 'Untitled activity',
@@ -364,15 +365,6 @@ export function BrowseOpportunitiesPage() {
                   <Badge className="browse-category" tone={opportunity.categoryTone}>
                     {opportunity.category}
                   </Badge>
-                  <button
-                    aria-label="Save opportunity"
-                    className="browse-favorite-btn"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    type="button"
-                  >
-                    <Heart className="browse-icon-sm" />
-                  </button>
                 </div>
 
                 <div className="browse-card-body">
@@ -406,7 +398,7 @@ export function BrowseOpportunitiesPage() {
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
                       activityId={opportunity.id}
-                      canRegister={canApply && !opportunity.isExpired}
+                      canRegister={canApply && opportunity.isRegisterable}
                       className="browse-registration-action"
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
                       participationId={participationByActivityId[opportunity.id]?.participationId ?? null}

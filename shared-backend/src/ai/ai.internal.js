@@ -22,6 +22,21 @@ function normalizeLimit(rawValue, fallback = 10, max = 50) {
   return Math.min(Math.max(Math.trunc(value), 1), max);
 }
 
+function resolveMatchTier(scoreLike) {
+  const score = Number(scoreLike);
+  const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0;
+  if (safeScore >= 75) {
+    return 'strong_match';
+  }
+  if (safeScore >= 50) {
+    return 'good_match';
+  }
+  if (safeScore >= 35) {
+    return 'potential_match';
+  }
+  return 'low_match';
+}
+
 function normalizeMatchResult(result) {
   const matchScore = Number(result?.matchScore ?? 0);
   const safeMatchScore = Number.isFinite(matchScore) ? Math.max(0, Math.min(100, Math.round(matchScore))) : 0;
@@ -65,6 +80,7 @@ function normalizeMatchResult(result) {
   const modelVersion = String(result?.model_version ?? '').trim() || 'heuristic-v2-lite-2026-04';
   const provider = String(result?.provider ?? '').trim() || 'internal';
   const modelKind = String(result?.model_kind ?? '').trim() || 'heuristic';
+  const matchTier = String(result?.match_tier ?? '').trim() || resolveMatchTier(safeMatchScore);
   const featureSnapshot =
     result?.feature_snapshot && typeof result.feature_snapshot === 'object' && !Array.isArray(result.feature_snapshot)
       ? result.feature_snapshot
@@ -87,7 +103,13 @@ function normalizeMatchResult(result) {
     (modelKind === 'heuristic'
       ? 'Recommended based on profile matching from skills, interests, availability, and experience signals.'
       : 'Recommended from structured profile and activity matching signals.');
-  const aiBadgeLabel = String(result?.ai_badge_label ?? '').trim() || (modelKind === 'heuristic' ? 'Profile Match' : 'Internal ML v1');
+  const aiBadgeLabel =
+    String(result?.ai_badge_label ?? '').trim() ||
+    (String(provider).toLowerCase() === 'external'
+      ? 'AI enhanced'
+      : modelKind === 'ml_logistic_regression_v1'
+        ? 'Internal ML v1'
+        : 'Profile match');
 
   return {
     matchScore: safeMatchScore,
@@ -99,6 +121,7 @@ function normalizeMatchResult(result) {
     model_version: modelVersion,
     provider,
     model_kind: modelKind,
+    match_tier: matchTier,
     feature_snapshot: featureSnapshot,
     prediction_snapshot: predictionSnapshot,
     display_explanation: displayExplanation,

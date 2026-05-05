@@ -135,22 +135,6 @@
   letter-spacing: 0.025em;
 }
 
-.browse-favorite-btn {
-  position: absolute;
-  right: 12px;
-  top: 12px;
-  width: 31px;
-  height: 31px;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(6px);
-  color: #ffffff;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-
 .browse-card-body {
   padding: 1rem;
 }

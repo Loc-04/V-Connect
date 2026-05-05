@@ -1,8 +1,9 @@
 import { CalendarClock, Clock3, PlayCircle } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { EventTimelineReadOnly } from '../components/timeline';
 import { Badge, Button, Card } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
@@ -42,67 +43,57 @@ export function OrganizerDashboardPage() {
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  useEffect(() => {
+  const loadDashboardData = useCallback(async () => {
     if (!session?.access_token) {
       setLoading(false);
       setError('No active session token.');
       setBundles([]);
+      setSelectedActivityId(null);
       return;
     }
 
-    let cancelled = false;
     setLoading(true);
     setError(null);
 
-    void (async () => {
-      try {
-        const activityRows = await listActivities({
-          accessToken: session.access_token,
-          mine: true,
-          status: 'all',
-          limit: 80,
-        });
+    try {
+      const activityRows = await listActivities({
+        accessToken: session.access_token,
+        mine: true,
+        status: 'all',
+        limit: 80,
+      });
 
-        const timelineRows = await Promise.all(
-          activityRows.map(async (activity) => {
-            const timeline = await listActivityTimeline(activity.id, session.access_token);
-            return {
-              activity,
-              milestones: timeline.milestones,
-            };
-          })
-        );
+      const timelineRows = await Promise.all(
+        activityRows.map(async (activity) => {
+          const timeline = await listActivityTimeline(activity.id, session.access_token);
+          return {
+            activity,
+            milestones: timeline.milestones,
+          };
+        })
+      );
 
-        if (cancelled) {
-          return;
-        }
+      setBundles(
+        timelineRows.map((item) => ({
+          activity: item.activity,
+          milestones: item.milestones,
+        }))
+      );
 
-        setBundles(
-          timelineRows.map((item) => ({
-            activity: item.activity,
-            milestones: item.milestones,
-          }))
-        );
-
-        const firstTimelineActivity = timelineRows.find((item) => item.milestones.length > 0)?.activity.id ?? null;
-        setSelectedActivityId((current) => current ?? firstTimelineActivity ?? activityRows[0]?.id ?? null);
-      } catch (loadError) {
-        if (!cancelled) {
-          setBundles([]);
-          setSelectedActivityId(null);
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load organizer dashboard data.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+      const firstTimelineActivity = timelineRows.find((item) => item.milestones.length > 0)?.activity.id ?? null;
+      setSelectedActivityId((current) => current ?? firstTimelineActivity ?? activityRows[0]?.id ?? null);
+    } catch (loadError) {
+      setBundles([]);
+      setSelectedActivityId(null);
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load organizer dashboard data.');
+    } finally {
+      setLoading(false);
+    }
   }, [session?.access_token]);
+
+  useEffect(() => {
+    void loadDashboardData();
+  }, [loadDashboardData]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -156,6 +147,7 @@ export function OrganizerDashboardPage() {
     () => bundles.find((bundle) => bundle.activity.id === selectedActivityId) ?? null,
     [bundles, selectedActivityId]
   );
+  const hasAnyActivities = bundles.length > 0;
 
   return (
     <OrganizerShell
@@ -169,37 +161,56 @@ export function OrganizerDashboardPage() {
       pageTitle="Organizer Dashboard"
     >
       <section className="org-dashboard-page">
-        <div className="org-dashboard-metrics">
-          <Card as="article" className="org-dashboard-metric-card">
-            <span className="org-dashboard-metric-icon">
-              <CalendarClock size={16} />
-            </span>
-            <p>Activities with Timeline</p>
-            <strong>{activitiesWithTimeline.length}</strong>
-          </Card>
-          <Card as="article" className="org-dashboard-metric-card">
-            <span className="org-dashboard-metric-icon is-accent">
-              <PlayCircle size={16} />
-            </span>
-            <p>In Progress Milestones</p>
-            <strong>{inProgressMilestones.length}</strong>
-          </Card>
-          <Card as="article" className="org-dashboard-metric-card">
-            <span className="org-dashboard-metric-icon is-success">
-              <Clock3 size={16} />
-            </span>
-            <p>Completed Milestones</p>
-            <strong>{completedMilestones}</strong>
-          </Card>
-        </div>
+        {!loading && hasAnyActivities ? (
+          <div className="org-dashboard-metrics">
+            <Card as="article" className="org-dashboard-metric-card">
+              <span className="org-dashboard-metric-icon">
+                <CalendarClock size={16} />
+              </span>
+              <p>Activities with Timeline</p>
+              <strong>{activitiesWithTimeline.length}</strong>
+            </Card>
+            <Card as="article" className="org-dashboard-metric-card">
+              <span className="org-dashboard-metric-icon is-accent">
+                <PlayCircle size={16} />
+              </span>
+              <p>In Progress Milestones</p>
+              <strong>{inProgressMilestones.length}</strong>
+            </Card>
+            <Card as="article" className="org-dashboard-metric-card">
+              <span className="org-dashboard-metric-icon is-success">
+                <Clock3 size={16} />
+              </span>
+              <p>Completed Milestones</p>
+              <strong>{completedMilestones}</strong>
+            </Card>
+          </div>
+        ) : null}
 
-        {error ? <p className="form-error">{error}</p> : null}
+        {error && !loading ? (
+          <Card as="section" className="org-dashboard-card">
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => void loadDashboardData()} type="button" variant="secondary">
+                  Retry
+                </Button>
+              }
+              description={error}
+              state="error"
+              title="Unable to load organizer dashboard data"
+            />
+          </Card>
+        ) : null}
 
         {loading ? (
           <Card as="section" className="org-dashboard-card">
-            <p className="muted">Loading timeline overview...</p>
+            <EmptyLoadingErrorState
+              description="Loading activities and milestone timelines for the dashboard."
+              state="loading"
+              title="Loading timeline overview"
+            />
           </Card>
-        ) : (
+        ) : !error && hasAnyActivities ? (
           <>
             <Card as="section" className="org-dashboard-card">
               <div className="org-dashboard-card-head">
@@ -291,7 +302,20 @@ export function OrganizerDashboardPage() {
               )}
             </Card>
           </>
-        )}
+        ) : !error ? (
+          <Card as="section" className="org-dashboard-card">
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => navigate('/organizer/activities')} type="button" variant="secondary">
+                  Open Activity Management
+                </Button>
+              }
+              description="No organizer activities were found yet. Create an activity to start tracking milestones here."
+              state="empty"
+              title="No activity data available"
+            />
+          </Card>
+        ) : null}
       </section>
     </OrganizerShell>
   );

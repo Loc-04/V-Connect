@@ -30,6 +30,26 @@ function normalizeRecommendedActivityRecord(record: RecommendedActivityRecord): 
   };
 }
 
+function pickVolunteerRecommendationItems(response: UserRecommendationResponse): RecommendedActivityRecord[] {
+  const itemsFromActivities = Array.isArray(response.activities) ? response.activities : [];
+  const itemsFromController =
+    itemsFromActivities.length > 0
+      ? itemsFromActivities
+      : Array.isArray(response.items)
+        ? response.items
+        : [];
+
+  return itemsFromController
+    .filter((item) => {
+      const decision = String(item?.ai_decision?.decision ?? '').trim().toLowerCase();
+      if (!decision) {
+        return true;
+      }
+      return decision === 'recommend' || decision === 'consider';
+    })
+    .map((item) => normalizeRecommendedActivityRecord(item));
+}
+
 async function normalizeAssignmentResponse<T extends RecommendationAssignmentResponse>(promise: Promise<T>): Promise<T> {
   const response = await promise;
   return {
@@ -54,9 +74,19 @@ export async function getRecommendedActivitiesForVolunteer(
   limit = 10
 ): Promise<RecommendedActivityRecord[]> {
   const response = await getRecommendationsForUser(userId, accessToken, limit);
-  return Array.isArray(response.activities)
-    ? response.activities.map((item) => normalizeRecommendedActivityRecord(item))
-    : [];
+  return pickVolunteerRecommendationItems(response);
+}
+
+export async function getVolunteerRecommendationPayload(
+  userId: string,
+  accessToken: string,
+  limit = 10
+): Promise<UserRecommendationResponse> {
+  const response = await getRecommendationsForUser(userId, accessToken, limit);
+  return {
+    ...response,
+    activities: pickVolunteerRecommendationItems(response),
+  };
 }
 
 export async function getRecommendedVolunteersForOrganizer(

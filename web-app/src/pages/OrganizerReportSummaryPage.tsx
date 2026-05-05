@@ -635,7 +635,8 @@ function buildReportActions(input: {
         description: 'All submitted feedback was flagged as spam, so report insights cannot be generated yet.',
         priority: 'low',
         actionLabel: 'Review Feedback',
-        onAction: () => navigate(encodedActivityId ? `/feedback?activityId=${encodedActivityId}` : '/feedback'),
+        onAction: () =>
+          navigate(encodedActivityId ? `/organizer/feedback?activityId=${encodedActivityId}` : '/organizer/feedback'),
       });
     }
 
@@ -646,7 +647,8 @@ function buildReportActions(input: {
         description: 'No valid feedback was collected for this activity.',
         priority: 'low',
         actionLabel: 'View Feedback',
-        onAction: () => navigate(encodedActivityId ? `/feedback?activityId=${encodedActivityId}` : '/feedback'),
+        onAction: () =>
+          navigate(encodedActivityId ? `/organizer/feedback?activityId=${encodedActivityId}` : '/organizer/feedback'),
       });
     }
   } else {
@@ -697,7 +699,8 @@ function buildReportActions(input: {
         description: 'All submitted feedback was flagged as spam, so insights cannot be generated yet.',
         priority: 'low',
         actionLabel: 'Review Feedback',
-        onAction: () => navigate(encodedActivityId ? `/feedback?activityId=${encodedActivityId}` : '/feedback'),
+        onAction: () =>
+          navigate(encodedActivityId ? `/organizer/feedback?activityId=${encodedActivityId}` : '/organizer/feedback'),
       });
     }
   }
@@ -1240,7 +1243,11 @@ export function OrganizerReportSummaryPage() {
                   ariaLabel="Open feedback review"
                   onClick={() => {
                     const nextActivityId = selectedActivityId || requestedActivityId;
-                    navigate(nextActivityId ? `/feedback?activityId=${encodeURIComponent(nextActivityId)}` : '/feedback');
+                    navigate(
+                      nextActivityId
+                        ? `/organizer/feedback?activityId=${encodeURIComponent(nextActivityId)}`
+                        : '/organizer/feedback'
+                    );
                   }}
                   overview={feedbackOverview}
                 />

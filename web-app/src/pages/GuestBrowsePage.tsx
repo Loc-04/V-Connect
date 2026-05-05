@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { AuthRequiredModal } from '../components/auth/AuthRequiredModal';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { GuestActivityCard, GuestFooter } from '../components/guest';
 import { Button, Card, Input } from '../components/ui';
 import { buildGuestActivityIntentPath, type GuestProtectedAction } from '../lib/guestAuth';
-import { getGuestAvailabilityMeta, listGuestActivities, type GuestActivityRecord } from '../lib/guestActivities';
+import { getGuestAvailabilityMeta, type GuestActivityRecord } from '../lib/guestActivities';
+import { listPublicGuestActivities } from '../lib/publicGuestActivities';
 import { GuestShell } from '../layouts/GuestShell';
 import './GuestBrowsePage.css';
 
@@ -41,6 +43,11 @@ function isWithinDateFilter(startTime: string, dateFilter: DateFilter) {
   return diffDays >= 0 && diffDays <= 31;
 }
 
+function isPublishedActivityExpired(endTime: string) {
+  const end = new Date(endTime);
+  return !Number.isNaN(end.getTime()) && end.getTime() <= Date.now();
+}
+
 export function GuestBrowsePage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,9 +57,30 @@ export function GuestBrowsePage() {
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const [activities, setActivities] = useState<GuestActivityRecord[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(true);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [authPrompt, setAuthPrompt] = useState<{ action: GuestProtectedAction; activity: GuestActivityRecord } | null>(null);
 
-  const activities = useMemo(() => listGuestActivities(), []);
+  const loadActivities = useCallback(async () => {
+    setIsLoadingActivities(true);
+    setActivitiesError(null);
+    try {
+      const publishedActivities = await listPublicGuestActivities();
+      setActivities(publishedActivities);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load published activities.';
+      setActivities([]);
+      setActivitiesError(message);
+    } finally {
+      setIsLoadingActivities(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadActivities();
+  }, [loadActivities]);
+
   const categories = useMemo(() => ['all', ...new Set(activities.map((activity) => activity.domain))], [activities]);
 
   const filteredActivities = useMemo(() => {
@@ -60,6 +88,10 @@ export function GuestBrowsePage() {
     const locationKeyword = normalizeText(locationFilter);
 
     return activities.filter((activity) => {
+      if (isPublishedActivityExpired(activity.endTime)) {
+        return false;
+      }
+
       if (categoryFilter !== 'all' && activity.domain !== categoryFilter) {
         return false;
       }
@@ -103,6 +135,7 @@ export function GuestBrowsePage() {
 
   const visibleActivities = filteredActivities.slice(0, visibleCount);
   const hasMore = visibleActivities.length < filteredActivities.length;
+  const hasPublishedActivities = activities.length > 0;
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -233,7 +266,36 @@ export function GuestBrowsePage() {
 
       {shareNotice ? <p className="form-success">{shareNotice}</p> : null}
 
-      {filteredActivities.length === 0 ? (
+      {isLoadingActivities ? (
+        <Card className="guest-browse-empty-card">
+          <EmptyLoadingErrorState
+            description="Loading published activities for guests..."
+            state="loading"
+            title="Loading activities"
+          />
+        </Card>
+      ) : activitiesError ? (
+        <Card className="guest-browse-empty-card">
+          <EmptyLoadingErrorState
+            action={
+              <Button onClick={() => void loadActivities()} type="button" variant="secondary">
+                Retry
+              </Button>
+            }
+            description="We couldn't load published activities right now. Please try again."
+            state="error"
+            title="Unable to load activities"
+          />
+        </Card>
+      ) : !hasPublishedActivities ? (
+        <Card className="guest-browse-empty-card">
+          <EmptyLoadingErrorState
+            description="There are no published opportunities available right now. Please check back later."
+            state="empty"
+            title="No published opportunities yet"
+          />
+        </Card>
+      ) : filteredActivities.length === 0 ? (
         <Card className="guest-browse-empty-card">
           <h2>No published activities match the current filters.</h2>
           <p className="muted">Try broadening the search, location, or availability filters.</p>

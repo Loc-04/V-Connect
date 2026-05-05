@@ -72,7 +72,7 @@ export function ForgotPasswordPage() {
             />
           </figure>
 
-          <p className="password-hero-footer">(c) {currentYear} V-Connect Inc. All rights reserved.</p>
+          <p className="password-hero-footer">© {currentYear} V-Connect Inc. All rights reserved.</p>
         </div>
       </section>
 
@@ -105,7 +105,7 @@ export function ForgotPasswordPage() {
           </button>
 
           <Link className="password-back-link" to="/login">
-            {'<- Back to Login'}
+            {'← Back to Login'}
           </Link>
         </form>
       </section>

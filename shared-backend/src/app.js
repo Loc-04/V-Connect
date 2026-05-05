@@ -13,6 +13,9 @@ app.use(
 );
 app.use(express.json({ limit: '15mb' }));
 
+// Keep both mounts so clients configured with or without `/api` base path
+// resolve the same API routes.
+app.use('/api', apiRouter);
 app.use(apiRouter);
 
 app.use((_req, res) => {

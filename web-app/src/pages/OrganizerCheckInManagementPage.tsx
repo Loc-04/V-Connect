@@ -3,7 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
-import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
+import {
+  AttendanceStatusBadge,
+  CheckInResultState,
+  normalizeParticipationStatus,
+  type CheckInResultTone,
+} from '../components/attendance';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { Button, Card, Input, Select, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
@@ -14,8 +20,10 @@ import './OrganizerCheckInManagementPage.css';
 
 type AttendanceStatusFilter = 'all' | 'approved' | 'checked_in';
 
-function normalizeStatus(value: string | null | undefined) {
-  return String(value ?? '').trim().toLowerCase();
+const checkInEligibleActivityStatuses = new Set(['published']);
+
+function normalizeActivityStatus(value: string | null | undefined) {
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_');
 }
 
 function toDateKey(value: string | Date | null | undefined) {
@@ -87,6 +95,33 @@ function isActivityExpired(activity: ActivityRecord): boolean {
   return false;
 }
 
+function hasValidActivitySchedule(activity: ActivityRecord): boolean {
+  const startTime = new Date(activity.start_time);
+  const endTime = new Date(activity.end_time);
+  if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+    return false;
+  }
+
+  return endTime.getTime() > startTime.getTime();
+}
+
+function isActivityEligibleForCheckInManagement(activity: ActivityRecord): boolean {
+  const status = normalizeActivityStatus(activity.status);
+  if (!checkInEligibleActivityStatuses.has(status)) {
+    return false;
+  }
+
+  if (!hasValidActivitySchedule(activity)) {
+    return false;
+  }
+
+  if (isActivityExpired(activity)) {
+    return false;
+  }
+
+  return true;
+}
+
 interface CheckInNoticeState {
   tone: CheckInResultTone;
   title: string;
@@ -102,6 +137,8 @@ export function OrganizerCheckInManagementPage() {
   const [attendees, setAttendees] = useState<ParticipationRecord[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
+  const [activityLoadError, setActivityLoadError] = useState<string | null>(null);
+  const [attendeeLoadError, setAttendeeLoadError] = useState<string | null>(null);
   const [checkingInByCode, setCheckingInByCode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>('all');
@@ -111,15 +148,12 @@ export function OrganizerCheckInManagementPage() {
   const loadActivities = useCallback(async () => {
     if (!session?.access_token) {
       setLoadingActivities(false);
-      setNotice({
-        tone: 'error',
-        title: 'Unable to load check-in data',
-        description: 'No active session token.',
-      });
+      setActivityLoadError('No active session token.');
       return;
     }
 
     setLoadingActivities(true);
+    setActivityLoadError(null);
     setNotice(null);
 
     try {
@@ -129,24 +163,21 @@ export function OrganizerCheckInManagementPage() {
         status: 'all',
         limit: 150,
       });
+      const eligibleActivities = rows.filter((activity) => isActivityEligibleForCheckInManagement(activity));
 
       const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
-      setActivities(rows);
+      setActivities(eligibleActivities);
       setSelectedActivityId((current) => {
-        if (requestedActivityId && rows.some((activity) => activity.id === requestedActivityId)) {
+        if (requestedActivityId && eligibleActivities.some((activity) => activity.id === requestedActivityId)) {
           return requestedActivityId;
         }
-        if (current && rows.some((activity) => activity.id === current)) {
+        if (current && eligibleActivities.some((activity) => activity.id === current)) {
           return current;
         }
-        return rows[0]?.id ?? '';
+        return eligibleActivities[0]?.id ?? '';
       });
     } catch (loadError) {
-      setNotice({
-        tone: 'error',
-        title: 'Unable to load activities',
-        description: loadError instanceof Error ? loadError.message : 'Failed to load activities.',
-      });
+      setActivityLoadError(loadError instanceof Error ? loadError.message : 'Failed to load activities.');
     } finally {
       setLoadingActivities(false);
     }
@@ -160,11 +191,13 @@ export function OrganizerCheckInManagementPage() {
     async (activityId: string) => {
       if (!session?.access_token || !activityId) {
         setAttendees([]);
+        setAttendeeLoadError(null);
         setLoadingAttendees(false);
         return;
       }
 
       setLoadingAttendees(true);
+      setAttendeeLoadError(null);
       setNotice(null);
 
       try {
@@ -176,16 +209,14 @@ export function OrganizerCheckInManagementPage() {
         });
         setAttendees(
           rows.filter((item) => {
-            const status = normalizeStatus(item.status);
+            const status = normalizeParticipationStatus(item.status);
             return status === 'approved' || status === 'checked_in';
           })
         );
       } catch (loadError) {
-        setNotice({
-          tone: 'error',
-          title: 'Unable to load attendee records',
-          description: loadError instanceof Error ? loadError.message : 'Failed to load attendee records.',
-        });
+        setAttendeeLoadError(
+          loadError instanceof Error ? loadError.message : 'Failed to load attendee records.'
+        );
       } finally {
         setLoadingAttendees(false);
       }
@@ -215,8 +246,8 @@ export function OrganizerCheckInManagementPage() {
 
   const metrics = useMemo(() => {
     const activeStatuses = new Set(['approved', 'checked_in']);
-    const totalRegistered = attendees.filter((item) => activeStatuses.has(normalizeStatus(item.status))).length;
-    const checkedIn = attendees.filter((item) => normalizeStatus(item.status) === 'checked_in').length;
+    const totalRegistered = attendees.filter((item) => activeStatuses.has(normalizeParticipationStatus(item.status))).length;
+    const checkedIn = attendees.filter((item) => normalizeParticipationStatus(item.status) === 'checked_in').length;
     const notCheckedIn = Math.max(0, totalRegistered - checkedIn);
     const rate = totalRegistered > 0 ? Math.round((checkedIn / totalRegistered) * 100) : 0;
 
@@ -232,7 +263,7 @@ export function OrganizerCheckInManagementPage() {
   const filteredAttendees = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return attendees.filter((item) => {
-      const status = normalizeStatus(item.status);
+      const status = normalizeParticipationStatus(item.status);
       if (statusFilter !== 'all' && status !== statusFilter) {
         return false;
       }
@@ -386,11 +417,11 @@ export function OrganizerCheckInManagementPage() {
               value={selectedActivityId}
             >
               {activities.length === 0 ? (
-                <option value="">No activities available</option>
+                <option value="">No eligible activities available</option>
               ) : (
                 activities.map((activity) => (
                   <option key={activity.id} value={activity.id}>
-                    {activity.title}{isActivityExpired(activity) ? ' (Expired)' : ''}
+                    {activity.title}
                   </option>
                 ))
               )}
@@ -489,7 +520,39 @@ export function OrganizerCheckInManagementPage() {
           {notice ? <CheckInResultState description={notice.description} title={notice.title} tone={notice.tone} /> : null}
 
           {loading ? (
-            <p className="muted">Loading check-in records...</p>
+            <EmptyLoadingErrorState
+              description="Loading activity and attendance records for check-in."
+              state="loading"
+              title="Loading check-in records"
+            />
+          ) : activityLoadError && activities.length === 0 ? (
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => void loadActivities()} type="button" variant="secondary">
+                  Retry
+                </Button>
+              }
+              description={activityLoadError}
+              state="error"
+              title="Unable to load eligible activities"
+            />
+          ) : activities.length === 0 ? (
+            <EmptyLoadingErrorState
+              description="No activities are currently eligible for check-in management."
+              state="empty"
+              title="No eligible activities"
+            />
+          ) : attendeeLoadError ? (
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => void loadAttendees(selectedActivityId)} type="button" variant="secondary">
+                  Retry
+                </Button>
+              }
+              description={attendeeLoadError}
+              state="error"
+              title="Unable to load attendee records"
+            />
           ) : (
             <Table className="org-checkin-table" wrapperClassName="org-checkin-table-wrap">
               <thead>
@@ -501,7 +564,7 @@ export function OrganizerCheckInManagementPage() {
               </thead>
               <tbody>
                 {filteredAttendees.map((attendee) => {
-                  const status = normalizeStatus(attendee.status);
+                  const status = normalizeParticipationStatus(attendee.status);
                   const volunteerName = attendee.volunteer?.full_name?.trim() || 'Volunteer';
                   const volunteerMeta = attendee.volunteer?.phone?.trim() || attendee.id.slice(0, 8);
 
@@ -535,7 +598,9 @@ export function OrganizerCheckInManagementPage() {
                 {!loading && filteredAttendees.length === 0 && (
                   <tr>
                     <td className="org-checkin-empty-cell" colSpan={3}>
-                      No attendees found for this filter.
+                      {attendees.length === 0
+                        ? 'No approved or checked-in attendees for this activity yet.'
+                        : 'No attendees found for the current search and filter.'}
                     </td>
                   </tr>
                 )}

@@ -11,7 +11,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 
 import { useAuth } from '../auth/useAuth';
-import { AttendanceStatusBadge, CheckInResultState, type CheckInResultTone } from '../components/attendance';
+import {
+  AttendanceStatusBadge,
+  canParticipationCheckIn,
+  CheckInResultState,
+  getParticipationCheckInActionLabel,
+  normalizeParticipationStatus,
+  type CheckInResultTone,
+} from '../components/attendance';
 import { EventTimelineEditor, EventTimelineReadOnly } from '../components/timeline';
 import { Badge, Button, Card, Table } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
@@ -334,6 +341,25 @@ export function OrganizerActivityManagementPage() {
         tone: 'error',
         title: 'Check-in failed',
         description: 'No active session token.',
+      });
+      return;
+    }
+
+    const targetParticipation = attendanceRows.find((item) => item.id === participationId);
+    if (!targetParticipation) {
+      setAttendanceNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Unable to find the selected participation record.',
+      });
+      return;
+    }
+
+    if (!canParticipationCheckIn(targetParticipation.status)) {
+      setAttendanceNotice({
+        tone: 'error',
+        title: 'Check-in failed',
+        description: 'Only approved participations are eligible for check-in.',
       });
       return;
     }
@@ -830,7 +856,16 @@ export function OrganizerActivityManagementPage() {
                     </thead>
                     <tbody>
                       {attendanceRows.map((participation) => {
-                        const status = String(participation.status ?? '').toLowerCase();
+                        const status = normalizeParticipationStatus(participation.status);
+                        const activityExpired = isActivityExpired(selectedActivity);
+                        const checkingIn = checkingInParticipationId === participation.id;
+                        const canCheckIn = canParticipationCheckIn(status);
+                        const checkInButtonDisabled = activityExpired || checkingIn || !canCheckIn;
+                        const checkInButtonLabel = activityExpired
+                          ? 'Expired'
+                          : checkingIn
+                            ? 'Checking...'
+                            : getParticipationCheckInActionLabel(status);
                         const score =
                           typeof participation.ai_match_score === 'number'
                             ? Math.round(
@@ -862,23 +897,12 @@ export function OrganizerActivityManagementPage() {
                             </td>
                             <td>
                               <Button
-                                disabled={
-                                  isActivityExpired(selectedActivity) ||
-                                  checkingInParticipationId === participation.id ||
-                                  status === 'checked_in' ||
-                                  status === 'rejected'
-                                }
+                                disabled={checkInButtonDisabled}
                                 onClick={() => void handleCheckIn(participation.id)}
                                 type="button"
                                 variant="secondary"
                               >
-                                {isActivityExpired(selectedActivity)
-                                  ? 'Expired'
-                                  : checkingInParticipationId === participation.id
-                                    ? 'Checking...'
-                                    : status === 'checked_in'
-                                      ? 'Checked In'
-                                      : 'Check In'}
+                                {checkInButtonLabel}
                               </Button>
                             </td>
                           </tr>
