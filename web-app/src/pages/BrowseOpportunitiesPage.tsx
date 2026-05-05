@@ -9,7 +9,7 @@ import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { searchActivities } from '../lib/activities';
 import { formatActivityCardDateLabel } from '../lib/dateTimeFormat';
-import { cancelParticipation, listParticipations } from '../lib/participations';
+import { cancelParticipation, listParticipations, respondToAssignedParticipation } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
@@ -390,9 +390,37 @@ export function BrowseOpportunitiesPage() {
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
                       participationId={participationByActivityId[opportunity.id]?.participationId ?? null}
                       registerDisabledLabel={canApply ? 'Registration closed' : 'Volunteer only'}
+                      onAccept={async ({ participationId }) => {
+                        if (!session?.access_token) {
+                          throw new Error('No active session token.');
+                        }
+                        if (!participationId) {
+                          throw new Error('Missing participation id for assignment response.');
+                        }
+
+                        const result = await respondToAssignedParticipation(participationId, 'accept', session.access_token);
+                        setParticipationByActivityId((current) => ({
+                          ...current,
+                          [opportunity.id]: result.registration,
+                        }));
+                      }}
                       onCancel={async ({ activityId }) => {
                         if (!session?.access_token) {
                           throw new Error('No active session token.');
+                        }
+
+                        const currentParticipation = participationByActivityId[activityId];
+                        if (currentParticipation?.status?.toLowerCase() === 'assigned' && currentParticipation.participationId) {
+                          const result = await respondToAssignedParticipation(
+                            currentParticipation.participationId,
+                            'decline',
+                            session.access_token
+                          );
+                          setParticipationByActivityId((current) => ({
+                            ...current,
+                            [activityId]: result.registration,
+                          }));
+                          return;
                         }
 
                         const cancelledParticipation = await cancelParticipation(activityId, session.access_token);

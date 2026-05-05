@@ -15,8 +15,9 @@ import {
 const router = Router();
 const AUTH_USERS_PAGE_SIZE = 1000;
 
-async function buildAuthEmailIndex() {
+async function buildAuthUserIndexes() {
   const emailByUserId = new Map();
+  const userIdByEmail = new Map();
   let page = 1;
 
   while (true) {
@@ -31,7 +32,11 @@ async function buildAuthEmailIndex() {
 
     const chunk = data?.users ?? [];
     chunk.forEach((authUser) => {
-      emailByUserId.set(authUser.id, authUser.email ?? null);
+      const normalizedEmail = typeof authUser.email === 'string' ? authUser.email.trim().toLowerCase() : '';
+      emailByUserId.set(authUser.id, normalizedEmail || null);
+      if (normalizedEmail) {
+        userIdByEmail.set(normalizedEmail, authUser.id);
+      }
     });
 
     if (chunk.length < AUTH_USERS_PAGE_SIZE) {
@@ -41,6 +46,11 @@ async function buildAuthEmailIndex() {
     page += 1;
   }
 
+  return { emailByUserId, userIdByEmail };
+}
+
+async function buildAuthEmailIndex() {
+  const { emailByUserId } = await buildAuthUserIndexes();
   return emailByUserId;
 }
 
@@ -81,6 +91,17 @@ function normalizeAdminCreateUserPayload(body) {
     phone: phoneRaw.length > 0 ? phoneRaw : null,
     password,
   };
+}
+
+function getProfileInsertConflictMessage(errorMessage) {
+  const normalized = String(errorMessage ?? '').toLowerCase();
+  if (normalized.includes('users_pkey') || normalized.includes('duplicate key value')) {
+    return 'User already exists.';
+  }
+  if (normalized.includes('phone')) {
+    return 'Phone number already exists.';
+  }
+  return 'Failed to create user profile.';
 }
 
 router.get('/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
@@ -255,6 +276,12 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
   let authUserId = null;
 
   try {
+    const { userIdByEmail } = await buildAuthUserIndexes();
+    if (userIdByEmail.has(payload.email)) {
+      res.status(409).json({ message: 'User with this email already exists' });
+      return;
+    }
+
     const { data: authCreateData, error: authCreateError } = await supabaseAdmin.auth.admin.createUser({
       email: payload.email,
       password: payload.password,
@@ -269,18 +296,38 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
     if (authCreateError) {
       const normalizedMessage = authCreateError.message.toLowerCase();
       if (normalizedMessage.includes('already') || normalizedMessage.includes('exists')) {
-        res.status(409).json({ message: 'A user with this email already exists.' });
+        res.status(409).json({ message: 'User with this email already exists' });
         return;
       }
 
       const statusCode = Number.isInteger(authCreateError.status) ? authCreateError.status : 500;
-      res.status(statusCode).json({ message: authCreateError.message });
+      res.status(statusCode).json({ message: 'Failed to create auth user.' });
       return;
     }
 
     authUserId = authCreateData?.user?.id ?? null;
     if (!authUserId) {
       res.status(500).json({ message: 'Failed to create auth user.' });
+      return;
+    }
+
+    const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
+      .from('users')
+      .select(userColumns)
+      .eq('id', authUserId)
+      .maybeSingle();
+
+    if (existingProfileError) {
+      await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      res.status(500).json({ message: 'Failed to check existing user profile.' });
+      return;
+    }
+
+    if (existingProfile) {
+      await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      res.status(409).json({
+        message: 'User already exists',
+      });
       return;
     }
 
@@ -298,8 +345,9 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
 
     if (createUserError || !createdUser) {
       await supabaseAdmin.auth.admin.deleteUser(authUserId);
-      const message = createUserError?.message ?? 'Failed to create user profile.';
-      res.status(500).json({ message });
+      const message = getProfileInsertConflictMessage(createUserError?.message);
+      const statusCode = message === 'Failed to create user profile.' ? 500 : 409;
+      res.status(statusCode).json({ message });
       return;
     }
 
@@ -318,7 +366,7 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
       if (volunteerError) {
         await supabaseAdmin.from('users').delete().eq('id', authUserId);
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        res.status(500).json({ message: volunteerError.message });
+        res.status(500).json({ message: 'Failed to create volunteer profile.' });
         return;
       }
     }
@@ -336,8 +384,18 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
       await supabaseAdmin.auth.admin.deleteUser(authUserId);
     }
 
+    const messageText = error instanceof Error ? error.message : 'Failed to create user.';
+    if (messageText.toLowerCase().includes('phone')) {
+      res.status(409).json({ message: 'Phone number already exists.' });
+      return;
+    }
+    if (messageText.toLowerCase().includes('duplicate') || messageText.toLowerCase().includes('users_pkey')) {
+      res.status(409).json({ message: 'User already exists.' });
+      return;
+    }
+
     res.status(500).json({
-      message: error instanceof Error ? error.message : 'Failed to create user.',
+      message: 'Failed to create user.',
     });
   }
 });

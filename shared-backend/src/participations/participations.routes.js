@@ -542,6 +542,120 @@ async function cancelParticipationByOrganizer({ participationId, auth }) {
   };
 }
 
+async function volunteerRespondToAssignment({ participationId, decision, auth }) {
+  const { participation, activity } = await getRegistrationWithActivityForAccess(participationId, auth, {
+    allowVolunteerOwner: true,
+  });
+
+  if (participation.volunteer_id !== auth.user.id) {
+    const error = new Error('You can only respond to your own assignment.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const currentStatus = String(participation.status ?? '').toLowerCase();
+  if (currentStatus === 'checked_in') {
+    const error = new Error('Checked-in assignment cannot be changed.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (currentStatus === 'cancelled' && decision === 'decline') {
+    return {
+      registration: await enrichParticipation(participation),
+      message: 'Assignment already cancelled.',
+    };
+  }
+
+  if (currentStatus !== 'assigned') {
+    const error = new Error('Only assigned participations can be accepted or declined.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const nextStatus = decision === 'accept' ? 'approved' : 'cancelled';
+  const now = new Date().toISOString();
+
+  if (nextStatus === 'approved') {
+    const activeCount = await getActiveRegistrationCount(activity.id, participation.id);
+    if ((activeCount ?? 0) >= Number(activity.capacity ?? 0)) {
+      const error = new Error('Activity is full. Assignment cannot be accepted.');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('activity_participations')
+    .update({
+      status: nextStatus,
+      updated_at: now,
+    })
+    .eq('id', participation.id)
+    .select(participationColumns)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const volunteerName = await getUserDisplayName(participation.volunteer_id);
+  await tryCreateNotification({
+    userId: participation.volunteer_id,
+    title: decision === 'accept' ? 'Assignment Accepted' : 'Assignment Declined',
+    message:
+      decision === 'accept'
+        ? `You accepted assignment for "${activity.title}".`
+        : `You declined assignment for "${activity.title}".`,
+    type: 'approval',
+    data: {
+      activityId: activity.id,
+      registrationId: participation.id,
+      status: nextStatus,
+    },
+  });
+
+  if (activity.organizer_id) {
+    await tryCreateNotification({
+      userId: activity.organizer_id,
+      title: decision === 'accept' ? 'Volunteer Accepted Assignment' : 'Volunteer Declined Assignment',
+      message:
+        decision === 'accept'
+          ? `${volunteerName} accepted assignment for "${activity.title}".`
+          : `${volunteerName} declined assignment for "${activity.title}".`,
+      type: 'message',
+      data: {
+        activityId: activity.id,
+        registrationId: participation.id,
+        volunteerId: participation.volunteer_id,
+        status: nextStatus,
+      },
+    });
+  }
+
+  await tryLogRecommendationInteraction(
+    {
+      event_type: nextStatus === 'approved' ? 'approved' : 'cancelled',
+      serving_item_id: data?.recommendation_item_id ?? participation?.recommendation_item_id ?? null,
+      actor_user_id: auth.user.id,
+      activity_id: activity.id,
+      volunteer_id: participation.volunteer_id,
+      participation_id: participation.id,
+      source_surface: 'web',
+      metadata: {
+        decision,
+        source: 'volunteer-assignment-response',
+      },
+    },
+    'participations.assignment.response',
+  );
+
+  return {
+    registration: await enrichParticipation(data),
+    message: decision === 'accept' ? 'Assignment accepted successfully.' : 'Assignment declined successfully.',
+  };
+}
+
 async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
   const { participation, activity } = await getRegistrationWithActivityForAccess(participationId, auth);
 
@@ -966,6 +1080,39 @@ router.put('/registrations/:id/reject', requireAuth, async (req, res) => {
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to reject registration.';
+    const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
+    res.status(statusCode).json({ message });
+  }
+});
+
+router.put('/registrations/:id/volunteer-response', requireAuth, async (req, res) => {
+  const role = String(req.auth?.profile?.role ?? '');
+  if (role !== 'volunteer') {
+    res.status(403).json({ message: 'Volunteer role required.' });
+    return;
+  }
+
+  const participationId = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!isUuid(participationId)) {
+    res.status(400).json({ message: 'Registration id must be a valid UUID.' });
+    return;
+  }
+
+  const decision = typeof req.body?.decision === 'string' ? req.body.decision.trim().toLowerCase() : '';
+  if (decision !== 'accept' && decision !== 'decline') {
+    res.status(400).json({ message: 'decision must be either "accept" or "decline".' });
+    return;
+  }
+
+  try {
+    const result = await volunteerRespondToAssignment({
+      participationId,
+      decision,
+      auth: req.auth,
+    });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update assignment response.';
     const statusCode = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : 500;
     res.status(statusCode).json({ message });
   }

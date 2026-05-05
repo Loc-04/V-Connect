@@ -11,6 +11,7 @@ import { OrganizerShell } from '../layouts/OrganizerShell';
 import { buildActivityMapUrl } from '../lib/activityLocation';
 import { createActivity, getActivityById, updateActivity } from '../lib/activities';
 import { geocodeLocation, listProvinces, listWards, reverseGeocodeLocation } from '../lib/locations';
+import { filterSharedSkills, getSharedSkillCatalog, isKnownSharedSkill, resolveCanonicalSkillLabel } from '../lib/skillCatalog';
 import { safeText } from '../lib/timelineNormalization';
 import { resolveTimelineMilestoneStatus } from '../lib/timelineStatus';
 import { replaceActivityTimeline } from '../lib/timeline';
@@ -322,7 +323,10 @@ export function CreateActivityPage() {
   const [endTimeManuallyChanged, setEndTimeManuallyChanged] = useState(false);
   const [capacity, setCapacity] = useState('10');
   const [requiredSkills, setRequiredSkills] = useState<SkillRequirementDraft[]>([]);
-  const [skillDraft, setSkillDraft] = useState('');
+  const [skillSearchQuery, setSkillSearchQuery] = useState('');
+  const [isSkillCatalogLoading, setIsSkillCatalogLoading] = useState(true);
+  const [skillCatalog, setSkillCatalog] = useState<string[]>([]);
+  const [skillCatalogLoadError, setSkillCatalogLoadError] = useState<string | null>(null);
   const [provinces, setProvinces] = useState<ProvinceRecord[]>([]);
   const [wards, setWards] = useState<WardRecord[]>([]);
   const [mapLocation, setMapLocation] = useState<GeocodedLocationRecord | null>(null);
@@ -455,10 +459,59 @@ export function CreateActivityPage() {
     return getPastStartDateTimeValidationError(beginDate, startTime, timelineNowMs);
   }, [beginDate, isEditing, startTime, timelineNowMs]);
   const sortedTimelineDrafts = useMemo(() => sortTimelineByTime(quickMilestones), [quickMilestones]);
+  const isSkillCatalogEmpty = !isSkillCatalogLoading && !skillCatalogLoadError && skillCatalog.length === 0;
+  const isSkillCatalogReady = !isSkillCatalogLoading && !skillCatalogLoadError && skillCatalog.length > 0;
+  const selectableSkillOptions = useMemo(
+    () => {
+      if (!isSkillCatalogReady) {
+        return [];
+      }
+      return filterSharedSkills(skillSearchQuery, skillCatalog, requiredSkills.map((skill) => skill.name))
+        .filter(
+          (skillName) =>
+            !requiredSkills.some(
+              (selectedSkill) => selectedSkill.name.trim().toLowerCase() === skillName.trim().toLowerCase()
+            )
+        )
+        .slice(0, 18);
+    },
+    [isSkillCatalogReady, requiredSkills, skillCatalog, skillSearchQuery]
+  );
   const activeTimelineDraft = useMemo(
     () => sortedTimelineDrafts.find((item) => item.id === activeTimelineDraftId) ?? null,
     [activeTimelineDraftId, sortedTimelineDrafts]
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsSkillCatalogLoading(true);
+
+    void getSharedSkillCatalog(session?.access_token)
+      .then((rows) => {
+        if (!isMounted) {
+          return;
+        }
+        setSkillCatalog(rows);
+        setSkillCatalogLoadError(null);
+      })
+      .catch((loadError) => {
+        if (!isMounted) {
+          return;
+        }
+        setSkillCatalog([]);
+        setSkillCatalogLoadError(loadError instanceof Error ? loadError.message : 'Failed to load shared skill catalog.');
+      })
+      .finally(() => {
+        if (!isMounted) {
+          return;
+        }
+        setIsSkillCatalogLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (!beginDate) {
@@ -614,7 +667,7 @@ export function CreateActivityPage() {
           Array.isArray(activity.required_skills)
             ? activity.required_skills
                 .filter((skill): skill is string => typeof skill === 'string')
-                .map((skill) => createSkillRequirementDraft(skill, 'normal'))
+                .map((skill) => createSkillRequirementDraft(resolveCanonicalSkillLabel(skill, skillCatalog), 'normal'))
             : []
         );
       })
@@ -633,7 +686,7 @@ export function CreateActivityPage() {
     return () => {
       isMounted = false;
     };
-  }, [activityId, session?.access_token]);
+  }, [activityId, session?.access_token, skillCatalog]);
 
   useEffect(() => {
     if (!session?.access_token || loadingActivity) {
@@ -857,16 +910,19 @@ export function CreateActivityPage() {
     setGeocodeError(null);
   };
 
-  const addSkill = () => {
-    const nextSkill = skillDraft.trim();
-    if (!nextSkill) {
+  const addSkillFromCatalog = (skillLabel: string) => {
+    if (!isSkillCatalogReady) {
+      return;
+    }
+    const canonicalSkill = resolveCanonicalSkillLabel(skillLabel, skillCatalog, requiredSkills.map((skill) => skill.name));
+    if (!canonicalSkill) {
       return;
     }
 
-    if (!requiredSkills.some((skill) => skill.name.trim().toLowerCase() === nextSkill.toLowerCase())) {
-      setRequiredSkills((current) => [...current, createSkillRequirementDraft(nextSkill, 'normal')]);
+    if (!requiredSkills.some((skill) => skill.name.trim().toLowerCase() === canonicalSkill.toLowerCase())) {
+      setRequiredSkills((current) => [...current, createSkillRequirementDraft(canonicalSkill, 'normal')]);
     }
-    setSkillDraft('');
+    setSkillSearchQuery('');
   };
 
   const handleCoverImageSelection = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -892,10 +948,6 @@ export function CreateActivityPage() {
     } finally {
       event.target.value = '';
     }
-  };
-
-  const updateSkillName = (id: string, nextName: string) => {
-    setRequiredSkills((current) => current.map((skill) => (skill.id === id ? { ...skill, name: nextName } : skill)));
   };
 
   const updateSkillPriority = (id: string, nextPriority: ActivityPriorityLevel) => {
@@ -1077,7 +1129,7 @@ export function CreateActivityPage() {
       }
 
       const normalizedSkillRequirements = requiredSkills.map((skill, index) => {
-        const name = skill.name.trim();
+        const name = resolveCanonicalSkillLabel(skill.name, skillCatalog, requiredSkills.map((entry) => entry.name));
         if (!name) {
           throw new Error(`Skill row ${index + 1} is missing a name.`);
         }
@@ -1296,20 +1348,20 @@ export function CreateActivityPage() {
               <div className="activity-field">
                 <span>Required Skills</span>
                 <div className="skill-requirements-list">
-                  {requiredSkills.map((skill, index) => (
+                  {requiredSkills.map((skill) => (
                     <div key={skill.id} className={`skill-requirement-row priority-${skill.priority}`}>
-                      <label className="activity-field">
+                      <div className="activity-field skill-requirement-name">
                         <span>Skill</span>
-                        <input
-                          onChange={(event) => updateSkillName(skill.id, event.target.value)}
-                          placeholder={`Skill ${index + 1}`}
-                          type="text"
-                          value={skill.name}
-                        />
-                      </label>
+                        <div className="skill-requirement-name-value">
+                          <strong>{resolveCanonicalSkillLabel(skill.name, skillCatalog, requiredSkills.map((entry) => entry.name))}</strong>
+                          {!isKnownSharedSkill(skill.name, skillCatalog) ? (
+                            <Badge tone="warning">Legacy</Badge>
+                          ) : null}
+                        </div>
+                      </div>
                       <div className="activity-field skill-requirement-priority">
                         <span>Priority</span>
-                        <div className="priority-toggle" role="group" aria-label={`Priority for ${skill.name || `skill ${index + 1}`}`}>
+                        <div className="priority-toggle" role="group" aria-label={`Priority for ${skill.name || 'skill'}`}>
                           {skillPriorityOptions.map((option) => (
                             <button
                               key={`${skill.id}-${option.value}`}
@@ -1332,19 +1384,29 @@ export function CreateActivityPage() {
                 </div>
                 <div className="skill-requirement-footer">
                   <input
-                    onChange={(event) => setSkillDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ',') {
-                        event.preventDefault();
-                        addSkill();
-                      }
-                    }}
-                    placeholder="Type a skill and press Enter"
+                    onChange={(event) => setSkillSearchQuery(event.target.value)}
+                    placeholder="Search shared skill catalog"
                     type="text"
-                    value={skillDraft}
+                    value={skillSearchQuery}
+                    disabled={!isSkillCatalogReady}
                   />
+                  <div className="skill-requirement-catalog-options">
+                    {selectableSkillOptions.map((skillName) => (
+                      <button key={skillName} onClick={() => addSkillFromCatalog(skillName)} type="button">
+                        {skillName}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <small className="activity-help">Each added skill starts with Normal priority and can be changed per row.</small>
+                <small className="activity-help">Select required skills from the shared catalog. Each selected skill starts with Normal priority and can be changed per row.</small>
+                {isSkillCatalogLoading ? <small className="activity-help">Loading skill catalog...</small> : null}
+                {isSkillCatalogEmpty ? <small className="activity-help">Skill catalog is empty.</small> : null}
+                {skillCatalogLoadError ? <small className="activity-help">Catalog unavailable right now: {skillCatalogLoadError}</small> : null}
+                {requiredSkills.some((skill) => !isKnownSharedSkill(skill.name, skillCatalog)) ? (
+                  <small className="activity-help">
+                    Legacy skills from existing data are kept for compatibility and marked as <strong>Legacy</strong>.
+                  </small>
+                ) : null}
               </div>
             </Card>
 

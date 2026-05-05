@@ -14,6 +14,8 @@ interface RegistrationResponse {
   message?: string;
 }
 
+type VolunteerAssignmentDecision = 'accept' | 'decline';
+
 interface ParticipationListResponse {
   participations: ParticipationRecord[];
 }
@@ -146,6 +148,28 @@ export async function cancelParticipation(activityId: string, accessToken: strin
   }
 
   return normalizeParticipationRecord(participation);
+}
+
+export async function respondToAssignedParticipation(
+  participationId: string,
+  decision: VolunteerAssignmentDecision,
+  accessToken: string
+): Promise<{ registration: ParticipationRecord; message?: string }> {
+  const response = await apiRequest<RegistrationResponse>(`/registrations/${participationId}/volunteer-response`, {
+    method: 'PUT',
+    accessToken,
+    body: { decision },
+  });
+
+  const participation = response.registration ?? response.participation;
+  if (!participation) {
+    throw new Error('Assignment response succeeded but no registration payload was returned.');
+  }
+
+  return {
+    registration: normalizeParticipationRecord(participation),
+    message: response.message,
+  };
 }
 
 export async function checkInParticipation(participationId: string, accessToken: string): Promise<ParticipationRecord> {

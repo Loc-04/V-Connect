@@ -437,6 +437,14 @@
   align-items: center;
 }
 
+.skill-requirement-name-value {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  min-height: 48px;
+}
+
 .skill-requirement-priority .priority-toggle {
   min-height: 56px;
 }
@@ -452,6 +460,8 @@
 
 .skill-requirement-footer {
   margin-top: 0.45rem;
+  display: grid;
+  gap: 0.55rem;
 }
 
 .skill-requirement-footer input {
@@ -470,10 +480,31 @@
   border-color: var(--grad-end);
 }
 
-.skill-requirement-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.skill-requirement-catalog-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 0.12rem;
+}
+
+.skill-requirement-catalog-options button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.36rem 0.72rem;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.skill-requirement-catalog-options button:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--grad-end);
 }
 
 .priority-toggle {

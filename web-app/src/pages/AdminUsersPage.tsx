@@ -176,6 +176,26 @@ function buildPaginationItems(currentPage: number, totalPages: number): PageItem
   return items;
 }
 
+function getFriendlyAddUserErrorMessage(error: unknown): string {
+  const fallback = 'Failed to create user.';
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const normalized = error.message.trim().toLowerCase();
+  if (normalized.includes('email') && normalized.includes('exist')) {
+    return 'Email already exists';
+  }
+  if (normalized.includes('phone') && normalized.includes('exist')) {
+    return 'Phone number already exists';
+  }
+  if (normalized.includes('users_pkey') || normalized.includes('duplicate key') || normalized.includes('user already exists')) {
+    return 'User already exists';
+  }
+
+  return error.message || fallback;
+}
+
 export function AdminUsersPage() {
   const { session } = useAuth();
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -532,7 +552,7 @@ export function AdminUsersPage() {
       setAddUserErrors({});
       setAddUserForm(createInitialAddUserForm());
     } catch (submitError) {
-      setAddUserSubmitError(submitError instanceof Error ? submitError.message : 'Failed to create user.');
+      setAddUserSubmitError(getFriendlyAddUserErrorMessage(submitError));
     } finally {
       setAddUserSubmitting(false);
     }

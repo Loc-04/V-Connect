@@ -2,6 +2,7 @@ import { Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
+import { filterSharedSkills, getSharedSkillCatalog, isKnownSharedSkill, resolveCanonicalSkillLabel } from '../../lib/skillCatalog';
 import { Button } from '../ui/Button';
 import { ProfileEmptyState, ProfileSectionCard } from './ProfileSectionCard';
 
@@ -109,6 +110,10 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
   const [draftLevel, setDraftLevel] = useState<SkillLevel>('BASIC');
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
+  const [skillCatalog, setSkillCatalog] = useState<string[]>([]);
+  const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -117,8 +122,63 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
     setEntries(hydrateSkillEntries(userId, skills));
   }, [skills, userId]);
 
+  useEffect(() => {
+    let isMounted = true;
+    setIsCatalogLoading(true);
+
+    void getSharedSkillCatalog()
+      .then((rows) => {
+        if (!isMounted) {
+          return;
+        }
+        setSkillCatalog(rows);
+        setCatalogLoadError(null);
+      })
+      .catch((loadError) => {
+        if (!isMounted) {
+          return;
+        }
+        setSkillCatalog([]);
+        setCatalogLoadError(loadError instanceof Error ? loadError.message : 'Failed to load shared skill catalog.');
+      })
+      .finally(() => {
+        if (!isMounted) {
+          return;
+        }
+        setIsCatalogLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const hasSkills = entries.length > 0;
   const isEditing = formMode === 'edit' && editingIndex !== null;
+  const isCatalogEmpty = !isCatalogLoading && !catalogLoadError && skillCatalog.length === 0;
+  const isCatalogReady = !isCatalogLoading && !catalogLoadError && skillCatalog.length > 0;
+  const allowedSkillNames = useMemo(
+    () =>
+      new Set(
+        [...skillCatalog, ...entries.map((entry) => entry.name)]
+          .map((skill) => resolveCanonicalSkillLabel(skill, skillCatalog, entries.map((entry) => entry.name)).toLowerCase())
+          .filter(Boolean)
+      ),
+    [entries, skillCatalog]
+  );
+  const visibleSkillOptions = useMemo(() => {
+    if (!isCatalogReady) {
+      return [];
+    }
+    return filterSharedSkills(catalogQuery, skillCatalog, entries.map((entry) => entry.name))
+      .filter((skill) =>
+        !entries.some(
+          (entry, index) =>
+            index !== editingIndex && entry.name.trim().toLowerCase() === skill.trim().toLowerCase()
+        )
+      )
+      .slice(0, 14);
+  }, [catalogQuery, editingIndex, entries, isCatalogReady, skillCatalog]);
 
   const headerAction = useMemo(() => {
     if (isManaging) {
@@ -143,9 +203,10 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
             setEditingIndex(null);
             setDraftName('');
             setDraftLevel('BASIC');
+            setCatalogQuery('');
             setError(null);
             setNotice(null);
-          }} type="button">
+          }} type="button" disabled={!isCatalogReady}>
             Add skill
             <Plus size={14} />
           </button>
@@ -168,23 +229,26 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
             setEditingIndex(null);
             setDraftName('');
             setDraftLevel('BASIC');
+            setCatalogQuery('');
             setError(null);
             setNotice(null);
           }}
           type="button"
+          disabled={!isCatalogReady}
         >
           Add skill
           <Plus size={14} />
         </button>
       </div>
     );
-  }, [hasSkills, isManaging]);
+  }, [hasSkills, isCatalogReady, isManaging]);
 
   const resetInlineEditor = () => {
     setFormMode('idle');
     setEditingIndex(null);
     setDraftName('');
     setDraftLevel('BASIC');
+    setCatalogQuery('');
     setError(null);
   };
 
@@ -194,6 +258,7 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
     setEditingIndex(index);
     setDraftName(entry.name);
     setDraftLevel(entry.level);
+    setCatalogQuery(entry.name);
     setError(null);
     setNotice(null);
   };
@@ -240,10 +305,26 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedName = normalizeSkillName(draftName);
+    if (formMode === 'add' && !isCatalogReady) {
+      if (isCatalogLoading) {
+        setError('Skill catalog is loading. Please wait.');
+      } else if (isCatalogEmpty) {
+        setError('Skill catalog is empty.');
+      } else {
+        setError('Skill catalog is unavailable right now.');
+      }
+      return;
+    }
+
+    const normalizedName = resolveCanonicalSkillLabel(draftName, skillCatalog, entries.map((entry) => entry.name));
 
     if (!normalizedName) {
-      setError('Skill name is required.');
+      setError('Please select a skill.');
+      return;
+    }
+
+    if (!allowedSkillNames.has(normalizedName.toLowerCase())) {
+      setError('Please choose a skill from the shared catalog.');
       return;
     }
 
@@ -342,6 +423,7 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
                 setNotice(null);
               }}
               type="button"
+              disabled={!isCatalogReady}
             >
               Add Skill
             </button>
@@ -354,12 +436,31 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
       {(formMode === 'add' || isEditing) && (
         <form className="vol-profile-inline-editor" onSubmit={handleSubmit}>
           <div className="vol-profile-inline-grid">
-            <input
-              className="text-input"
-              onChange={(event) => setDraftName(event.target.value)}
-              placeholder="Skill name"
-              value={draftName}
-            />
+            <div className="vol-profile-skill-picker">
+              <input
+                className="text-input"
+                onChange={(event) => setCatalogQuery(event.target.value)}
+                placeholder="Search shared skills"
+                value={catalogQuery}
+                disabled={!isCatalogReady}
+              />
+              <div className="vol-profile-skill-options">
+                {visibleSkillOptions.map((skill) => (
+                  <button
+                    className={skill.toLowerCase() === draftName.trim().toLowerCase() ? 'is-selected' : ''}
+                    key={skill}
+                    onClick={() => {
+                      setDraftName(skill);
+                      setCatalogQuery(skill);
+                      setError(null);
+                    }}
+                    type="button"
+                  >
+                    {skill}
+                  </button>
+                ))}
+              </div>
+            </div>
             <select
               className="text-input vol-profile-inline-select"
               onChange={(event) => setDraftLevel(event.target.value as SkillLevel)}
@@ -372,13 +473,31 @@ export function ProfileSkillsCard({ userId, skills, onPersist }: ProfileSkillsCa
               ))}
             </select>
           </div>
+          {isCatalogLoading ? <div className="vol-profile-form-helper">Loading skill catalog...</div> : null}
+          {isCatalogEmpty ? <div className="vol-profile-form-helper">Skill catalog is empty.</div> : null}
+          <div className="vol-profile-form-helper">
+            Selected skill:{' '}
+            <strong>
+              {draftName.trim()
+                ? resolveCanonicalSkillLabel(draftName, skillCatalog, entries.map((entry) => entry.name))
+                : 'None selected'}
+            </strong>
+            {!draftName.trim() ? ' (choose from the catalog above)' : ''}
+          </div>
           <div className="vol-profile-form-helper">
             {formMode === 'add'
-              ? 'Add one skill at a time. Levels are stored locally until backend support for levels is added.'
-              : 'Update the skill name or its level, then save the change.'}
+              ? 'Add one skill at a time from the shared catalog. Levels are stored locally until backend support for levels is added.'
+              : isKnownSharedSkill(draftName, skillCatalog)
+                ? 'Update the skill level, then save the change.'
+                : 'This skill came from existing profile data. You can keep it or remove it.'}
           </div>
+          {catalogLoadError ? (
+            <div className="vol-profile-form-helper">
+              Catalog unavailable right now: <strong>{catalogLoadError}</strong>
+            </div>
+          ) : null}
           <div className="vol-profile-inline-actions">
-            <Button disabled={submitting} type="submit">
+            <Button disabled={submitting || (formMode === 'add' && !isCatalogReady)} type="submit">
               {submitting ? 'Saving...' : formMode === 'add' ? 'Add skill' : 'Save skill'}
             </Button>
             <Button onClick={resetInlineEditor} type="button" variant="secondary">
