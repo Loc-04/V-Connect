@@ -3,28 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Badge, Card } from '../ui';
 import type { TimelineMilestone } from '../../types/timeline';
+import { formatTimelineRangeLabel } from '../../lib/dateTimeFormat';
 import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
 import { resolveTimelineMilestoneStatus } from '../../lib/timelineStatus';
 import { sortTimelineByTime } from '../../lib/timelineValidation';
 import { TimelineStatusBadge } from './TimelineStatusBadge';
-
-function formatRange(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 'Time TBD';
-  }
-
-  return `${start.toLocaleString(undefined, {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })} - ${end.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`;
-}
 
 function getTypeLabel(type: string) {
   return type
@@ -130,7 +113,7 @@ export function EventTimelineReadOnly({
               <p className="timeline-item-title">{safeText(milestone.title, 'Untitled milestone')}</p>
               <small className="timeline-item-time">
                 <Clock3 size={13} />
-                <span>{formatRange(milestone.startTime, milestone.endTime)}</span>
+                <span>{formatTimelineRangeLabel(milestone.startTime, milestone.endTime)}</span>
               </small>
             </div>
             <TimelineStatusBadge status={milestone.status} />

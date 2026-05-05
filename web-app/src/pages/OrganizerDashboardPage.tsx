@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { EmptyLoadingErrorState } from '../components/feedback';
-import { EventTimelineReadOnly } from '../components/timeline';
+import { TimelineStatusBadge } from '../components/timeline';
 import { Badge, Button, Card } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { listActivities } from '../lib/activities';
@@ -19,18 +19,71 @@ interface ActivityTimelineBundle {
   milestones: TimelineMilestone[];
 }
 
-function formatTimeLabel(value: string) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return 'Time TBD';
-  }
+function formatTypeLabel(type: string) {
+  return String(type)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
-  return parsed.toLocaleString(undefined, {
+function sortMilestonesByStart<T extends { startTime: string }>(rows: T[]) {
+  return [...rows].sort((left, right) => {
+    const leftTime = new Date(left.startTime).getTime();
+    const rightTime = new Date(right.startTime).getTime();
+    const normalizedLeft = Number.isFinite(leftTime) ? leftTime : Number.MAX_SAFE_INTEGER;
+    const normalizedRight = Number.isFinite(rightTime) ? rightTime : Number.MAX_SAFE_INTEGER;
+    return normalizedLeft - normalizedRight;
+  });
+}
+
+function toValidDate(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDashboardDate(date: Date, includeYear = false) {
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
     month: 'short',
     day: '2-digit',
+    year: includeYear ? 'numeric' : undefined,
+  });
+}
+
+function formatDashboardTime(date: Date) {
+  return date.toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function isSameDay(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function formatDashboardRange(startTime: string, endTime: string) {
+  const start = toValidDate(startTime);
+  const end = toValidDate(endTime);
+  if (!start || !end) {
+    return 'Time TBD';
+  }
+
+  if (isSameDay(start, end)) {
+    return `${formatDashboardDate(start, false)} · ${formatDashboardTime(start)}-${formatDashboardTime(end)}`;
+  }
+
+  return `${formatDashboardDate(start, false)} ${formatDashboardTime(start)} - ${formatDashboardDate(end, false)} ${formatDashboardTime(end)}`;
+}
+
+function formatDashboardPoint(value: string) {
+  const date = toValidDate(value);
+  if (!date) {
+    return 'Time TBD';
+  }
+  return `${formatDashboardDate(date, true)} · ${formatDashboardTime(date)}`;
 }
 
 export function OrganizerDashboardPage() {
@@ -148,6 +201,50 @@ export function OrganizerDashboardPage() {
     [bundles, selectedActivityId]
   );
   const hasAnyActivities = bundles.length > 0;
+  const nextUpcomingMilestone = upcomingMilestones[0] ?? null;
+  const totalMilestones = flattenedMilestones.length;
+  const remainingMilestones = Math.max(totalMilestones - completedMilestones, 0);
+  const selectedMilestones = useMemo(
+    () =>
+      sortMilestonesByStart(
+        (selectedBundle?.milestones ?? []).map((milestone) => ({
+          ...milestone,
+          status: resolveTimelineMilestoneStatus(milestone, nowMs),
+        }))
+      ),
+    [nowMs, selectedBundle?.milestones]
+  );
+  const selectedTimelinePreview = useMemo(() => selectedMilestones.slice(0, 6), [selectedMilestones]);
+  const hasSelectedTimeline = selectedMilestones.length > 0;
+
+  const liveOverviewState = useMemo(() => {
+    if (inProgressMilestones.length > 0) {
+      return {
+        label: 'In Progress',
+        tone: 'success' as const,
+        description: 'A milestone is currently active in your timeline.',
+      };
+    }
+    if (upcomingMilestones.length > 0) {
+      return {
+        label: 'Upcoming',
+        tone: 'info' as const,
+        description: 'No live milestone right now. The next one is scheduled.',
+      };
+    }
+    if (completedMilestones > 0) {
+      return {
+        label: 'Completed',
+        tone: 'neutral' as const,
+        description: 'No live milestone right now. Existing milestones are completed.',
+      };
+    }
+    return {
+      label: 'No Live Milestone',
+      tone: 'neutral' as const,
+      description: 'Create milestones to start tracking live timeline progress.',
+    };
+  }, [completedMilestones, inProgressMilestones.length, upcomingMilestones.length]);
 
   return (
     <OrganizerShell
@@ -162,30 +259,39 @@ export function OrganizerDashboardPage() {
     >
       <section className="org-dashboard-page">
         {!loading && hasAnyActivities ? (
-          <div className="org-dashboard-metrics">
-            <Card as="article" className="org-dashboard-metric-card">
+        <div className="org-dashboard-metrics">
+          <Card as="article" className="org-dashboard-metric-card">
+            <div className="org-dashboard-metric-head">
               <span className="org-dashboard-metric-icon">
                 <CalendarClock size={16} />
               </span>
               <p>Activities with Timeline</p>
-              <strong>{activitiesWithTimeline.length}</strong>
-            </Card>
-            <Card as="article" className="org-dashboard-metric-card">
+            </div>
+            <strong>{activitiesWithTimeline.length}</strong>
+            <small>{bundles.length} tracked activities in total</small>
+          </Card>
+          <Card as="article" className="org-dashboard-metric-card">
+            <div className="org-dashboard-metric-head">
               <span className="org-dashboard-metric-icon is-accent">
                 <PlayCircle size={16} />
               </span>
               <p>In Progress Milestones</p>
-              <strong>{inProgressMilestones.length}</strong>
-            </Card>
-            <Card as="article" className="org-dashboard-metric-card">
+            </div>
+            <strong>{inProgressMilestones.length}</strong>
+            <small>{upcomingMilestones.length} upcoming in queue</small>
+          </Card>
+          <Card as="article" className="org-dashboard-metric-card">
+            <div className="org-dashboard-metric-head">
               <span className="org-dashboard-metric-icon is-success">
                 <Clock3 size={16} />
               </span>
               <p>Completed Milestones</p>
-              <strong>{completedMilestones}</strong>
-            </Card>
-          </div>
-        ) : null}
+            </div>
+            <strong>{completedMilestones}</strong>
+            <small>{remainingMilestones} remaining milestones</small>
+          </Card>
+        </div>
+      ) : null}
 
         {error && !loading ? (
           <Card as="section" className="org-dashboard-card">
@@ -215,46 +321,57 @@ export function OrganizerDashboardPage() {
             <Card as="section" className="org-dashboard-card">
               <div className="org-dashboard-card-head">
                 <h2>Live Milestone Overview</h2>
-                <Badge tone="info">During Event</Badge>
+                <Badge tone={liveOverviewState.tone}>{liveOverviewState.label}</Badge>
               </div>
-              {inProgressMilestones.length === 0 && upcomingMilestones.length === 0 ? (
-                <p className="muted">No live timeline milestones yet. Create or update milestones in Activity Management.</p>
-              ) : (
-                <div className="org-dashboard-overview-grid">
-                  <div>
-                    <h3>In Progress</h3>
-                    {inProgressMilestones.length === 0 ? (
-                      <p className="muted">No milestone is currently in progress.</p>
-                    ) : (
-                      <ul className="org-dashboard-list">
-                        {inProgressMilestones.map((milestone) => (
-                          <li key={milestone.id}>
-                            <strong>{milestone.title}</strong>
-                            <span>{milestone.activityTitle}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+              <p className="org-dashboard-overview-note">{liveOverviewState.description}</p>
+              <div className="org-dashboard-overview-grid">
+                <div className="org-dashboard-overview-panel">
+                  <div className="org-dashboard-overview-panel-head">
+                    <h3>Current Live Milestone</h3>
+                    <Badge tone={inProgressMilestones.length > 0 ? 'success' : 'neutral'}>
+                      {inProgressMilestones.length > 0 ? `${inProgressMilestones.length} live` : 'None'}
+                    </Badge>
                   </div>
-                  <div>
-                    <h3>Upcoming</h3>
-                    {upcomingMilestones.length === 0 ? (
-                      <p className="muted">No upcoming milestone.</p>
-                    ) : (
-                      <ul className="org-dashboard-list">
-                        {upcomingMilestones.map((milestone) => (
-                          <li key={milestone.id}>
-                            <strong>{milestone.title}</strong>
-                            <span>
-                              {milestone.activityTitle} - {formatTimeLabel(milestone.startTime)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  {inProgressMilestones.length === 0 ? (
+                    <div className="org-dashboard-empty-snapshot">
+                      <strong>No milestone is currently in progress.</strong>
+                      <span>Timeline status will switch to live automatically when a milestone time starts.</span>
+                    </div>
+                  ) : (
+                    <ul className="org-dashboard-list">
+                      {inProgressMilestones.slice(0, 3).map((milestone) => (
+                        <li key={milestone.id}>
+                          <strong>{milestone.title}</strong>
+                          <span>{milestone.activityTitle}</span>
+                          <small>{formatDashboardRange(milestone.startTime, milestone.endTime)}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-              )}
+                <div className="org-dashboard-overview-panel">
+                  <div className="org-dashboard-overview-panel-head">
+                    <h3>Next Upcoming Milestone</h3>
+                    <Badge tone={nextUpcomingMilestone ? 'info' : 'neutral'}>
+                      {nextUpcomingMilestone ? 'Scheduled' : 'Empty'}
+                    </Badge>
+                  </div>
+                  {nextUpcomingMilestone ? (
+                    <ul className="org-dashboard-list">
+                      <li key={nextUpcomingMilestone.id}>
+                        <strong>{nextUpcomingMilestone.title}</strong>
+                        <span>{nextUpcomingMilestone.activityTitle}</span>
+                        <small>{formatDashboardPoint(nextUpcomingMilestone.startTime)}</small>
+                      </li>
+                    </ul>
+                  ) : (
+                    <div className="org-dashboard-empty-snapshot">
+                      <strong>No upcoming milestone is scheduled.</strong>
+                      <span>Add milestones in timeline manager to build the next activity flow.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </Card>
 
             <Card as="section" className="org-dashboard-card">
@@ -287,15 +404,41 @@ export function OrganizerDashboardPage() {
                         onClick={() => setSelectedActivityId(bundle.activity.id)}
                         type="button"
                       >
-                        {bundle.activity.title}
+                        <span>{bundle.activity.title}</span>
+                        <Badge className="org-dashboard-chip-count" tone="neutral">
+                          {bundle.milestones.length}
+                        </Badge>
                       </button>
                     ))}
                   </div>
-                  <EventTimelineReadOnly
-                    compact
-                    emptyDescription="No timeline milestones available yet."
-                    milestones={selectedBundle?.milestones ?? []}
-                  />
+                  <p className="org-dashboard-timeline-note">
+                    Showing the first {selectedTimelinePreview.length} milestone{selectedTimelinePreview.length === 1 ? '' : 's'} in time order.
+                  </p>
+                  {hasSelectedTimeline ? (
+                    <div className="org-dashboard-timeline-preview">
+                      {selectedTimelinePreview.map((milestone) => (
+                        <article className="org-dashboard-timeline-item" key={milestone.id}>
+                          <div className="org-dashboard-timeline-top">
+                            <h3>{milestone.title}</h3>
+                            <TimelineStatusBadge status={milestone.status} />
+                          </div>
+                          <p className="org-dashboard-timeline-meta">
+                            {formatDashboardRange(milestone.startTime, milestone.endTime)}
+                          </p>
+                          <div className="org-dashboard-timeline-tags">
+                            <Badge tone="neutral">{formatTypeLabel(milestone.type)}</Badge>
+                          </div>
+                          {milestone.description ? (
+                            <p className="org-dashboard-timeline-description">{milestone.description}</p>
+                          ) : (
+                            <p className="org-dashboard-timeline-description muted">No additional details provided.</p>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">No timeline milestones available yet.</p>
+                  )}
                 </>
               ) : (
                 <p className="muted">No timeline data available yet. Add milestones from Organizer Activity Management.</p>

@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, LoaderCircle, MapPin, Star } from 'lucide-react';
+import { CalendarDays, LoaderCircle, MapPin, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -55,6 +55,14 @@ interface RecommendationViewModel {
   startTime: string;
 }
 
+const FEATURE_REASON_LABELS: Record<string, string> = {
+  skill_score: 'Skill alignment',
+  interest_score: 'Interest alignment',
+  availability_score: 'Availability fit',
+  experience_score: 'Experience signal',
+  history_score: 'Prior organizer history',
+};
+
 function resolveMatchTier(rawTier: unknown, score: number): MatchTier {
   const normalized = String(rawTier ?? '').trim().toLowerCase();
   if (
@@ -102,6 +110,18 @@ function matchTierWeight(tier: MatchTier): number {
     return 2;
   }
   return 1;
+}
+
+function isStrongOrGoodMatch(tier: MatchTier): boolean {
+  return tier === 'strong_match' || tier === 'good_match';
+}
+
+function formatMatchScore(score: number, usePrecise: boolean): string {
+  const bounded = Math.max(0, Math.min(100, score));
+  if (!usePrecise && Math.abs(bounded - Math.round(bounded)) < 0.05) {
+    return `${Math.round(bounded)}%`;
+  }
+  return `${bounded.toFixed(1)}%`;
 }
 
 function formatLocation(location: ActivityLocation | string | null): string {
@@ -208,6 +228,89 @@ function humanizeReasonCode(code: string): string {
   return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
 }
 
+function shouldUsePreciseScoreDisplay(items: RecommendationViewModel[]): boolean {
+  if (items.length < 2) {
+    return false;
+  }
+  const roundedBuckets = new Map<number, number>();
+  for (const item of items) {
+    const rounded = Math.round(item.matchScore);
+    roundedBuckets.set(rounded, (roundedBuckets.get(rounded) ?? 0) + 1);
+  }
+  return [...roundedBuckets.values()].some((count) => count > 1);
+}
+
+function pickTopReasons(item: RecommendationViewModel): string[] {
+  const maxReasons = item.matchTier === 'strong_match' || item.matchTier === 'good_match' ? 3 : 2;
+
+  const weightedFromFeatures = item.featureContributions
+    .map((entry) => {
+      const label = FEATURE_REASON_LABELS[entry.feature];
+      if (!label) {
+        return null;
+      }
+      const maxScore = entry.max_score > 0 ? entry.max_score : 1;
+      const weight = Math.max(0, entry.score / maxScore);
+      return { label, weight };
+    })
+    .filter((entry): entry is { label: string; weight: number } => Boolean(entry))
+    .filter((entry) => entry.weight > 0.02)
+    .sort((left, right) => right.weight - left.weight)
+    .map((entry) => entry.label);
+
+  if (weightedFromFeatures.length > 0) {
+    return [...new Set(weightedFromFeatures)].slice(0, maxReasons);
+  }
+
+  const fromDisplay = item.displayReasons.map((reason) => String(reason ?? '').trim()).filter((reason) => reason.length > 0);
+  if (fromDisplay.length > 0) {
+    return fromDisplay.slice(0, maxReasons);
+  }
+
+  if (item.reasonCodes.length > 0) {
+    return item.reasonCodes.map((code) => humanizeReasonCode(code)).slice(0, maxReasons);
+  }
+
+  return item.reasons.slice(0, maxReasons);
+}
+
+function softenReasonForLowTier(reason: string, tier: MatchTier): string {
+  const base = String(reason ?? '').trim();
+  if (!base) {
+    return base;
+  }
+  if (tier !== 'potential_match' && tier !== 'low_match') {
+    return base;
+  }
+  const softened = base
+    .replace(/\bstrongly\b/gi, '')
+    .replace(/\bstrong\b/gi, '')
+    .replace(/\bhighly\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (!softened) {
+    return base;
+  }
+  return softened.charAt(0).toUpperCase() + softened.slice(1);
+}
+
+function getPresentationExplanation(item: RecommendationViewModel): string {
+  const raw = String(item.displayExplanation || item.explanation || '').trim();
+  if (!raw) {
+    return 'Recommended from profile and activity matching signals.';
+  }
+
+  const strongLanguage = /\bstrong|strongly|highly|excellent|best match|perfect\b/i.test(raw);
+  if ((item.matchTier === 'potential_match' || item.matchTier === 'low_match') && strongLanguage) {
+    if (item.matchTier === 'potential_match') {
+      return 'This activity partially matches your profile and may still be worth exploring.';
+    }
+    return 'This activity has limited profile alignment right now, so it is shown as an explore option.';
+  }
+
+  return raw;
+}
+
 function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel {
   const { dateLabel, timeLabel } = formatDateTime(record.startTime, record.endTime);
   const reasonCodes = normalizeReasonCodes(record.reason_codes);
@@ -226,7 +329,15 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
       .filter((reason) => reason.length > 0)
       .slice(0, 3);
   const hasAiData = Boolean(scoreBreakdown || featureContributions.length > 0 || reasonCodes.length > 0 || modelVersion);
-  const matchScore = Math.max(0, Math.min(100, Math.round(record.matchScore)));
+  const rawScoreFromRatio = Number(record.matchRatio);
+  const rawScoreFromMatch = Number(record.matchScore);
+  const scoreFromRatio = Number.isFinite(rawScoreFromRatio) ? rawScoreFromRatio * 100 : Number.NaN;
+  const rawFinalScore = Number.isFinite(scoreFromRatio)
+    ? scoreFromRatio
+    : Number.isFinite(rawScoreFromMatch)
+      ? rawScoreFromMatch
+      : Number(scoreBreakdown?.final_score ?? 0);
+  const matchScore = Math.max(0, Math.min(100, Number(rawFinalScore.toFixed(1))));
   const aiDecision =
     record.ai_decision && typeof record.ai_decision === 'object' ? record.ai_decision : null;
   const decision = String(aiDecision?.decision ?? '').trim().toLowerCase() || 'recommend';
@@ -395,11 +506,31 @@ export function VolunteerAiRecommendedActivitiesPage() {
     () => filteredRecommendations.filter((item) => item.decision === 'recommend'),
     [filteredRecommendations]
   );
+  const strongRecommendedItems = useMemo(
+    () => recommendedItems.filter((item) => isStrongOrGoodMatch(item.matchTier)),
+    [recommendedItems]
+  );
+  const nonStrongRecommendedItems = useMemo(
+    () => recommendedItems.filter((item) => !isStrongOrGoodMatch(item.matchTier)),
+    [recommendedItems]
+  );
   const considerItems = useMemo(
     () => filteredRecommendations.filter((item) => item.decision === 'consider'),
     [filteredRecommendations]
   );
-  const selectableRecommendations = recommendedItems;
+  const lowConfidenceItems = useMemo(() => {
+    const merged = [...considerItems, ...nonStrongRecommendedItems];
+    const deduped = new Map<string, RecommendationViewModel>();
+    for (const item of merged) {
+      if (!deduped.has(item.activityId)) {
+        deduped.set(item.activityId, item);
+      }
+    }
+    return [...deduped.values()].sort((left, right) => right.matchScore - left.matchScore).slice(0, 8);
+  }, [considerItems, nonStrongRecommendedItems]);
+  const hasStrongRecommendations = strongRecommendedItems.length > 0;
+  const hasLowConfidenceMatches = !hasStrongRecommendations && lowConfidenceItems.length > 0;
+  const selectableRecommendations = strongRecommendedItems;
   const selectedRecommendation = useMemo(() => {
     const candidateList = selectableRecommendations;
     if (candidateList.length === 0) {
@@ -419,11 +550,15 @@ export function VolunteerAiRecommendedActivitiesPage() {
     const candidateList = selectableRecommendations;
     return candidateList.find((item) => item.activityId !== selectedRecommendation.activityId) ?? null;
   }, [selectableRecommendations, selectedRecommendation]);
-  const considerOptions = useMemo(
-    () =>
-      considerItems.filter((item) => item.activityId !== selectedRecommendation?.activityId).slice(0, 5),
-    [considerItems, selectedRecommendation?.activityId]
+  const considerOptions = useMemo(() => {
+    const merged = [...considerItems, ...nonStrongRecommendedItems];
+    return merged.filter((item) => item.activityId !== selectedRecommendation?.activityId).slice(0, 6);
+  }, [considerItems, nonStrongRecommendedItems, selectedRecommendation?.activityId]);
+  const shouldShowPreciseScores = useMemo(
+    () => shouldUsePreciseScoreDisplay(filteredRecommendations),
+    [filteredRecommendations]
   );
+  const hasCloseScoreTie = shouldShowPreciseScores;
 
   useEffect(() => {
     if (!selectedRecommendation) {
@@ -521,27 +656,14 @@ export function VolunteerAiRecommendedActivitiesPage() {
                 <option value="best-match">Sort by best match</option>
                 <option value="soonest">Sort by soonest date</option>
               </Select>
-
-              <Select
-                className="ai-reco-filter-select"
-                disabled={selectableRecommendations.length === 0}
-                onChange={(event) => setSelectedActivityId(event.target.value)}
-                value={selectedRecommendation?.activityId ?? ''}
-              >
-                {selectableRecommendations.length === 0 ? (
-                  <option value="">No recommendations available</option>
-                ) : (
-                  selectableRecommendations.map((item) => (
-                    <option key={item.activityId} value={item.activityId}>
-                      {item.title}
-                    </option>
-                  ))
-                )}
-              </Select>
             </div>
 
-            <p className="ai-reco-sort-note">
-              Ranked by <strong>{sortMode === 'best-match' ? 'match score' : 'upcoming date'}</strong>
+            <p className="ai-reco-state-note">
+              {hasStrongRecommendations
+                ? `Showing ${strongRecommendedItems.length} strong recommendation${strongRecommendedItems.length === 1 ? '' : 's'}`
+                : hasLowConfidenceMatches
+                  ? `Showing ${lowConfidenceItems.length} activities worth exploring`
+                  : 'No recommendations available yet'}
             </p>
           </div>
         </div>
@@ -551,7 +673,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
             <LoaderCircle className="ai-reco-loading-icon" />
             <p>Loading recommendation engine output...</p>
           </Card>
-        ) : (
+        ) : hasStrongRecommendations ? (
           <div className="ai-reco-main-grid">
             {selectedRecommendation ? (
               <Card as="article" className="ai-reco-featured-card">
@@ -559,7 +681,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   <img alt={selectedRecommendation.title} className="ai-reco-image" src={selectedRecommendation.heroImageUrl} />
                   <span className="ai-reco-match-pill">
                     <Star size={12} />
-                    {selectedRecommendation.matchScore}% match
+                    {formatMatchScore(selectedRecommendation.matchScore, shouldShowPreciseScores)} match
                   </span>
                 </div>
 
@@ -606,26 +728,19 @@ export function VolunteerAiRecommendedActivitiesPage() {
                           ? 'Why this is recommended'
                           : 'Recommendation summary'}
                     </p>
-                    <p>{selectedRecommendation.displayExplanation || 'Recommended from profile and activity matching signals.'}</p>
+                    <p>{getPresentationExplanation(selectedRecommendation)}</p>
                     <div className="ai-reco-why-tags">
-                      {selectedRecommendation.displayReasons.length > 0
-                        ? selectedRecommendation.displayReasons.map((reason) => (
-                            <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                              {reason}
-                            </Badge>
-                          ))
-                        : selectedRecommendation.reasonCodes.length > 0
-                        ? selectedRecommendation.reasonCodes.map((reasonCode) => (
-                            <Badge className="ai-reco-reason-tag" key={reasonCode} tone="info">
-                              {humanizeReasonCode(reasonCode)}
-                            </Badge>
-                          ))
-                        : selectedRecommendation.reasons.map((reason) => (
-                            <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                              {reason}
-                            </Badge>
-                          ))}
+                      {pickTopReasons(selectedRecommendation).map((reason) => (
+                        <Badge className="ai-reco-reason-tag" key={reason} tone="info">
+                          {softenReasonForLowTier(reason, selectedRecommendation.matchTier)}
+                        </Badge>
+                      ))}
                     </div>
+                    {hasCloseScoreTie ? (
+                      <p className="ai-reco-score-note">
+                        Close scores can come from different factor mixes. Badges show top contributors, not the full formula.
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="ai-reco-cta-row">
@@ -673,13 +788,13 @@ export function VolunteerAiRecommendedActivitiesPage() {
               {secondaryRecommendation ? (
                 <>
                   <div className="ai-reco-next-icon-wrap">
-                    <ArrowRight size={18} />
+                    <Star size={16} />
                   </div>
                   <p className="ai-reco-why-title">Up next</p>
                   <h3>{secondaryRecommendation.title}</h3>
-                  <p className="muted">{secondaryRecommendation.displayExplanation || secondaryRecommendation.explanation}</p>
+                  <p className="muted">{getPresentationExplanation(secondaryRecommendation)}</p>
                   <p className="muted">
-                    {matchTierLabel(secondaryRecommendation.matchTier)} - {secondaryRecommendation.matchScore}% match -{' '}
+                    {matchTierLabel(secondaryRecommendation.matchTier)} - {formatMatchScore(secondaryRecommendation.matchScore, shouldShowPreciseScores)} match -{' '}
                     {secondaryRecommendation.dateLabel}
                   </p>
                   <Button onClick={() => setSelectedActivityId(secondaryRecommendation.activityId)} type="button" variant="secondary">
@@ -689,7 +804,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
               ) : (
                 <>
                   <div className="ai-reco-next-icon-wrap">
-                    <LoaderCircle size={18} />
+                    <Star size={16} />
                   </div>
                   <p className="ai-reco-why-title">Recommendation coverage</p>
                   <h3>No secondary match yet</h3>
@@ -704,22 +819,122 @@ export function VolunteerAiRecommendedActivitiesPage() {
               )}
             </Card>
           </div>
+        ) : hasLowConfidenceMatches ? (
+          <div className="ai-reco-low-confidence-layout">
+            <Card as="section" className="ai-reco-low-hero">
+              <div>
+                <h2>No high-confidence matches yet</h2>
+                <p>
+                  Update your skills, interests, or availability to improve match quality. You can still explore partial
+                  matches below.
+                </p>
+              </div>
+              <div className="ai-reco-low-hero-actions">
+                <Button onClick={() => navigate('/volunteer/profile-ui')} type="button" variant="primary">
+                  Update profile
+                </Button>
+                <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                  Browse all opportunities
+                </Button>
+              </div>
+            </Card>
+
+            <Card as="section" className="ai-reco-partial-section">
+              <div className="ai-reco-partial-head">
+                <h3>Activities worth exploring</h3>
+                <p>These matches are not yet strong, but still show partial alignment with your profile.</p>
+              </div>
+              <div className="ai-reco-partial-grid">
+                {lowConfidenceItems.map((item) => (
+                  <article className="ai-reco-partial-card" key={item.activityId}>
+                    <div className="ai-reco-partial-top">
+                      <Badge tone="accent">{formatMatchScore(item.matchScore, shouldShowPreciseScores)} match</Badge>
+                      <Badge tone={item.matchTier === 'low_match' ? 'neutral' : 'info'}>
+                        {matchTierLabel(item.matchTier)}
+                      </Badge>
+                    </div>
+                    <h4>{item.title}</h4>
+                    <p className="ai-reco-partial-organizer">Hosted by {item.organizerName}</p>
+                    <p className="ai-reco-partial-explanation">{getPresentationExplanation(item)}</p>
+                    <div className="ai-reco-why-tags">
+                      {pickTopReasons(item).map((reason) => (
+                        <Badge className="ai-reco-reason-tag" key={reason} tone="info">
+                          {softenReasonForLowTier(reason, item.matchTier)}
+                        </Badge>
+                      ))}
+                    </div>
+                    {hasCloseScoreTie ? (
+                      <p className="ai-reco-score-note">Similar overall score, different contributing factors.</p>
+                    ) : null}
+                    <p className="ai-reco-partial-meta">
+                      {item.dateLabel} | {item.locationLabel}
+                    </p>
+                    <Button
+                      onClick={() => handleViewDetails(item.activityId, item.recommendationItemId)}
+                      type="button"
+                      variant="secondary"
+                    >
+                      View details
+                    </Button>
+                  </article>
+                ))}
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <Card as="section" className="ai-reco-low-hero">
+            <div>
+              <h2>No strong recommendations yet</h2>
+              <p>
+                We do not have enough strong profile alignment right now. Update your profile to improve recommendations,
+                or browse all opportunities directly.
+              </p>
+            </div>
+            <div className="ai-reco-low-hero-actions">
+              <Button onClick={() => navigate('/volunteer/profile-ui')} type="button" variant="primary">
+                Update profile
+              </Button>
+              <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
+                Browse all opportunities
+              </Button>
+            </div>
+          </Card>
         )}
 
-        {!loading && considerOptions.length > 0 && (
+        {!loading && hasStrongRecommendations && considerOptions.length > 0 && (
           <Card as="section" className="ai-reco-next-card">
-            <p className="ai-reco-why-title">Good matches to consider</p>
-            <p className="muted">These activities have partial alignment and may still be worth exploring.</p>
-            <div className="ai-reco-why-tags">
+            <div className="ai-reco-partial-head">
+              <h3>Good matches to consider</h3>
+              <p>These activities are potential fits if you want additional options beyond top recommendations.</p>
+            </div>
+            <div className="ai-reco-partial-grid">
               {considerOptions.map((item) => (
-                <button
-                  className="ai-reco-reason-tag"
-                  key={item.activityId}
-                  onClick={() => handleViewDetails(item.activityId, item.recommendationItemId)}
-                  type="button"
-                >
-                  {item.title} ({item.matchScore}%)
-                </button>
+                <article className="ai-reco-partial-card" key={item.activityId}>
+                  <div className="ai-reco-partial-top">
+                    <Badge tone="accent">{formatMatchScore(item.matchScore, shouldShowPreciseScores)} match</Badge>
+                    <Badge tone={item.matchTier === 'low_match' ? 'neutral' : 'info'}>{matchTierLabel(item.matchTier)}</Badge>
+                  </div>
+                  <h4>{item.title}</h4>
+                  <p className="ai-reco-partial-organizer">Hosted by {item.organizerName}</p>
+                  <p className="ai-reco-partial-explanation">{getPresentationExplanation(item)}</p>
+                  <div className="ai-reco-why-tags">
+                    {pickTopReasons(item).map((reason) => (
+                      <Badge className="ai-reco-reason-tag" key={reason} tone="info">
+                        {softenReasonForLowTier(reason, item.matchTier)}
+                      </Badge>
+                    ))}
+                  </div>
+                  {hasCloseScoreTie ? (
+                    <p className="ai-reco-score-note">Similar overall score, different contributing factors.</p>
+                  ) : null}
+                  <Button
+                    onClick={() => handleViewDetails(item.activityId, item.recommendationItemId)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    View details
+                  </Button>
+                </article>
               ))}
             </div>
           </Card>

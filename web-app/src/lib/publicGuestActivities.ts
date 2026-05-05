@@ -1,5 +1,6 @@
 import { apiRequest } from './api';
 import { resolveActivityCoverImageUrl } from './activityCover';
+import { formatHumanDuration } from './dateTimeFormat';
 import type { GuestActivityRecord } from './guestActivities';
 
 interface PublicGuestActivityLocation {
@@ -67,19 +68,7 @@ function truncate(value: string, maxLength: number) {
 }
 
 function computeDurationLabel(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 'TBD';
-  }
-
-  const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-  if (!Number.isFinite(hours) || hours <= 0) {
-    return 'TBD';
-  }
-
-  const rounded = Math.round(hours * 10) / 10;
-  return `${rounded} hour${rounded === 1 ? '' : 's'}`;
+  return formatHumanDuration(startTime, endTime);
 }
 
 function toGuestActivityRecord(activity: PublicGuestActivityApiRecord): GuestActivityRecord {

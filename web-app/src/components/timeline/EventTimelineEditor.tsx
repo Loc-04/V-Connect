@@ -2,6 +2,7 @@ import { AlertCircle, ArrowDown, ArrowUp, PencilLine, PlusCircle, Save, Trash2 }
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createTimelineMilestone, deleteTimelineMilestone, listActivityTimeline, moveTimelineMilestone, updateTimelineMilestone, updateTimelineMilestoneStatus } from '../../lib/timeline';
+import { formatTimelineRangeLabel } from '../../lib/dateTimeFormat';
 import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
 import { resolveTimelineMilestoneStatus } from '../../lib/timelineStatus';
 import { hasTimelineValidationErrors, sortTimelineByTime, validateTimelineDrafts } from '../../lib/timelineValidation';
@@ -17,22 +18,17 @@ function formatTypeLabel(type: TimelineMilestoneType) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function formatRange(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 'Time TBD';
-  }
+function normalizeDuplicateText(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
 
-  return `${start.toLocaleString(undefined, {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })} - ${end.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`;
+function buildDuplicateSignature(item: Pick<TimelineMilestoneDraft, 'title' | 'type' | 'startTime' | 'endTime'>) {
+  return JSON.stringify({
+    title: normalizeDuplicateText(item.title),
+    type: item.type,
+    startTime: item.startTime,
+    endTime: item.endTime,
+  });
 }
 
 function toInputDateTimeValue(value: string | null | undefined) {
@@ -105,6 +101,7 @@ export function EventTimelineEditor({
   const [formErrorMessages, setFormErrorMessages] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyMilestoneId, setBusyMilestoneId] = useState<string | null>(null);
+  const [isSubmittingDraft, setIsSubmittingDraft] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const resetForm = useCallback(() => {
@@ -221,6 +218,10 @@ export function EventTimelineEditor({
   };
 
   const handleSubmitDraft = async () => {
+    if (isSubmittingDraft) {
+      return;
+    }
+
     const issues = validateTimelineDrafts([formDraft], {
       activityStartTime,
       activityEndTime,
@@ -242,6 +243,28 @@ export function EventTimelineEditor({
       status: formDraft.status === 'cancelled' ? 'cancelled' : undefined,
     };
 
+    const nextSignature = buildDuplicateSignature(payload);
+    const hasDuplicate = milestones.some((milestone) => {
+      if (editingMilestoneId && milestone.id === editingMilestoneId) {
+        return false;
+      }
+
+      return (
+        buildDuplicateSignature({
+          title: milestone.title,
+          type: milestone.type,
+          startTime: milestone.startTime,
+          endTime: milestone.endTime,
+        }) === nextSignature
+      );
+    });
+
+    if (hasDuplicate) {
+      setFormErrorMessages(['A milestone with the same title, type, start time, and end time already exists.']);
+      return;
+    }
+
+    setIsSubmittingDraft(true);
     try {
       if (editingMilestoneId) {
         const result = await updateTimelineMilestone(activityId, editingMilestoneId, payload, accessToken);
@@ -255,6 +278,8 @@ export function EventTimelineEditor({
       resetForm();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to update milestone.');
+    } finally {
+      setIsSubmittingDraft(false);
     }
   };
 
@@ -401,9 +426,11 @@ export function EventTimelineEditor({
         <TimelineStatusBadge status={activeDraftStatus} />
 
         <div className="timeline-form-actions">
-          <Button onClick={() => void handleSubmitDraft()} type="button">
+          <Button disabled={isSubmittingDraft} onClick={() => void handleSubmitDraft()} type="button">
             <Save size={15} />
-            <span>{editingMilestoneId ? 'Update milestone' : 'Add milestone'}</span>
+            <span>
+              {isSubmittingDraft ? 'Saving...' : editingMilestoneId ? 'Update milestone' : 'Add milestone'}
+            </span>
           </Button>
           {editingMilestoneId ? (
             <Button onClick={resetForm} type="button" variant="secondary">
@@ -440,7 +467,7 @@ export function EventTimelineEditor({
               <div className="timeline-item-top">
                 <div>
               <p className="timeline-item-title">{safeText(milestone.title, 'Untitled milestone')}</p>
-                  <small className="timeline-item-time">{formatRange(milestone.startTime, milestone.endTime)}</small>
+                  <small className="timeline-item-time">{formatTimelineRangeLabel(milestone.startTime, milestone.endTime)}</small>
                 </div>
                 <TimelineStatusBadge status={milestone.status} />
               </div>

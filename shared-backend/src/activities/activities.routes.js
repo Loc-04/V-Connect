@@ -658,6 +658,74 @@ function extractTimelineEndTimeFromDescription(descriptionValue) {
   return normalizeTimelineIsoString(meta.endTime ?? meta.end_time);
 }
 
+function extractTimelineTypeFromDescription(descriptionValue) {
+  const meta = normalizeTimelineDescriptionMeta(descriptionValue);
+  return normalizeTimelineType(meta?.type);
+}
+
+function normalizeTimelineDuplicateText(value) {
+  return safeText(value, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function buildTimelineDuplicateSignature({
+  title,
+  type,
+  startTime,
+  endTime,
+}) {
+  return JSON.stringify({
+    title: normalizeTimelineDuplicateText(title),
+    type: normalizeTimelineType(type),
+    startTime: normalizeTimelineIsoString(startTime),
+    endTime: normalizeTimelineIsoString(endTime),
+  });
+}
+
+function buildTimelineDuplicateSignatureFromRow(row) {
+  return buildTimelineDuplicateSignature({
+    title: row?.title,
+    type: extractTimelineTypeFromDescription(row?.description),
+    startTime: row?.timeline_choice,
+    endTime: extractTimelineEndTimeFromDescription(row?.description),
+  });
+}
+
+async function findDuplicateTimelineMilestone({
+  activityId,
+  title,
+  type,
+  startTime,
+  endTime,
+  excludeId = null,
+}) {
+  const { data, error } = await supabaseAdmin
+    .from('activities_timeline')
+    .select(timelineColumns)
+    .eq('activity_id', activityId)
+    .eq('timeline_choice', normalizeTimelineIsoString(startTime));
+
+  if (error) {
+    throw error;
+  }
+
+  const targetSignature = buildTimelineDuplicateSignature({
+    title,
+    type,
+    startTime,
+    endTime,
+  });
+
+  return (data ?? []).find((row) => {
+    if (excludeId && safeText(row?.id) === safeText(excludeId)) {
+      return false;
+    }
+    return buildTimelineDuplicateSignatureFromRow(row) === targetSignature;
+  }) ?? null;
+}
+
 function assertTimelineWithinActivityWindow({
   activity,
   milestoneStartTime,
@@ -960,6 +1028,27 @@ router.post('/activities/:id/timeline', requireAuth, async (req, res) => {
     return;
   }
 
+  try {
+    const duplicate = await findDuplicateTimelineMilestone({
+      activityId,
+      title: payload.title,
+      type: extractTimelineTypeFromDescription(payload.description),
+      startTime: payload.timeline_choice,
+      endTime: extractTimelineEndTimeFromDescription(payload.description),
+    });
+    if (duplicate) {
+      res.status(409).json({
+        message: 'A milestone with the same title, type, start time, and end time already exists.',
+      });
+      return;
+    }
+  } catch (duplicateLookupError) {
+    res.status(500).json({
+      message: duplicateLookupError instanceof Error ? duplicateLookupError.message : 'Failed to validate duplicate milestone.',
+    });
+    return;
+  }
+
   const { data, error } = await supabaseAdmin
     .from('activities_timeline')
     .insert({
@@ -1031,12 +1120,16 @@ router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, re
     return;
   }
 
-  try {
-    const mergedMilestoneStartTime = payload.timeline_choice ?? existingMilestone.timeline_choice;
-    const mergedMilestoneEndTime = Object.hasOwn(payload, 'description')
-      ? extractTimelineEndTimeFromDescription(payload.description)
-      : extractTimelineEndTimeFromDescription(existingMilestone.description);
+  const mergedMilestoneStartTime = payload.timeline_choice ?? existingMilestone.timeline_choice;
+  const mergedMilestoneTitle = payload.title ?? existingMilestone.title;
+  const mergedMilestoneType = Object.hasOwn(payload, 'description')
+    ? extractTimelineTypeFromDescription(payload.description)
+    : extractTimelineTypeFromDescription(existingMilestone.description);
+  const mergedMilestoneEndTime = Object.hasOwn(payload, 'description')
+    ? extractTimelineEndTimeFromDescription(payload.description)
+    : extractTimelineEndTimeFromDescription(existingMilestone.description);
 
+  try {
     assertTimelineWithinActivityWindow({
       activity,
       milestoneStartTime: mergedMilestoneStartTime,
@@ -1044,6 +1137,29 @@ router.patch('/activities/:id/timeline/:timelineId', requireAuth, async (req, re
     });
   } catch (error) {
     res.status(400).json({ message: error instanceof Error ? error.message : 'Invalid timeline payload.' });
+    return;
+  }
+
+  try {
+    const duplicate = await findDuplicateTimelineMilestone({
+      activityId,
+      title: mergedMilestoneTitle,
+      type: mergedMilestoneType,
+      startTime: mergedMilestoneStartTime,
+      endTime: mergedMilestoneEndTime,
+      excludeId: timelineId,
+    });
+
+    if (duplicate) {
+      res.status(409).json({
+        message: 'A milestone with the same title, type, start time, and end time already exists.',
+      });
+      return;
+    }
+  } catch (duplicateLookupError) {
+    res.status(500).json({
+      message: duplicateLookupError instanceof Error ? duplicateLookupError.message : 'Failed to validate duplicate milestone.',
+    });
     return;
   }
 

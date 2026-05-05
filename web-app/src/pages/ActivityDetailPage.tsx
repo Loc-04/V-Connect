@@ -15,6 +15,7 @@ import {
   getActivityCoordinates,
   type ActivityCoordinates,
 } from '../lib/activityLocation';
+import { formatActivityCardDateLabel, formatDateAndTimeLabels, formatHumanDuration } from '../lib/dateTimeFormat';
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
 import { cancelParticipation, listParticipations } from '../lib/participations';
@@ -34,9 +35,10 @@ interface ActivityDetailViewModel {
   description: string;
   locationName: string;
   locationAddress: string;
+  summaryDateLabel: string;
   dateLabel: string;
   timeLabel: string;
-  volunteerHours: number;
+  durationLabel: string;
   maxParticipants: number;
   currentParticipants: number | null;
   status: ViewStatus;
@@ -80,44 +82,14 @@ function titleCase(value: string) {
     .join(' ');
 }
 
-function toHours(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 0;
-  }
-  const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-  return Math.max(0, Number(diff.toFixed(1)));
-}
-
-function formatDateAndTime(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return { dateLabel: 'Date TBD', timeLabel: 'Time TBD' };
-  }
-
-  return {
-    dateLabel: start.toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-    }),
-    timeLabel: `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString(
-      [],
-      { hour: '2-digit', minute: '2-digit' }
-    )}`,
-  };
-}
-
 function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
 function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
-  const { dateLabel, timeLabel } = formatDateAndTime(activity.start_time, activity.end_time);
+  const { dateLabel, timeLabel } = formatDateAndTimeLabels(activity.start_time, activity.end_time, {
+    includeWeekday: true,
+  });
   const skills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
   const categories = skills.length > 0 ? skills.slice(0, 2).map(titleCase) : ['Community'];
   const requirements = skills.length > 0 ? skills.slice(0, 3).map(titleCase) : ['Teamwork'];
@@ -132,9 +104,12 @@ function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
       'Details for this activity are being updated by the organizer.',
     locationName: locationLabel(activity.location),
     locationAddress: getActivityAddressLine(activity.location) || locationLabel(activity.location),
+    summaryDateLabel: formatActivityCardDateLabel(activity.start_time, activity.end_time, {
+      includeWeekday: true,
+    }),
     dateLabel,
     timeLabel,
-    volunteerHours: toHours(activity.start_time, activity.end_time),
+    durationLabel: formatHumanDuration(activity.start_time, activity.end_time),
     maxParticipants,
     currentParticipants: null,
     status: toStatus(String(activity.status ?? 'upcoming'), activity.end_time),
@@ -490,7 +465,7 @@ export function ActivityDetailPage() {
       }
       pageSubtitle={
         resolvedActivity
-          ? `${resolvedActivity.organization} - ${resolvedActivity.dateLabel}`
+          ? `${resolvedActivity.organization} - ${resolvedActivity.summaryDateLabel}`
           : 'Review the schedule, requirements, and participation details before joining.'
       }
       pageTitle={resolvedActivity?.title ?? 'Activity Details'}
@@ -613,7 +588,7 @@ export function ActivityDetailPage() {
                 <div className="activity-detail-stats">
                   <div>
                     <small>Duration</small>
-                    <strong>{resolvedActivity.volunteerHours} Hours</strong>
+                    <strong>{resolvedActivity.durationLabel}</strong>
                   </div>
                   <div>
                     <small>Open Slots</small>
