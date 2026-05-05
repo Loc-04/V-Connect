@@ -215,10 +215,18 @@ export function ActivityDetailPage() {
     () => readGuestIntent(searchParams.get(getGuestIntentParamName())),
     [searchParams]
   );
-  const isLoading = activityLoadState === 'loading';
-  const hasLoadError = activityLoadState === 'error';
-  const isNotFound = activityLoadState === 'not_found';
-  const isLoaded = activityLoadState === 'success' && Boolean(activity);
+  const sessionToken = session?.access_token ?? null;
+  const resolvedActivityLoadState: ActivityLoadState = !id ? 'not_found' : !sessionToken ? 'error' : activityLoadState;
+  const resolvedLoadErrorMessage = !id ? null : !sessionToken ? 'No active session token.' : loadErrorMessage;
+  const resolvedActivity = resolvedActivityLoadState === 'success' ? activity : null;
+  const resolvedParticipation = id && sessionToken && canRegister && resolvedActivity ? participation : null;
+  const resolvedTimelineLoading = resolvedActivity?.id && sessionToken ? timelineLoading : false;
+  const resolvedTimelineError = resolvedActivity?.id ? (sessionToken ? timelineError : 'No active session token.') : null;
+  const resolvedTimelineMilestones = resolvedActivity?.id && sessionToken ? timelineMilestones : [];
+  const isLoading = resolvedActivityLoadState === 'loading';
+  const hasLoadError = resolvedActivityLoadState === 'error';
+  const isNotFound = resolvedActivityLoadState === 'not_found';
+  const isLoaded = resolvedActivityLoadState === 'success' && Boolean(resolvedActivity);
 
   const handleRetryLoad = () => {
     setActionError(null);
@@ -228,28 +236,23 @@ export function ActivityDetailPage() {
   };
 
   useEffect(() => {
-    if (!id) {
-      setActivity(null);
-      setLoadErrorMessage(null);
-      setActivityLoadState('not_found');
-      return;
-    }
-
-    if (!session?.access_token) {
-      setActivity(null);
-      setLoadErrorMessage('No active session token.');
-      setActivityLoadState('error');
+    if (!id || !sessionToken) {
       return;
     }
 
     let cancelled = false;
-    setActivityLoadState('loading');
-    setLoadErrorMessage(null);
-    setActionError(null);
+    const loadStateTimeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      setActivityLoadState('loading');
+      setLoadErrorMessage(null);
+      setActionError(null);
+    }, 0);
 
     void (async () => {
       try {
-        const response = await getActivityById(id, session.access_token);
+        const response = await getActivityById(id, sessionToken);
         if (cancelled) {
           return;
         }
@@ -270,12 +273,12 @@ export function ActivityDetailPage() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadStateTimeoutId);
     };
-  }, [id, reloadToken, session?.access_token]);
+  }, [id, reloadToken, sessionToken]);
 
   useEffect(() => {
-    if (!id || !session?.access_token || !canRegister || !isLoaded) {
-      setParticipation(null);
+    if (!id || !sessionToken || !canRegister || !isLoaded) {
       return;
     }
 
@@ -283,7 +286,7 @@ export function ActivityDetailPage() {
     void (async () => {
       try {
         const rows = await listParticipations({
-          accessToken: session.access_token,
+          accessToken: sessionToken,
           mine: true,
           activityId: id,
           limit: 1,
@@ -302,27 +305,23 @@ export function ActivityDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [canRegister, id, isLoaded, session?.access_token]);
+  }, [canRegister, id, isLoaded, sessionToken]);
 
   useEffect(() => {
-    if (!isLoaded || !activity?.id) {
-      setTimelineMilestones([]);
-      setTimelineError(null);
-      setTimelineLoading(false);
-      return;
-    }
-    if (!session?.access_token) {
-      setTimelineMilestones([]);
-      setTimelineError('No active session token.');
-      setTimelineLoading(false);
+    if (!isLoaded || !resolvedActivity?.id || !sessionToken) {
       return;
     }
 
     let cancelled = false;
-    setTimelineLoading(true);
-    setTimelineError(null);
+    const timelineLoadTimeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      setTimelineLoading(true);
+      setTimelineError(null);
+    }, 0);
 
-    void listActivityTimeline(activity.id, session.access_token)
+    void listActivityTimeline(resolvedActivity.id, sessionToken)
       .then((response) => {
         if (cancelled) {
           return;
@@ -345,31 +344,45 @@ export function ActivityDetailPage() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timelineLoadTimeoutId);
     };
-  }, [activity?.id, isLoaded, session?.access_token]);
+  }, [isLoaded, resolvedActivity?.id, sessionToken]);
 
   useEffect(() => {
     if (!guestIntent) {
       return;
     }
 
-    setIntentNotice({
-      action: guestIntent,
-      message: getGuestIntentMessage(guestIntent, canRegister),
-    });
+    const timeoutId = window.setTimeout(() => {
+      setIntentNotice({
+        action: guestIntent,
+        message: getGuestIntentMessage(guestIntent, canRegister),
+      });
+    }, 0);
 
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete(getGuestIntentParamName());
     setSearchParams(nextParams, { replace: true });
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [canRegister, guestIntent, searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (isLoading || hasLoadError || isNotFound || !activity || intentNotice?.action !== 'join' || !registrationPanelRef.current) {
+    if (
+      isLoading ||
+      hasLoadError ||
+      isNotFound ||
+      !resolvedActivity ||
+      intentNotice?.action !== 'join' ||
+      !registrationPanelRef.current
+    ) {
       return;
     }
 
     registrationPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activity, hasLoadError, intentNotice, isLoading, isNotFound]);
+  }, [resolvedActivity, hasLoadError, intentNotice, isLoading, isNotFound]);
 
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {
@@ -383,14 +396,14 @@ export function ActivityDetailPage() {
   };
 
   const handleShareActivity = async () => {
-    if (!activity) {
+    if (!resolvedActivity) {
       return;
     }
 
     const pageUrl = window.location.href;
     const shareData = {
-      title: activity.title,
-      text: `${activity.title} - ${activity.organization}`,
+      title: resolvedActivity.title,
+      text: `${resolvedActivity.title} - ${resolvedActivity.organization}`,
       url: pageUrl,
     };
 
@@ -409,7 +422,7 @@ export function ActivityDetailPage() {
         return;
       }
 
-      window.open(`mailto:?subject=${encodeURIComponent(activity.title)}&body=${encodeURIComponent(pageUrl)}`, '_blank');
+      window.open(`mailto:?subject=${encodeURIComponent(resolvedActivity.title)}&body=${encodeURIComponent(pageUrl)}`, '_blank');
       setMessage('Opened email share draft.');
       setActionError(null);
     } catch (shareError) {
@@ -422,30 +435,30 @@ export function ActivityDetailPage() {
   };
 
   const handleOpenMap = () => {
-    if (!activity) {
+    if (!resolvedActivity) {
       return;
     }
 
-    if (!activity.mapUrl) {
+    if (!resolvedActivity.mapUrl) {
       setMessage(null);
       setActionError('No location data is available to open map.');
       return;
     }
 
-    window.open(activity.mapUrl, '_blank', 'noopener,noreferrer');
+    window.open(resolvedActivity.mapUrl, '_blank', 'noopener,noreferrer');
   };
 
   const openSlotsLabel = useMemo(() => {
-    if (!activity) {
+    if (!resolvedActivity) {
       return '--';
     }
-    if (activity.currentParticipants === null) {
-      return `-- / ${activity.maxParticipants}`;
+    if (resolvedActivity.currentParticipants === null) {
+      return `-- / ${resolvedActivity.maxParticipants}`;
     }
-    return `${activity.currentParticipants} / ${activity.maxParticipants}`;
-  }, [activity]);
+    return `${resolvedActivity.currentParticipants} / ${resolvedActivity.maxParticipants}`;
+  }, [resolvedActivity]);
 
-  const canSubmitRegistration = canRegister && (activity ? isActivityRegisterable(activity.status) : false);
+  const canSubmitRegistration = canRegister && (resolvedActivity ? isActivityRegisterable(resolvedActivity.status) : false);
 
   return (
     <VolunteerShell
@@ -476,11 +489,11 @@ export function ActivityDetailPage() {
         </div>
       }
       pageSubtitle={
-        activity
-          ? `${activity.organization} - ${activity.dateLabel}`
+        resolvedActivity
+          ? `${resolvedActivity.organization} - ${resolvedActivity.dateLabel}`
           : 'Review the schedule, requirements, and participation details before joining.'
       }
-      pageTitle={activity?.title ?? 'Activity Details'}
+      pageTitle={resolvedActivity?.title ?? 'Activity Details'}
     >
       <section className="activity-detail-page">
         {intentNotice ? (
@@ -516,7 +529,7 @@ export function ActivityDetailPage() {
 
         {hasLoadError && (
           <Card className="activity-detail-state-card">
-            <p className="form-error">{loadErrorMessage ?? "We couldn't load this activity right now."}</p>
+            <p className="form-error">{resolvedLoadErrorMessage ?? "We couldn't load this activity right now."}</p>
             <div className="activity-detail-state-actions">
               <Button onClick={handleRetryLoad} type="button">
                 Retry
@@ -539,38 +552,38 @@ export function ActivityDetailPage() {
           </Card>
         )}
 
-        {isLoaded && activity && (
+        {isLoaded && resolvedActivity && (
           <>
             <div className="activity-detail-grid">
               <Card as="section" className="activity-detail-main">
-                <img alt={activity.title} className="activity-detail-hero-image" src={activity.heroImageUrl} />
+                <img alt={resolvedActivity.title} className="activity-detail-hero-image" src={resolvedActivity.heroImageUrl} />
 
                 <div className="activity-detail-tags">
-                  <Badge className="activity-detail-tag" tone={getStatusTone(activity.status)}>
-                    {titleCase(activity.status)}
+                  <Badge className="activity-detail-tag" tone={getStatusTone(resolvedActivity.status)}>
+                    {titleCase(resolvedActivity.status)}
                   </Badge>
-                  {activity.categories.map((category) => (
+                  {resolvedActivity.categories.map((category) => (
                     <Badge className="activity-detail-tag" key={category} tone="accent">
                       {category}
                     </Badge>
                   ))}
                 </div>
 
-                <h1>{activity.title}</h1>
+                <h1>{resolvedActivity.title}</h1>
 
                 <article className="activity-detail-organizer-card">
                   <div className="activity-detail-org-avatar" aria-hidden="true">
-                    {activity.organization.slice(0, 1).toUpperCase()}
+                    {resolvedActivity.organization.slice(0, 1).toUpperCase()}
                   </div>
                   <div>
-                    <p>{activity.organization}</p>
+                    <p>{resolvedActivity.organization}</p>
                     <small>Verified Organizer</small>
                   </div>
                 </article>
 
                 <section className="activity-detail-section">
                   <h2>About this activity</h2>
-                  <p>{activity.description}</p>
+                  <p>{resolvedActivity.description}</p>
                 </section>
 
                 <section className="activity-detail-timeline">
@@ -580,16 +593,16 @@ export function ActivityDetailPage() {
                   </div>
                   <EventTimelineReadOnly
                     emptyDescription="No timeline milestones available yet."
-                    milestones={timelineMilestones}
-                    loading={timelineLoading}
-                    error={timelineError}
+                    milestones={resolvedTimelineMilestones}
+                    loading={resolvedTimelineLoading}
+                    error={resolvedTimelineError}
                   />
                 </section>
 
                 <section className="activity-detail-requirements">
                   <h3>Volunteer Requirements</h3>
                   <div>
-                    {activity.requirements.map((requirement) => (
+                    {resolvedActivity.requirements.map((requirement) => (
                       <Badge className="activity-detail-pill" key={requirement} tone="neutral">
                         {requirement}
                       </Badge>
@@ -600,7 +613,7 @@ export function ActivityDetailPage() {
                 <div className="activity-detail-stats">
                   <div>
                     <small>Duration</small>
-                    <strong>{activity.volunteerHours} Hours</strong>
+                    <strong>{resolvedActivity.volunteerHours} Hours</strong>
                   </div>
                   <div>
                     <small>Open Slots</small>
@@ -608,7 +621,7 @@ export function ActivityDetailPage() {
                   </div>
                   <div>
                     <small>Level</small>
-                    <strong>{activity.level}</strong>
+                    <strong>{resolvedActivity.level}</strong>
                   </div>
                 </div>
               </Card>
@@ -619,16 +632,16 @@ export function ActivityDetailPage() {
                     <small>
                       <CalendarClock className="activity-detail-side-icon" /> Date &amp; Time
                     </small>
-                    <strong>{activity.dateLabel}</strong>
-                    <p>{activity.timeLabel}</p>
+                    <strong>{resolvedActivity.dateLabel}</strong>
+                    <p>{resolvedActivity.timeLabel}</p>
                   </div>
 
                   <div className="activity-detail-side-block">
                     <small>
                       <MapPin className="activity-detail-side-icon" /> Location
                     </small>
-                    <strong>{activity.locationName}</strong>
-                    <p>{activity.locationAddress}</p>
+                    <strong>{resolvedActivity.locationName}</strong>
+                    <p>{resolvedActivity.locationAddress}</p>
                   </div>
 
                   <div className="activity-detail-side-block">
@@ -640,7 +653,7 @@ export function ActivityDetailPage() {
                         <img alt="" key={avatar} src={avatar} />
                       ))}
                       <span>
-                        +{activity.currentParticipants === null ? '--' : Math.max(activity.currentParticipants - 4, 0)}
+                        +{resolvedActivity.currentParticipants === null ? '--' : Math.max(resolvedActivity.currentParticipants - 4, 0)}
                       </span>
                     </div>
                   </div>
@@ -655,11 +668,11 @@ export function ActivityDetailPage() {
                   >
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
-                      activityId={activity.id}
+                      activityId={resolvedActivity.id}
                       canRegister={canSubmitRegistration}
                       className="activity-detail-registration-action"
                       recommendationItemId={recommendationItemIdFromQuery}
-                      currentStatus={participation?.status ?? 'none'}
+                      currentStatus={resolvedParticipation?.status ?? 'none'}
                       confirmCancelMessage="Cancel this registration for the activity?"
                       registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
                       onCancel={async ({ activityId }) => {
@@ -681,17 +694,17 @@ export function ActivityDetailPage() {
 
                 <Card as="article" className="activity-detail-map-card">
                   <ActivityLocationMap
-                    address={activity.locationAddress || activity.locationName}
+                    address={resolvedActivity.locationAddress || resolvedActivity.locationName}
                     compact
-                    coordinates={activity.locationCoordinates}
+                    coordinates={resolvedActivity.locationCoordinates}
                     emptyMessage="The organizer has not saved map coordinates for this activity yet. You can still open the address in your maps app."
                     emptyTitle="Live map preview is not available"
                     interactive
-                    title={activity.title}
+                    title={resolvedActivity.title}
                   />
                   <Button
                     className="activity-detail-map-btn"
-                    disabled={!activity.mapUrl}
+                    disabled={!resolvedActivity.mapUrl}
                     onClick={handleOpenMap}
                     type="button"
                     variant="secondary"

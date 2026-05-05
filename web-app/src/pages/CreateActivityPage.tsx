@@ -447,7 +447,7 @@ export function CreateActivityPage() {
       date: iso.slice(0, 10),
       time: iso.slice(11, 16),
     };
-  }, [timelineNowMs]);
+  }, []);
   const startDateTimeValidationError = useMemo(() => {
     if (isEditing) {
       return null;
