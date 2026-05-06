@@ -8,6 +8,7 @@ import { Badge, Button, Card } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { getNotifications, type NotificationEntry } from '../lib/notifications';
 import { listParticipations } from '../lib/participations';
+import { usePrefetchActivityDetail } from '../lib/queries';
 import { getProfileMe } from '../lib/profile';
 import { getRecommendedActivitiesForVolunteer } from '../lib/recommendations';
 import type { ParticipationRecord } from '../types/participation';
@@ -80,6 +81,7 @@ export function VolunteerHomePage() {
   const accessToken = session?.access_token ?? '';
   const volunteerId = profile?.id ?? '';
   const hasSession = Boolean(accessToken && volunteerId);
+  const prefetchActivityDetail = usePrefetchActivityDetail(accessToken || null, volunteerId || null);
 
   const [loading, setLoading] = useState(hasSession);
   const [profileData, setProfileData] = useState<ProfileMeResponse | null>(null);
@@ -326,7 +328,11 @@ export function VolunteerHomePage() {
                       <span>{formatDateTime(item.startTime)}</span>
                       <button
                         className="vol-home-link-btn"
-                        onClick={() => navigate(`/volunteer/activity/${item.activityId}`)}
+                        onClick={() => {
+                          void prefetchActivityDetail(item.activityId);
+                          navigate(`/volunteer/activity/${item.activityId}`);
+                        }}
+                        onMouseEnter={() => void prefetchActivityDetail(item.activityId)}
                         type="button"
                       >
                         View details
@@ -403,7 +409,11 @@ export function VolunteerHomePage() {
                     </div>
                     <div className="vol-home-upcoming-meta">
                       <span>{formatDateTime(record.date)}</span>
-                      <RegistrationAction activityId={record.activityId ?? record.id} currentStatus={record.status} mode="badge" />
+                      {record.activityId ? (
+                        <RegistrationAction activityId={record.activityId} currentStatus={record.status} mode="badge" />
+                      ) : (
+                        <span className="muted">--</span>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -441,11 +451,25 @@ export function VolunteerHomePage() {
                     </div>
                     <span className="vol-home-history-date">{formatDateLabel(record.date)}</span>
                     <div className="vol-home-history-status">
-                      <RegistrationAction activityId={record.activityId ?? record.id} currentStatus={record.status} mode="badge" />
+                      {record.activityId ? (
+                        <RegistrationAction activityId={record.activityId} currentStatus={record.status} mode="badge" />
+                      ) : (
+                        <span className="muted">--</span>
+                      )}
                     </div>
                     <Button
                       disabled={record.activityDeleted || !record.activityId}
-                      onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
+                      onClick={() => {
+                        if (record.activityId) {
+                          void prefetchActivityDetail(record.activityId);
+                          navigate(`/volunteer/activity/${record.activityId}`);
+                        }
+                      }}
+                      onMouseEnter={() => {
+                        if (record.activityId) {
+                          void prefetchActivityDetail(record.activityId);
+                        }
+                      }}
                       type="button"
                       variant="secondary"
                     >

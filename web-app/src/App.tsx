@@ -5,6 +5,7 @@ import { GuestOnlyRoute, PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute } 
 import { getRoleHomePath } from './auth/rolePaths';
 import { normalizeRole } from './auth/roleUtils';
 import { useAuth } from './auth/useAuth';
+import { QuerySyncBridge } from './components/data/QuerySyncBridge';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AdminActivitiesPage } from './pages/AdminActivitiesPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -84,6 +85,7 @@ function FeedbackRouteEntry() {
 function App() {
   return (
     <AuthProvider>
+      <QuerySyncBridge />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<RootRouteEntry />} />

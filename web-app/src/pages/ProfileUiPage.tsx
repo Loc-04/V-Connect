@@ -27,6 +27,7 @@ import {
   summarizeAvailableChoices,
 } from '../lib/availability';
 import { isValidVietnamPhone } from '../lib/registerValidation';
+import { usePrefetchActivityDetail } from '../lib/queries';
 import { listParticipations } from '../lib/participations';
 import { getProfileMe, patchProfileMe } from '../lib/profile';
 import type { UserRecord } from '../types/domain';
@@ -269,6 +270,7 @@ export function ProfileUiPage() {
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const accessToken = session?.access_token ?? '';
+  const prefetchActivityDetail = usePrefetchActivityDetail(accessToken || null, profile?.id ?? null);
 
   const loadProfile = useCallback(async () => {
     if (!accessToken) {
@@ -776,12 +778,21 @@ export function ProfileUiPage() {
                           className="vol-profile-history-item"
                           key={record.id}
                           onClick={() =>
-                            navigate(
-                              record.activityDeleted || !record.activityId
-                                ? '/volunteer/participation-history'
-                                : `/volunteer/activity/${record.activityId}`
-                            )
+                            void (async () => {
+                              if (record.activityDeleted || !record.activityId) {
+                                navigate('/volunteer/participation-history');
+                                return;
+                              }
+
+                              void prefetchActivityDetail(record.activityId);
+                              navigate(`/volunteer/activity/${record.activityId}`);
+                            })()
                           }
+                          onMouseEnter={() => {
+                            if (!record.activityDeleted && record.activityId) {
+                              void prefetchActivityDetail(record.activityId);
+                            }
+                          }}
                           type="button"
                         >
                           <div className="vol-profile-history-copy">

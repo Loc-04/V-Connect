@@ -6,6 +6,7 @@ import { useAuth } from '../auth/useAuth';
 import { Button, Card, Select } from '../components/ui';
 import { createFeedback, listFeedbacks } from '../lib/feedback';
 import { listParticipations } from '../lib/participations';
+import { usePrefetchActivityDetail } from '../lib/queries';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import type { FeedbackRecord } from '../types/feedback';
 import type { ParticipationRecord } from '../types/participation';
@@ -147,6 +148,7 @@ function StarRow({ rating }: { rating: number }) {
 export function FeedbackPage() {
   const navigate = useNavigate();
   const { session } = useAuth();
+  const prefetchActivityDetail = usePrefetchActivityDetail(session?.access_token ?? null, session?.user?.id ?? null);
   const accessToken = session?.access_token ?? '';
 
   const [loading, setLoading] = useState(true);
@@ -419,9 +421,19 @@ export function FeedbackPage() {
                   <p>{buildPreview(item.details)}</p>
                   <Button
                     className="feedback-inline-link"
-                    onClick={() =>
-                      navigate(item.activityId ? `/volunteer/activity/${item.activityId}` : '/volunteer/participation-history')
-                    }
+                    onClick={() => {
+                      if (!item.activityId) {
+                        navigate('/volunteer/participation-history');
+                        return;
+                      }
+                      void prefetchActivityDetail(item.activityId);
+                      navigate(`/volunteer/activity/${item.activityId}`);
+                    }}
+                    onMouseEnter={() => {
+                      if (item.activityId) {
+                        void prefetchActivityDetail(item.activityId);
+                      }
+                    }}
                     type="button"
                     variant="secondary"
                   >

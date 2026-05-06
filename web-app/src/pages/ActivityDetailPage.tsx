@@ -16,18 +16,13 @@ import {
   type ActivityCoordinates,
 } from '../lib/activityLocation';
 import { formatActivityCardDateLabel, formatDateAndTimeLabels, formatHumanDuration } from '../lib/dateTimeFormat';
-import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
-import { cancelParticipation, listParticipations, respondToAssignedParticipation } from '../lib/participations';
-import { listActivityTimeline } from '../lib/timeline';
+import { useActivityTimelineQuery, useActivityViewerContextQuery, useRegistrationMutations } from '../lib/queries';
 import type { ActivityRecord } from '../types/activity';
-import type { ParticipationRecord } from '../types/participation';
 import type { TimelineMilestone } from '../types/timeline';
 import './ActivityDetailPage.css';
 
 type ViewStatus = 'completed' | 'upcoming' | 'cancelled' | 'published' | 'expired';
-type ActivityLoadState = 'loading' | 'success' | 'error' | 'not_found';
-
 interface ActivityDetailViewModel {
   id: string;
   title: string;
@@ -168,19 +163,12 @@ export function ActivityDetailPage() {
   const { session, profile } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activityLoadState, setActivityLoadState] = useState<ActivityLoadState>('loading');
-  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [intentNotice, setIntentNotice] = useState<{ action: GuestProtectedAction; message: string } | null>(null);
-  const [activity, setActivity] = useState<ActivityDetailViewModel | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
-  const [participation, setParticipation] = useState<ParticipationRecord | null>(null);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-  const [timelineError, setTimelineError] = useState<string | null>(null);
-  const [timelineMilestones, setTimelineMilestones] = useState<TimelineMilestone[]>([]);
   const registrationPanelRef = useRef<HTMLDivElement | null>(null);
   const canRegister = profile?.role === 'volunteer';
+  const userId = profile?.id ?? null;
   const recommendationItemIdFromQuery = useMemo(() => {
     const raw = searchParams.get('recommendationItemId');
     const value = String(raw ?? '').trim();
@@ -191,137 +179,41 @@ export function ActivityDetailPage() {
     [searchParams]
   );
   const sessionToken = session?.access_token ?? null;
-  const resolvedActivityLoadState: ActivityLoadState = !id ? 'not_found' : !sessionToken ? 'error' : activityLoadState;
-  const resolvedLoadErrorMessage = !id ? null : !sessionToken ? 'No active session token.' : loadErrorMessage;
-  const resolvedActivity = resolvedActivityLoadState === 'success' ? activity : null;
-  const resolvedParticipation = id && sessionToken && canRegister && resolvedActivity ? participation : null;
-  const resolvedTimelineLoading = resolvedActivity?.id && sessionToken ? timelineLoading : false;
-  const resolvedTimelineError = resolvedActivity?.id ? (sessionToken ? timelineError : 'No active session token.') : null;
-  const resolvedTimelineMilestones = resolvedActivity?.id && sessionToken ? timelineMilestones : [];
-  const isLoading = resolvedActivityLoadState === 'loading';
-  const hasLoadError = resolvedActivityLoadState === 'error';
-  const isNotFound = resolvedActivityLoadState === 'not_found';
-  const isLoaded = resolvedActivityLoadState === 'success' && Boolean(resolvedActivity);
+  const viewerContextQuery = useActivityViewerContextQuery(sessionToken, id ?? null);
+  const timelineQuery = useActivityTimelineQuery(sessionToken, id ?? null);
+  const { registerMutation, cancelMutation, respondMutation } = useRegistrationMutations(sessionToken, userId);
+
+  const resolvedActivity = useMemo(
+    () => (viewerContextQuery.data?.activity ? mapFromApi(viewerContextQuery.data.activity) : null),
+    [viewerContextQuery.data]
+  );
+  const resolvedParticipation = useMemo(() => {
+    if (!id || !canRegister) {
+      return null;
+    }
+    return viewerContextQuery.data?.participation ?? null;
+  }, [canRegister, id, viewerContextQuery.data]);
+  const resolvedTimelineMilestones: TimelineMilestone[] = timelineQuery.data?.milestones ?? [];
+  const isLoading = Boolean(id && sessionToken && viewerContextQuery.isLoading);
+  const hasLoadError = Boolean(viewerContextQuery.isError);
+  const isNotFound =
+    !id ||
+    (hasLoadError &&
+      String(viewerContextQuery.error instanceof Error ? viewerContextQuery.error.message : '').toLowerCase().includes('not found'));
+  const showLoadError = hasLoadError && !isNotFound;
+  const isLoaded = Boolean(resolvedActivity);
+  const resolvedLoadErrorMessage =
+    viewerContextQuery.error instanceof Error ? viewerContextQuery.error.message : !sessionToken ? 'No active session token.' : null;
+  const resolvedTimelineLoading = Boolean(isLoaded && timelineQuery.isLoading);
+  const resolvedTimelineError = timelineQuery.error instanceof Error ? timelineQuery.error.message : null;
+  const participationStatusLoading = Boolean(canRegister && isLoaded && viewerContextQuery.isLoading);
 
   const handleRetryLoad = () => {
     setActionError(null);
     setMessage(null);
-    setLoadErrorMessage(null);
-    setReloadToken((current) => current + 1);
+    void viewerContextQuery.refetch();
+    void timelineQuery.refetch();
   };
-
-  useEffect(() => {
-    if (!id || !sessionToken) {
-      return;
-    }
-
-    let cancelled = false;
-    const loadStateTimeoutId = window.setTimeout(() => {
-      if (cancelled) {
-        return;
-      }
-      setActivityLoadState('loading');
-      setLoadErrorMessage(null);
-      setActionError(null);
-    }, 0);
-
-    void (async () => {
-      try {
-        const response = await getActivityById(id, sessionToken);
-        if (cancelled) {
-          return;
-        }
-        setActivity(mapFromApi(response));
-        setActivityLoadState('success');
-      } catch (loadError) {
-        if (cancelled) {
-          return;
-        }
-        const errorMessage = loadError instanceof Error ? loadError.message : 'Failed to load activity detail.';
-        const normalizedMessage = errorMessage.toLowerCase();
-        const notFound = normalizedMessage.includes('not found') || normalizedMessage.includes('(404)');
-        setActivity(null);
-        setLoadErrorMessage(notFound ? null : errorMessage);
-        setActivityLoadState(notFound ? 'not_found' : 'error');
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(loadStateTimeoutId);
-    };
-  }, [id, reloadToken, sessionToken]);
-
-  useEffect(() => {
-    if (!id || !sessionToken || !canRegister || !isLoaded) {
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const rows = await listParticipations({
-          accessToken: sessionToken,
-          mine: true,
-          activityId: id,
-          limit: 1,
-        });
-
-        if (!cancelled) {
-          setParticipation(rows[0] ?? null);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setActionError(loadError instanceof Error ? loadError.message : 'Failed to load your registration status.');
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canRegister, id, isLoaded, sessionToken]);
-
-  useEffect(() => {
-    if (!isLoaded || !resolvedActivity?.id || !sessionToken) {
-      return;
-    }
-
-    let cancelled = false;
-    const timelineLoadTimeoutId = window.setTimeout(() => {
-      if (cancelled) {
-        return;
-      }
-      setTimelineLoading(true);
-      setTimelineError(null);
-    }, 0);
-
-    void listActivityTimeline(resolvedActivity.id, sessionToken)
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
-        setTimelineMilestones(response.milestones);
-      })
-      .catch((timelineLoadError) => {
-        if (!cancelled) {
-          setTimelineMilestones([]);
-          setTimelineError(
-            timelineLoadError instanceof Error ? timelineLoadError.message : 'Unable to load event timeline.'
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setTimelineLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timelineLoadTimeoutId);
-    };
-  }, [isLoaded, resolvedActivity?.id, sessionToken]);
 
   useEffect(() => {
     if (!guestIntent) {
@@ -502,9 +394,9 @@ export function ActivityDetailPage() {
           </Card>
         )}
 
-        {hasLoadError && (
+        {showLoadError && (
           <Card className="activity-detail-state-card">
-            <p className="form-error">{resolvedLoadErrorMessage ?? "We couldn't load this activity right now."}</p>
+              <p className="form-error">{resolvedLoadErrorMessage ?? "We couldn't load this activity right now."}</p>
             <div className="activity-detail-state-actions">
               <Button onClick={handleRetryLoad} type="button">
                 Retry
@@ -648,6 +540,7 @@ export function ActivityDetailPage() {
                       className="activity-detail-registration-action"
                       recommendationItemId={recommendationItemIdFromQuery}
                       currentStatus={resolvedParticipation?.status ?? 'none'}
+                      statusLoading={participationStatusLoading}
                       confirmCancelMessage={
                         resolvedParticipation?.status?.toLowerCase() === 'assigned'
                           ? 'Decline this assignment?'
@@ -655,37 +548,36 @@ export function ActivityDetailPage() {
                       }
                       registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
                       onAccept={async ({ participationId }) => {
-                        if (!session?.access_token) {
-                          throw new Error('No active session token.');
-                        }
                         if (!participationId) {
                           throw new Error('Missing participation id for assignment response.');
                         }
 
-                        const result = await respondToAssignedParticipation(participationId, 'accept', session.access_token);
-                        setParticipation(result.registration);
+                        await respondMutation.mutateAsync({
+                          participationId,
+                          decision: 'accept',
+                        });
                       }}
                       onCancel={async ({ activityId }) => {
-                        if (!session?.access_token) {
-                          throw new Error('No active session token.');
-                        }
-
                         if (resolvedParticipation?.status?.toLowerCase() === 'assigned' && resolvedParticipation.participationId) {
-                          const result = await respondToAssignedParticipation(
-                            resolvedParticipation.participationId,
-                            'decline',
-                            session.access_token
-                          );
-                          setParticipation(result.registration);
+                          await respondMutation.mutateAsync({
+                            participationId: resolvedParticipation.participationId,
+                            decision: 'decline',
+                          });
                           return;
                         }
 
-                        const cancelledParticipation = await cancelParticipation(activityId, session.access_token);
-                        setParticipation(cancelledParticipation);
+                        await cancelMutation.mutateAsync({ activityId });
                       }}
                       onNotice={handleRegistrationNotice}
-                      onRegistered={(nextParticipation) => {
-                        setParticipation(nextParticipation);
+                      onRegister={async ({ activityId, recommendationItemId }) => {
+                        const result = await registerMutation.mutateAsync({
+                          activityId,
+                          recommendationItemId,
+                        });
+                        return result.participation;
+                      }}
+                      onRegistered={() => {
+                        void viewerContextQuery.refetch();
                       }}
                     />
                   </div>

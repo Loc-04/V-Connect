@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, FilterX, MapPin, Search } from 'lucide-react';
 
@@ -7,11 +7,9 @@ import { RegistrationAction } from '../components/activities/RegistrationAction'
 import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
-import { searchActivities } from '../lib/activities';
 import { formatActivityCardDateLabel } from '../lib/dateTimeFormat';
-import { cancelParticipation, listParticipations, respondToAssignedParticipation } from '../lib/participations';
+import { useBrowseActivitiesQuery, useParticipationByActivityQuery, usePrefetchActivityDetail, useRegistrationMutations } from '../lib/queries';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
-import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
 
 type CategoryTone = 'accent' | 'neutral' | 'success' | 'danger' | 'info';
@@ -91,91 +89,33 @@ export function BrowseOpportunitiesPage() {
   const [dateToFilter, setDateToFilter] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
-  const [activities, setActivities] = useState<ActivityRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [participationByActivityId, setParticipationByActivityId] = useState<Record<string, ParticipationRecord>>({});
   const canApply = profile?.role === 'volunteer';
+  const accessToken = session?.access_token ?? null;
+  const userId = profile?.id ?? null;
+  const prefetchActivityDetail = usePrefetchActivityDetail(accessToken, userId);
 
-  useEffect(() => {
-    if (!session?.access_token) {
-      setLoading(false);
-      setError('No active session token.');
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    void (async () => {
-      try {
-        const nextActivities = await searchActivities({
-          accessToken: session.access_token,
-          status: statusFilter,
-          keyword: searchTerm || undefined,
-          dateFrom: dateFromFilter || undefined,
-          dateTo: dateToFilter || undefined,
-          skill: skillFilter || undefined,
-          location: locationFilter || undefined,
-          limit: 60,
-        });
-
-        if (!cancelled) {
-          setActivities(nextActivities);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to load activities.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dateFromFilter, dateToFilter, locationFilter, searchTerm, session?.access_token, skillFilter, statusFilter]);
-
-  useEffect(() => {
-    if (!session?.access_token || !canApply) {
-      setParticipationByActivityId({});
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const participations = await listParticipations({
-          accessToken: session.access_token,
-          mine: true,
-          limit: 250,
-        });
-
-        if (!cancelled) {
-          setParticipationByActivityId(
-            Object.fromEntries(
-              participations
-                .filter((participation) => Boolean(participation.activity_id))
-                .map((participation) => [participation.activity_id, participation])
-            )
-          );
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to load your participation list.');
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canApply, session?.access_token]);
+  const activitiesQuery = useBrowseActivitiesQuery(accessToken, {
+    status: statusFilter,
+    keyword: searchTerm || undefined,
+    dateFrom: dateFromFilter || undefined,
+    dateTo: dateToFilter || undefined,
+    skill: skillFilter || undefined,
+    location: locationFilter || undefined,
+    limit: 60,
+  });
+  const participationByActivityQuery = useParticipationByActivityQuery(accessToken, userId, canApply);
+  const { registerMutation, cancelMutation, respondMutation } = useRegistrationMutations(accessToken, userId);
+  const activities: ActivityRecord[] = activitiesQuery.data ?? [];
+  const loading = activitiesQuery.isLoading || participationByActivityQuery.isLoading;
+  const error = activitiesQuery.error instanceof Error
+    ? activitiesQuery.error.message
+    : participationByActivityQuery.error instanceof Error
+      ? participationByActivityQuery.error.message
+      : !accessToken
+        ? 'No active session token.'
+        : null;
+  const participationByActivityId = participationByActivityQuery.data ?? {};
 
   const visibleActivities = useMemo(() => {
     if (statusFilter !== 'published') {
@@ -185,20 +125,24 @@ export function BrowseOpportunitiesPage() {
     return activities.filter((activity) => !isActivityExpired(activity));
   }, [activities, statusFilter]);
 
-  const opportunities = useMemo(() => visibleActivities.map((activity) => toOpportunity(activity)), [visibleActivities]);
+  const opportunities: OpportunityViewModel[] = useMemo(
+    () => visibleActivities.map((activity: ActivityRecord) => toOpportunity(activity)),
+    [visibleActivities]
+  );
 
   const handleRegistrationNotice = (type: 'success' | 'error', nextMessage: string) => {
     if (type === 'error') {
-      setError(nextMessage);
+      activitiesQuery.refetch();
+      participationByActivityQuery.refetch();
       setMessage(null);
       return;
     }
 
     setMessage(nextMessage);
-    setError(null);
   };
 
   const handleOpenActivity = (activityId: string) => {
+    void prefetchActivityDetail(activityId);
     navigate(`/volunteer/activity/${activityId}`);
   };
 
@@ -344,6 +288,7 @@ export function BrowseOpportunitiesPage() {
                     handleOpenActivity(opportunity.id);
                   }
                 }}
+                onMouseEnter={() => void prefetchActivityDetail(opportunity.id)}
                 role="button"
                 tabIndex={0}
               >
@@ -383,58 +328,43 @@ export function BrowseOpportunitiesPage() {
                   <div className="browse-card-footer">
                     <span>{opportunity.spotsLeft} spots</span>
                     <RegistrationAction
-                      accessToken={session?.access_token ?? null}
+                      accessToken={accessToken}
                       activityId={opportunity.id}
                       canRegister={canApply && opportunity.isRegisterable}
                       className="browse-registration-action"
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
+                      statusLoading={canApply && participationByActivityQuery.isLoading}
                       participationId={participationByActivityId[opportunity.id]?.participationId ?? null}
                       registerDisabledLabel={canApply ? 'Registration closed' : 'Volunteer only'}
+                      onRegister={async ({ activityId, recommendationItemId }) => {
+                        const result = await registerMutation.mutateAsync({ activityId, recommendationItemId });
+                        return result.participation;
+                      }}
                       onAccept={async ({ participationId }) => {
-                        if (!session?.access_token) {
-                          throw new Error('No active session token.');
-                        }
                         if (!participationId) {
                           throw new Error('Missing participation id for assignment response.');
                         }
 
-                        const result = await respondToAssignedParticipation(participationId, 'accept', session.access_token);
-                        setParticipationByActivityId((current) => ({
-                          ...current,
-                          [opportunity.id]: result.registration,
-                        }));
+                        await respondMutation.mutateAsync({
+                          participationId,
+                          decision: 'accept',
+                        });
                       }}
                       onCancel={async ({ activityId }) => {
-                        if (!session?.access_token) {
-                          throw new Error('No active session token.');
-                        }
-
                         const currentParticipation = participationByActivityId[activityId];
                         if (currentParticipation?.status?.toLowerCase() === 'assigned' && currentParticipation.participationId) {
-                          const result = await respondToAssignedParticipation(
-                            currentParticipation.participationId,
-                            'decline',
-                            session.access_token
-                          );
-                          setParticipationByActivityId((current) => ({
-                            ...current,
-                            [activityId]: result.registration,
-                          }));
+                          await respondMutation.mutateAsync({
+                            participationId: currentParticipation.participationId,
+                            decision: 'decline',
+                          });
                           return;
                         }
 
-                        const cancelledParticipation = await cancelParticipation(activityId, session.access_token);
-                        setParticipationByActivityId((current) => ({
-                          ...current,
-                          [activityId]: cancelledParticipation,
-                        }));
+                        await cancelMutation.mutateAsync({ activityId });
                       }}
                       onNotice={handleRegistrationNotice}
-                      onRegistered={(participation) => {
-                        setParticipationByActivityId((current) => ({
-                          ...current,
-                          [opportunity.id]: participation,
-                        }));
+                      onRegistered={() => {
+                        void participationByActivityQuery.refetch();
                       }}
                     />
                   </div>

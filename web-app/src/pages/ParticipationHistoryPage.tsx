@@ -1,12 +1,12 @@
 import { BriefcaseBusiness, Clock3, History, TrendingUp } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
 import { Button, Card, Input, Table } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
-import { listParticipations } from '../lib/participations';
+import { useParticipationMineQuery, usePrefetchActivityDetail } from '../lib/queries';
 import type { ParticipationRecord, ParticipationStatus } from '../types/participation';
 import './ParticipationHistoryPage.css';
 
@@ -49,46 +49,21 @@ function formatHours(value: number | null) {
 export function ParticipationHistoryPage() {
   const navigate = useNavigate();
   const { session } = useAuth();
-
-  const [loading, setLoading] = useState(true);
-  const [records, setRecords] = useState<ParticipationRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const accessToken = session?.access_token ?? null;
+  const userId = session?.user?.id ?? null;
+  const participationsQuery = useParticipationMineQuery(accessToken, userId, { limit: 250 });
+  const prefetchActivityDetail = usePrefetchActivityDetail(accessToken, userId);
+  const loading = participationsQuery.isLoading;
+  const records: ParticipationRecord[] = participationsQuery.data ?? [];
+  const error =
+    participationsQuery.error instanceof Error
+      ? participationsQuery.error.message
+      : !accessToken
+        ? 'No active session token.'
+        : null;
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    if (!session?.access_token) {
-      setError('No active session token.');
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    void (async () => {
-      try {
-        const data = await listParticipations(session.access_token);
-        if (!cancelled) {
-          setRecords(data);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to load participation history.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.access_token]);
 
   const handleStatusFilterChange = (value: StatusFilter) => {
     setStatusFilter(value);
@@ -269,18 +244,32 @@ export function ParticipationHistoryPage() {
                     <td>{formatDateLabel(record.date)}</td>
                     <td>{formatHours(record.hours)}</td>
                     <td>
-                      <RegistrationAction
-                        activityId={record.activityId ?? record.id}
-                        className="history-registration-action"
-                        currentStatus={record.status}
-                        mode="badge"
-                      />
+                      {record.activityId ? (
+                        <RegistrationAction
+                          activityId={record.activityId}
+                          className="history-registration-action"
+                          currentStatus={record.status}
+                          mode="badge"
+                        />
+                      ) : (
+                        <span className="muted">--</span>
+                      )}
                     </td>
                     <td>
                       <Button
                         className="history-view-btn"
                         disabled={record.activityDeleted || !record.activityId}
-                        onClick={() => navigate(`/volunteer/activity/${record.activityId ?? record.id}`)}
+                        onClick={() => {
+                          if (record.activityId) {
+                            void prefetchActivityDetail(record.activityId);
+                            navigate(`/volunteer/activity/${record.activityId}`);
+                          }
+                        }}
+                        onMouseEnter={() => {
+                          if (record.activityId) {
+                            void prefetchActivityDetail(record.activityId);
+                          }
+                        }}
                         type="button"
                         variant="secondary"
                       >

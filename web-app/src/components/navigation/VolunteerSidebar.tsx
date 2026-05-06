@@ -11,6 +11,7 @@ import {
   User,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { useState } from 'react';
 
 import { BrandIcon } from '../brand';
 
@@ -51,16 +52,20 @@ interface VolunteerSidebarProps {
   activeKey: VolunteerNavKey;
   fullName: string;
   roleLabel: string;
+  avatarUrl?: string | null;
   onSignOut: () => Promise<void>;
 }
 
-export function VolunteerSidebar({ activeKey, fullName, roleLabel, onSignOut }: VolunteerSidebarProps) {
+export function VolunteerSidebar({ activeKey, fullName, roleLabel, avatarUrl, onSignOut }: VolunteerSidebarProps) {
   const initials = fullName
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  const normalizedAvatarUrl = String(avatarUrl ?? '').trim();
+  const shouldShowAvatarImage = normalizedAvatarUrl.length > 0 && !avatarBroken;
 
   return (
     <aside className="vol-shell-sidebar" aria-label="Volunteer navigation">
@@ -90,7 +95,16 @@ export function VolunteerSidebar({ activeKey, fullName, roleLabel, onSignOut }: 
 
       <div className="vol-shell-side-footer">
         <div className="vol-shell-profile-chip">
-          <span className="vol-shell-profile-avatar">{initials || 'V'}</span>
+          {shouldShowAvatarImage ? (
+            <img
+              alt={fullName}
+              className="vol-shell-profile-avatar-img"
+              onError={() => setAvatarBroken(true)}
+              src={normalizedAvatarUrl}
+            />
+          ) : (
+            <span className="vol-shell-profile-avatar">{initials || 'V'}</span>
+          )}
           <div>
             <strong>{fullName}</strong>
             <small>{roleLabel}</small>

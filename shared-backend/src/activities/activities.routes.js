@@ -944,8 +944,28 @@ async function handleActivityDetail(req, res) {
   }
 
   const role = String(req.auth?.profile?.role ?? '');
-  const isOwner = data.organizer_id === req.auth.user.id;
-  const canAccess = data.status === 'published' || isOwner || role === 'admin';
+  const userId = req.auth.user.id;
+  const isOwner = data.organizer_id === userId;
+  let hasParticipation = false;
+  if (role === 'volunteer') {
+    const { data: participation, error: participationError } = await supabaseAdmin
+      .from('activity_participations')
+      .select('id, status')
+      .eq('activity_id', activityId)
+      .eq('volunteer_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (participationError) {
+      res.status(500).json({ message: participationError.message });
+      return;
+    }
+
+    hasParticipation = Boolean(participation);
+  }
+
+  const canAccess = data.status === 'published' || isOwner || role === 'admin' || hasParticipation;
   if (!canAccess) {
     res.status(403).json({ message: 'You do not have permission to access this activity.' });
     return;
@@ -953,6 +973,56 @@ async function handleActivityDetail(req, res) {
 
   res.json({ activity: withResolvedActivityCoverImage(data) });
 }
+
+router.get('/activities/:id/viewer', requireAuth, async (req, res) => {
+  const activityId = req.params.id;
+
+  let activity;
+  try {
+    activity = await getActivityById(activityId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load activity.';
+    res.status(500).json({ message });
+    return;
+  }
+
+  if (!activity) {
+    res.status(404).json({ message: 'Activity not found.' });
+    return;
+  }
+
+  const role = String(req.auth?.profile?.role ?? '');
+  const userId = req.auth.user.id;
+  const isOwner = activity.organizer_id === userId;
+  let participation = null;
+  if (role === 'volunteer') {
+    const { data, error } = await supabaseAdmin
+      .from('activity_participations')
+      .select('*')
+      .eq('activity_id', activityId)
+      .eq('volunteer_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      res.status(500).json({ message: error.message });
+      return;
+    }
+    participation = data ?? null;
+  }
+
+  const canAccess = activity.status === 'published' || isOwner || role === 'admin' || Boolean(participation);
+  if (!canAccess) {
+    res.status(403).json({ message: 'You do not have permission to access this activity.' });
+    return;
+  }
+
+  res.json({
+    activity: withResolvedActivityCoverImage(activity),
+    participation,
+  });
+});
 
 router.get('/activities/:id/timeline', requireAuth, async (req, res) => {
   const activityId = req.params.id;

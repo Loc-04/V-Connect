@@ -2,6 +2,7 @@ import { useMemo, useState, type MouseEvent, type SyntheticEvent } from 'react';
 
 import { Badge, Button } from '../ui';
 import { createParticipation } from '../../lib/participations';
+import { useRenderDebug } from '../../lib/debug';
 import type { ParticipationRecord } from '../../types/participation';
 import './RegistrationAction.css';
 
@@ -19,11 +20,13 @@ interface RegistrationActionProps {
   className?: string;
   disabled?: boolean;
   onRegistered?: (participation: ParticipationRecord) => void;
+  onRegister?: (context: { activityId: string; recommendationItemId?: string | null }) => Promise<ParticipationRecord> | ParticipationRecord;
   onAccept?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onCancel?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onNotice?: (type: NoticeType, message: string) => void;
   confirmCancelMessage?: string;
   registerDisabledLabel?: string;
+  statusLoading?: boolean;
 }
 
 function toTitleCase(value: string) {
@@ -80,12 +83,18 @@ export function RegistrationAction({
   className = '',
   disabled = false,
   onRegistered,
+  onRegister,
   onAccept,
   onCancel,
   onNotice,
   confirmCancelMessage = 'Cancel this registration request?',
   registerDisabledLabel = 'Volunteer only',
+  statusLoading = false,
 }: RegistrationActionProps) {
+  useRenderDebug(
+    'RegistrationAction',
+    import.meta.env.DEV && typeof window !== 'undefined' && window.localStorage.getItem('debug-renders') === '1'
+  );
   const status = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const [registering, setRegistering] = useState(false);
   const [accepting, setAccepting] = useState(false);
@@ -122,11 +131,20 @@ export function RegistrationAction({
 
     setRegistering(true);
     try {
-      const result = await createParticipation(activityId, accessToken, {
-        recommendationItemId,
-      });
-      onRegistered?.(result.participation);
-      notify('success', result.message ?? (result.created ? 'Registration submitted successfully.' : 'Participation already exists.'));
+      if (onRegister) {
+        const participation = await onRegister({
+          activityId,
+          recommendationItemId,
+        });
+        onRegistered?.(participation);
+        notify('success', 'Registration submitted successfully.');
+      } else {
+        const result = await createParticipation(activityId, accessToken, {
+          recommendationItemId,
+        });
+        onRegistered?.(result.participation);
+        notify('success', result.message ?? (result.created ? 'Registration submitted successfully.' : 'Participation already exists.'));
+      }
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'Failed to register for this activity.');
     } finally {
@@ -189,8 +207,18 @@ export function RegistrationAction({
     return (
       <span className={`registration-action registration-action--badge ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
         <Badge className="registration-action-badge" tone={getBadgeTone(status)}>
-          {getStatusLabel(status)}
+          {statusLoading ? 'Loading...' : getStatusLabel(status)}
         </Badge>
+      </span>
+    );
+  }
+
+  if (statusLoading) {
+    return (
+      <span className={`registration-action registration-action--full ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
+        <Button className="registration-action-btn" disabled type="button" variant="secondary">
+          Loading status...
+        </Button>
       </span>
     );
   }
