@@ -660,6 +660,42 @@
   gap: 0.65rem;
 }
 
+.vol-profile-skill-picker {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.vol-profile-skill-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  max-height: 140px;
+  overflow-y: auto;
+  padding-right: 0.12rem;
+}
+
+.vol-profile-skill-options button {
+  border: 1px solid #dce3ed;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.28rem 0.62rem;
+  cursor: pointer;
+}
+
+.vol-profile-skill-options button:hover {
+  border-color: #c8d4e3;
+  color: #1f2937;
+}
+
+.vol-profile-skill-options button.is-selected {
+  border-color: rgba(79, 70, 229, 0.38);
+  background: rgba(79, 70, 229, 0.08);
+  color: #312e81;
+}
+
 .vol-profile-inline-grid-single {
   grid-template-columns: 1fr;
 }

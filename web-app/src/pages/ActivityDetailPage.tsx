@@ -18,7 +18,7 @@ import {
 import { formatActivityCardDateLabel, formatDateAndTimeLabels, formatHumanDuration } from '../lib/dateTimeFormat';
 import { getActivityById } from '../lib/activities';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
-import { cancelParticipation, listParticipations } from '../lib/participations';
+import { cancelParticipation, listParticipations, respondToAssignedParticipation } from '../lib/participations';
 import { listActivityTimeline } from '../lib/timeline';
 import type { ActivityRecord } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
@@ -648,11 +648,36 @@ export function ActivityDetailPage() {
                       className="activity-detail-registration-action"
                       recommendationItemId={recommendationItemIdFromQuery}
                       currentStatus={resolvedParticipation?.status ?? 'none'}
-                      confirmCancelMessage="Cancel this registration for the activity?"
+                      confirmCancelMessage={
+                        resolvedParticipation?.status?.toLowerCase() === 'assigned'
+                          ? 'Decline this assignment?'
+                          : 'Cancel this registration for the activity?'
+                      }
                       registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
+                      onAccept={async ({ participationId }) => {
+                        if (!session?.access_token) {
+                          throw new Error('No active session token.');
+                        }
+                        if (!participationId) {
+                          throw new Error('Missing participation id for assignment response.');
+                        }
+
+                        const result = await respondToAssignedParticipation(participationId, 'accept', session.access_token);
+                        setParticipation(result.registration);
+                      }}
                       onCancel={async ({ activityId }) => {
                         if (!session?.access_token) {
                           throw new Error('No active session token.');
+                        }
+
+                        if (resolvedParticipation?.status?.toLowerCase() === 'assigned' && resolvedParticipation.participationId) {
+                          const result = await respondToAssignedParticipation(
+                            resolvedParticipation.participationId,
+                            'decline',
+                            session.access_token
+                          );
+                          setParticipation(result.registration);
+                          return;
                         }
 
                         const cancelledParticipation = await cancelParticipation(activityId, session.access_token);

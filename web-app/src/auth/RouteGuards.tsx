@@ -53,6 +53,40 @@ export function PublicOnlyRoute({ children }: { children: ReactNode }) {
   return <Navigate to={getRoleHomePath(profile.role)} replace />;
 }
 
+export function GuestOnlyRoute({ children }: { children: ReactNode }) {
+  const { loading, error, session, profile } = useAuth();
+  const location = useLocation();
+  const waitingForProfile = Boolean(session && !profile && !error);
+
+  if (loading || waitingForProfile) {
+    return <PageLoading />;
+  }
+
+  if (!session) {
+    return <>{children}</>;
+  }
+
+  const normalizedRole = normalizeRole(profile?.role);
+  if (!normalizedRole) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (normalizedRole === 'volunteer') {
+    const guestActivityMatch = location.pathname.match(/^\/guest\/activity\/([^/]+)$/);
+    const fullSuffix = `${location.search}${location.hash}`;
+
+    if (guestActivityMatch?.[1]) {
+      return <Navigate to={`/volunteer/activity/${guestActivityMatch[1]}${fullSuffix}`} replace />;
+    }
+
+    if (location.pathname === '/guest/browse') {
+      return <Navigate to={`/browse${fullSuffix}`} replace />;
+    }
+  }
+
+  return <Navigate to={getRoleHomePath(normalizedRole)} replace />;
+}
+
 export function RequireRoleRoute({
   children,
   allowedRoles,

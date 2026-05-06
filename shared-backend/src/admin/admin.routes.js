@@ -15,8 +15,9 @@ import {
 const router = Router();
 const AUTH_USERS_PAGE_SIZE = 1000;
 
-async function buildAuthEmailIndex() {
+async function buildAuthUserIndexes() {
   const emailByUserId = new Map();
+  const userIdByEmail = new Map();
   let page = 1;
 
   while (true) {
@@ -31,7 +32,11 @@ async function buildAuthEmailIndex() {
 
     const chunk = data?.users ?? [];
     chunk.forEach((authUser) => {
-      emailByUserId.set(authUser.id, authUser.email ?? null);
+      const normalizedEmail = typeof authUser.email === 'string' ? authUser.email.trim().toLowerCase() : '';
+      emailByUserId.set(authUser.id, normalizedEmail || null);
+      if (normalizedEmail) {
+        userIdByEmail.set(normalizedEmail, authUser.id);
+      }
     });
 
     if (chunk.length < AUTH_USERS_PAGE_SIZE) {
@@ -41,6 +46,11 @@ async function buildAuthEmailIndex() {
     page += 1;
   }
 
+  return { emailByUserId, userIdByEmail };
+}
+
+async function buildAuthEmailIndex() {
+  const { emailByUserId } = await buildAuthUserIndexes();
   return emailByUserId;
 }
 
@@ -81,6 +91,60 @@ function normalizeAdminCreateUserPayload(body) {
     phone: phoneRaw.length > 0 ? phoneRaw : null,
     password,
   };
+}
+
+function getProfileInsertConflictMessage(errorMessage) {
+  const normalized = String(errorMessage ?? '').toLowerCase();
+  if (normalized.includes('users_pkey') || normalized.includes('duplicate key value')) {
+    return 'User already exists.';
+  }
+  if (normalized.includes('phone')) {
+    return 'Phone number already exists.';
+  }
+  return 'Failed to create user profile.';
+}
+
+async function createUserProfileRecord(userId, payload) {
+  return supabaseAdmin
+    .from('users')
+    .insert({
+      id: userId,
+      role: payload.role,
+      full_name: payload.fullName,
+      phone: payload.phone,
+      status: 'active',
+    })
+    .select(userColumns)
+    .single();
+}
+
+async function hydrateUserProfileRecord(userId, payload) {
+  return supabaseAdmin
+    .from('users')
+    .update({
+      role: payload.role,
+      full_name: payload.fullName,
+      phone: payload.phone,
+      status: 'active',
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select(userColumns)
+    .single();
+}
+
+async function ensureVolunteerProfileRecord(userId) {
+  return supabaseAdmin.from('volunteer_profiles').upsert(
+    {
+      user_id: userId,
+      skills: [],
+      interests: [],
+      available_choices: [],
+      total_hours: 0,
+    },
+    { onConflict: 'user_id' }
+  );
 }
 
 router.get('/admin/notifications', requireAuth, requireAdmin, async (req, res) => {
@@ -253,8 +317,96 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
   }
 
   let authUserId = null;
+  let authUserCreatedInRequest = false;
 
   try {
+    const { userIdByEmail } = await buildAuthUserIndexes();
+    const existingAuthUserId = userIdByEmail.get(payload.email) ?? null;
+
+    if (existingAuthUserId) {
+      const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
+        .from('users')
+        .select(userColumns)
+        .eq('id', existingAuthUserId)
+        .maybeSingle();
+
+      if (existingProfileError) {
+        res.status(500).json({
+          message: 'Failed to check existing user profile.',
+          code: 'PROFILE_LOOKUP_FAILED',
+        });
+        return;
+      }
+
+      if (existingProfile && !existingProfile.deleted_at) {
+        res.status(409).json({
+          message: 'This email already exists in authentication and user profile records.',
+          code: 'EMAIL_EXISTS_AUTH_AND_PROFILE',
+          userId: existingAuthUserId,
+        });
+        return;
+      }
+
+      if (existingProfile?.deleted_at) {
+        res.status(409).json({
+          message:
+            'This email already exists in authentication records, but its user profile is archived. Restore the existing user instead of creating a duplicate.',
+          code: 'EMAIL_EXISTS_AUTH_AND_ARCHIVED_PROFILE',
+          userId: existingAuthUserId,
+        });
+        return;
+      }
+
+      const { data: repairedUser, error: repairProfileError } = await createUserProfileRecord(existingAuthUserId, payload);
+      if (repairProfileError || !repairedUser) {
+        const message = getProfileInsertConflictMessage(repairProfileError?.message);
+        if (message === 'Phone number already exists.') {
+          res.status(409).json({
+            message: 'Cannot repair profile because the phone number is already used by another user.',
+            code: 'PHONE_EXISTS_DURING_PROFILE_REPAIR',
+          });
+          return;
+        }
+        if (message === 'User already exists.') {
+          res.status(409).json({
+            message: 'This email already exists in authentication and user profile records.',
+            code: 'EMAIL_EXISTS_AUTH_AND_PROFILE',
+            userId: existingAuthUserId,
+          });
+          return;
+        }
+        res.status(500).json({
+          message: 'Failed to repair missing user profile for existing authentication account.',
+          code: 'PROFILE_REPAIR_FAILED',
+        });
+        return;
+      }
+
+      if (payload.role === 'volunteer') {
+        const { error: volunteerError } = await ensureVolunteerProfileRecord(existingAuthUserId);
+        if (volunteerError) {
+          await supabaseAdmin.from('users').delete().eq('id', existingAuthUserId);
+          res.status(500).json({
+            message: 'Failed to create volunteer profile while repairing missing user profile.',
+            code: 'VOLUNTEER_PROFILE_REPAIR_FAILED',
+          });
+          return;
+        }
+      }
+
+      res.status(200).json({
+        message:
+          'This email already existed in authentication records. The missing user profile was recreated successfully.',
+        code: 'AUTH_USER_PROFILE_REPAIRED',
+        repaired: true,
+        user: {
+          ...repairedUser,
+          email: payload.email,
+        },
+      });
+      return;
+    }
+
     const { data: authCreateData, error: authCreateError } = await supabaseAdmin.auth.admin.createUser({
       email: payload.email,
       password: payload.password,
@@ -269,56 +421,144 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
     if (authCreateError) {
       const normalizedMessage = authCreateError.message.toLowerCase();
       if (normalizedMessage.includes('already') || normalizedMessage.includes('exists')) {
-        res.status(409).json({ message: 'A user with this email already exists.' });
+        res.status(409).json({
+          message: 'This email already exists in authentication records.',
+          code: 'EMAIL_EXISTS_AUTH_ONLY',
+        });
         return;
       }
 
       const statusCode = Number.isInteger(authCreateError.status) ? authCreateError.status : 500;
-      res.status(statusCode).json({ message: authCreateError.message });
+      res.status(statusCode).json({ message: 'Failed to create auth user.', code: 'AUTH_CREATE_FAILED' });
       return;
     }
 
     authUserId = authCreateData?.user?.id ?? null;
+    authUserCreatedInRequest = true;
     if (!authUserId) {
-      res.status(500).json({ message: 'Failed to create auth user.' });
+      res.status(500).json({ message: 'Failed to create auth user.', code: 'AUTH_CREATE_FAILED' });
       return;
     }
 
-    const { data: createdUser, error: createUserError } = await supabaseAdmin
+    const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
       .from('users')
-      .insert({
-        id: authUserId,
-        role: payload.role,
-        full_name: payload.fullName,
-        phone: payload.phone,
-        status: 'active',
-      })
       .select(userColumns)
-      .single();
+      .eq('id', authUserId)
+      .maybeSingle();
+
+    if (existingProfileError) {
+      await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      res.status(500).json({
+        message: 'Failed to check existing user profile.',
+        code: 'PROFILE_LOOKUP_FAILED',
+      });
+      return;
+    }
+
+    if (existingProfile) {
+      const { data: hydratedUser, error: hydrateError } = await hydrateUserProfileRecord(authUserId, payload);
+      if (hydrateError || !hydratedUser) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        const message = getProfileInsertConflictMessage(hydrateError?.message);
+        if (message === 'Phone number already exists.') {
+          res.status(409).json({
+            message: 'Phone number already exists.',
+            code: 'PHONE_EXISTS_PROFILE',
+          });
+          return;
+        }
+        res.status(500).json({
+          message: 'Failed to finalize auto-provisioned user profile.',
+          code: 'PROFILE_HYDRATE_FAILED',
+        });
+        return;
+      }
+
+      if (payload.role === 'volunteer') {
+        const { error: volunteerError } = await ensureVolunteerProfileRecord(authUserId);
+        if (volunteerError) {
+          await supabaseAdmin.from('users').delete().eq('id', authUserId);
+          await supabaseAdmin.auth.admin.deleteUser(authUserId);
+          res.status(500).json({ message: 'Failed to create volunteer profile.', code: 'VOLUNTEER_PROFILE_CREATE_FAILED' });
+          return;
+        }
+      }
+
+      res.status(201).json({
+        message: 'User created successfully.',
+        code: 'AUTH_USER_PROFILE_HYDRATED',
+        user: {
+          ...hydratedUser,
+          email: payload.email,
+        },
+      });
+      return;
+    }
+
+    const { data: createdUser, error: createUserError } = await createUserProfileRecord(authUserId, payload);
 
     if (createUserError || !createdUser) {
       await supabaseAdmin.auth.admin.deleteUser(authUserId);
-      const message = createUserError?.message ?? 'Failed to create user profile.';
-      res.status(500).json({ message });
+      const message = getProfileInsertConflictMessage(createUserError?.message);
+      if (message === 'Phone number already exists.') {
+        res.status(409).json({
+          message: 'Phone number already exists.',
+          code: 'PHONE_EXISTS_PROFILE',
+        });
+        return;
+      }
+      if (message === 'User already exists.') {
+        const { data: recoveredProfile, error: recoveredProfileError } = await supabaseAdmin
+          .from('users')
+          .select(userColumns)
+          .eq('id', authUserId)
+          .maybeSingle();
+
+        if (!recoveredProfileError && recoveredProfile) {
+          const { data: hydratedUser, error: hydrateError } = await hydrateUserProfileRecord(authUserId, payload);
+          if (!hydrateError && hydratedUser) {
+            if (payload.role === 'volunteer') {
+              const { error: volunteerError } = await ensureVolunteerProfileRecord(authUserId);
+              if (volunteerError) {
+                await supabaseAdmin.from('users').delete().eq('id', authUserId);
+                await supabaseAdmin.auth.admin.deleteUser(authUserId);
+                res.status(500).json({
+                  message: 'Failed to create volunteer profile.',
+                  code: 'VOLUNTEER_PROFILE_CREATE_FAILED',
+                });
+                return;
+              }
+            }
+
+            res.status(201).json({
+              message: 'User created successfully.',
+              code: 'AUTH_USER_PROFILE_HYDRATED',
+              user: {
+                ...hydratedUser,
+                email: payload.email,
+              },
+            });
+            return;
+          }
+        }
+
+        res.status(409).json({
+          message: 'A user profile already exists for this account.',
+          code: 'PROFILE_EXISTS_FOR_AUTH_USER',
+        });
+        return;
+      }
+      res.status(500).json({ message, code: 'PROFILE_CREATE_FAILED' });
       return;
     }
 
     if (payload.role === 'volunteer') {
-      const { error: volunteerError } = await supabaseAdmin.from('volunteer_profiles').upsert(
-        {
-          user_id: authUserId,
-          skills: [],
-          interests: [],
-          available_choices: [],
-          total_hours: 0,
-        },
-        { onConflict: 'user_id' }
-      );
+      const { error: volunteerError } = await ensureVolunteerProfileRecord(authUserId);
 
       if (volunteerError) {
         await supabaseAdmin.from('users').delete().eq('id', authUserId);
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        res.status(500).json({ message: volunteerError.message });
+        res.status(500).json({ message: 'Failed to create volunteer profile.', code: 'VOLUNTEER_PROFILE_CREATE_FAILED' });
         return;
       }
     }
@@ -331,13 +571,24 @@ router.post('/admin/users', requireAuth, requireAdmin, async (req, res) => {
       },
     });
   } catch (error) {
-    if (authUserId) {
+    if (authUserId && authUserCreatedInRequest) {
       await supabaseAdmin.from('users').delete().eq('id', authUserId);
       await supabaseAdmin.auth.admin.deleteUser(authUserId);
     }
 
+    const messageText = error instanceof Error ? error.message : 'Failed to create user.';
+    if (messageText.toLowerCase().includes('phone')) {
+      res.status(409).json({ message: 'Phone number already exists.', code: 'PHONE_EXISTS_PROFILE' });
+      return;
+    }
+    if (messageText.toLowerCase().includes('duplicate') || messageText.toLowerCase().includes('users_pkey')) {
+      res.status(409).json({ message: 'User already exists.', code: 'PROFILE_EXISTS_FOR_AUTH_USER' });
+      return;
+    }
+
     res.status(500).json({
-      message: error instanceof Error ? error.message : 'Failed to create user.',
+      message: 'Failed to create user.',
+      code: 'CREATE_USER_FAILED',
     });
   }
 });

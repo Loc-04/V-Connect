@@ -25,6 +25,7 @@ import './AdminActivitiesPage.css';
 const ACTIVITY_STATUSES: ActivityStatus[] = ['draft', 'published', 'completed', 'cancelled'];
 const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in', 'upcoming', 'completed']);
 const ACTIVITIES_PAGE_SIZE = 5;
+const KNOWN_ACTIVITY_STATUSES = new Set(['draft', 'published', 'completed', 'cancelled']);
 
 type ActivityStatusFilter = 'all' | ActivityStatus;
 type ActivityDateFilter = 'all' | 'upcoming' | 'past';
@@ -94,7 +95,7 @@ function formatDateRange(startTime: string | null | undefined, endTime: string |
 }
 
 function getStatusTone(status: string): BadgeTone {
-  const normalized = status.toLowerCase();
+  const normalized = normalizeActivityStatus(status);
 
   if (normalized === 'published') {
     return 'accent';
@@ -106,6 +107,37 @@ function getStatusTone(status: string): BadgeTone {
     return 'danger';
   }
   return 'neutral';
+}
+
+function normalizeActivityStatus(status: string | null | undefined): ActivityStatus | 'unknown' {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized) {
+    return 'unknown';
+  }
+
+  return KNOWN_ACTIVITY_STATUSES.has(normalized) ? (normalized as ActivityStatus) : 'unknown';
+}
+
+function deriveLifecycleActivityStatus(activity: ActivityRecord): ActivityStatus | 'unknown' {
+  const normalized = normalizeActivityStatus(activity.status);
+  if (normalized === 'draft' || normalized === 'cancelled' || normalized === 'completed' || normalized === 'unknown') {
+    return normalized;
+  }
+
+  if (normalized === 'published') {
+    const end = parseDate(activity.end_time);
+    if (end && end.getTime() <= Date.now()) {
+      return 'completed';
+    }
+    return 'published';
+  }
+
+  return normalized;
+}
+
+function formatActivityStatusLabel(status: string | null | undefined): string {
+  const normalized = normalizeActivityStatus(status);
+  return normalized === 'unknown' ? 'Unknown' : toTitleCase(normalized);
 }
 
 function getLocationLabel(location: ActivityRecord['location']) {
@@ -196,6 +228,7 @@ export function AdminActivitiesPage() {
     const [activitiesResult, participationsResult, usersResult] = await Promise.allSettled([
       listActivities({
         accessToken,
+        mine: true,
         status: 'all',
         limit: 100,
       }),
@@ -291,10 +324,10 @@ export function AdminActivitiesPage() {
   const metrics = useMemo(
     () => ({
       total: activities.length,
-      published: activities.filter((activity) => String(activity.status ?? '').toLowerCase() === 'published').length,
-      completed: activities.filter((activity) => String(activity.status ?? '').toLowerCase() === 'completed').length,
+      published: activities.filter((activity) => deriveLifecycleActivityStatus(activity) === 'published').length,
+      completed: activities.filter((activity) => deriveLifecycleActivityStatus(activity) === 'completed').length,
       draftOrCancelled: activities.filter((activity) => {
-        const status = String(activity.status ?? '').toLowerCase();
+        const status = deriveLifecycleActivityStatus(activity);
         return status === 'draft' || status === 'cancelled';
       }).length,
     }),
@@ -305,7 +338,7 @@ export function AdminActivitiesPage() {
     const keyword = searchTerm.trim().toLowerCase();
 
     return activities.filter((activity) => {
-      const status = String(activity.status ?? 'draft').toLowerCase();
+      const status = deriveLifecycleActivityStatus(activity);
       const organizer = organizerById.get(activity.organizer_id) ?? null;
       const organizerName = String(organizer?.full_name ?? '').trim();
       const organizerEmail = String(organizer?.email ?? '').trim();
@@ -549,7 +582,7 @@ export function AdminActivitiesPage() {
                 </tr>
               ) : (
                 paginatedActivities.map((activity, rowIndex) => {
-                  const status = String(activity.status ?? 'draft').toLowerCase();
+                  const status = deriveLifecycleActivityStatus(activity);
                   const skills = getActivitySkills(activity);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
                   const organizer = organizerById.get(activity.organizer_id) ?? null;
@@ -600,7 +633,7 @@ export function AdminActivitiesPage() {
                         </div>
                       </td>
                       <td>
-                        <Badge tone={getStatusTone(status)}>{toTitleCase(status || 'draft')}</Badge>
+                        <Badge tone={getStatusTone(status)}>{formatActivityStatusLabel(status)}</Badge>
                       </td>
                       <td>
                         <div className="row-action-wrap">
@@ -710,8 +743,8 @@ export function AdminActivitiesPage() {
                 <h3 id="admin-activity-detail-title">{selectedActivity.title}</h3>
                 <p>ID: {selectedActivity.id}</p>
               </div>
-              <Badge tone={getStatusTone(String(selectedActivity.status ?? 'draft'))}>
-                {toTitleCase(String(selectedActivity.status ?? 'draft'))}
+              <Badge tone={getStatusTone(deriveLifecycleActivityStatus(selectedActivity))}>
+                {formatActivityStatusLabel(deriveLifecycleActivityStatus(selectedActivity))}
               </Badge>
             </div>
 
