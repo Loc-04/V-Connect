@@ -101,6 +101,8 @@ function toIsoFromDateTimeLocal(value: string) {
 
 const acceptedCoverImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif']);
 const maxCoverImageBytes = 700 * 1024;
+const maxCoverImageLabel = '700KB';
+const maxCoverImageErrorMessage = `Cover image must be ${maxCoverImageLabel} or less.`;
 const coverTargetWidth = 1280;
 const coverTargetHeight = 720;
 const quickTimelineTypeOptions: TimelineMilestoneType[] = ['opening', 'session', 'break', 'closing', 'other'];
@@ -246,7 +248,7 @@ async function normalizeCoverImage(file: File): Promise<string> {
 
   const fallback = canvas.toDataURL('image/jpeg', 0.6);
   if (estimateDataUrlSizeBytes(fallback) > maxCoverImageBytes) {
-    throw new Error('Cover image is too large after processing. Please choose another image.');
+    throw new Error(`${maxCoverImageErrorMessage} Please choose another image.`);
   }
   return fallback;
 }
@@ -937,7 +939,7 @@ export function CreateActivityPage() {
       }
 
       if (file.size > maxCoverImageBytes) {
-        throw new Error('Cover image must be 10MB or less.');
+        throw new Error(maxCoverImageErrorMessage);
       }
 
       const encodedImage = await normalizeCoverImage(file);
@@ -1324,7 +1326,7 @@ export function CreateActivityPage() {
                     </div>
                     <strong>Upload a file</strong>
                     <p>or drag and drop (click to browse)</p>
-                    <small>PNG, JPG, GIF up to 700KB</small>
+                    <small>PNG, JPG, GIF up to {maxCoverImageLabel}</small>
                     <input
                       accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
                       hidden
