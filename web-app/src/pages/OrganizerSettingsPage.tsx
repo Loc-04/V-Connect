@@ -8,6 +8,7 @@ import { getRoleLabel } from '../auth/roleUtils';
 import { Badge, Button, Card, Input } from '../components/ui';
 import { OrganizerShell } from '../layouts/OrganizerShell';
 import { getProfileMe, patchProfileMe } from '../lib/profile';
+import { isValidVietnamPhone } from '../lib/registerValidation';
 import './OrganizerSettingsPage.css';
 
 interface OrganizerSettingsForm {
@@ -28,6 +29,10 @@ function buildInitialFormState(profile: { full_name: string | null; phone: strin
     fullName: normalizeField(profile?.full_name),
     phone: normalizeField(profile?.phone),
   };
+}
+
+function normalizePhoneInput(value: string) {
+  return value.replace(/\D/g, '').slice(0, 10);
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -232,7 +237,8 @@ export function OrganizerSettingsPage() {
   const displayAvatarUrl = avatarPreviewUrl || normalizeField(profile?.avatar_url);
 
   const handleFieldChange = (field: keyof OrganizerSettingsForm, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
+    const nextValue = field === 'phone' ? normalizePhoneInput(value) : value;
+    setForm((current) => ({ ...current, [field]: nextValue }));
     setFormError(null);
     setNotice(null);
   };
@@ -286,6 +292,10 @@ export function OrganizerSettingsPage() {
 
     if (!phone) {
       setFormError('Phone number is required.');
+      return;
+    }
+    if (!isValidVietnamPhone(phone)) {
+      setFormError('Invalid phone number format');
       return;
     }
 
@@ -397,6 +407,8 @@ export function OrganizerSettingsPage() {
                 <span>Phone</span>
                 <Input
                   disabled={loading || saving}
+                  inputMode="numeric"
+                  maxLength={10}
                   onChange={(event) => handleFieldChange('phone', event.target.value)}
                   placeholder="Phone number"
                   type="tel"

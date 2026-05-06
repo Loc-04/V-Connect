@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { userColumns, volunteerColumns } from '../config/constants.js';
 import { isPlainObject, normalizeStringArray } from '../common/utils/validators.js';
+import { isValidVietnamPhone } from '../auth/auth.validation.js';
 import {
   buildAvailabilitySlotsPayload,
   expandLegacyAvailability,
@@ -14,6 +15,8 @@ import { getVolunteerProfileByUserId } from './users.service.js';
 const router = Router();
 const allowedAvatarMimeTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const maxAvatarSizeBytes = 5 * 1024 * 1024;
+const INVALID_PHONE_MESSAGE = 'Invalid phone number format';
+const DUPLICATE_PHONE_MESSAGE = 'Phone number already exists';
 
 function extractVolunteerProfileUpdates(body, { requireAtLeastOne = false } = {}) {
   if (!isPlainObject(body)) {
@@ -180,6 +183,10 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
       res.status(400).json({ message: 'phone cannot be empty.' });
       return;
     }
+    if (!isValidVietnamPhone(phone)) {
+      res.status(400).json({ message: INVALID_PHONE_MESSAGE });
+      return;
+    }
     userUpdates.phone = phone;
   }
 
@@ -257,6 +264,27 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
   try {
     let profile = req.auth.profile;
 
+    if (typeof userUpdates.phone === 'string') {
+      const { data: existingPhoneOwner, error: phoneLookupError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('phone', userUpdates.phone)
+        .neq('id', req.auth.user.id)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (phoneLookupError) {
+        res.status(500).json({ message: phoneLookupError.message });
+        return;
+      }
+
+      if (existingPhoneOwner) {
+        res.status(409).json({ message: DUPLICATE_PHONE_MESSAGE });
+        return;
+      }
+    }
+
     if (hasUserUpdates) {
       const { data, error } = await supabaseAdmin
         .from('users')
@@ -267,6 +295,11 @@ router.patch('/profile/me', requireAuth, async (req, res) => {
         .maybeSingle();
 
       if (error) {
+        const normalizedErrorMessage = String(error.message ?? '').toLowerCase();
+        if (normalizedErrorMessage.includes('phone') && normalizedErrorMessage.includes('duplicate')) {
+          res.status(409).json({ message: DUPLICATE_PHONE_MESSAGE });
+          return;
+        }
         res.status(500).json({ message: error.message });
         return;
       }

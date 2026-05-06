@@ -34,6 +34,7 @@ export class ApiRequestError extends Error {
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { method = 'GET', accessToken, body } = options;
   const url = `${apiBaseUrl}${path}`;
+  const startedAt = performance.now();
 
   const response = await fetch(url, {
     method,
@@ -56,6 +57,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       // Ignore JSON parse failures for non-JSON error responses.
     }
     throw new ApiRequestError(message, response.status, payload?.code ?? null, payload);
+  }
+
+  const elapsedMs = performance.now() - startedAt;
+  if (elapsedMs > 500) {
+    console.warn(`[api-slow] ${method} ${path} took ${Math.round(elapsedMs)}ms`);
   }
 
   return (await response.json()) as T;

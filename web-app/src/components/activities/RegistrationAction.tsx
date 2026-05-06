@@ -2,6 +2,7 @@ import { useMemo, useState, type MouseEvent, type SyntheticEvent } from 'react';
 
 import { Badge, Button } from '../ui';
 import { createParticipation } from '../../lib/participations';
+import { useRenderDebug } from '../../lib/debug';
 import type { ParticipationRecord } from '../../types/participation';
 import './RegistrationAction.css';
 
@@ -19,11 +20,13 @@ interface RegistrationActionProps {
   className?: string;
   disabled?: boolean;
   onRegistered?: (participation: ParticipationRecord) => void;
+  onRegister?: (context: { activityId: string; recommendationItemId?: string | null }) => Promise<ParticipationRecord> | ParticipationRecord;
   onAccept?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onCancel?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onNotice?: (type: NoticeType, message: string) => void;
   confirmCancelMessage?: string;
   registerDisabledLabel?: string;
+  statusLoading?: boolean;
 }
 
 function toTitleCase(value: string) {
@@ -80,17 +83,24 @@ export function RegistrationAction({
   className = '',
   disabled = false,
   onRegistered,
+  onRegister,
   onAccept,
   onCancel,
   onNotice,
   confirmCancelMessage = 'Cancel this registration request?',
   registerDisabledLabel = 'Volunteer only',
+  statusLoading = false,
 }: RegistrationActionProps) {
+  useRenderDebug(
+    'RegistrationAction',
+    import.meta.env.DEV && typeof window !== 'undefined' && window.localStorage.getItem('debug-renders') === '1'
+  );
   const status = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const [registering, setRegistering] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const cancelableStatuses = useMemo(() => new Set(['assigned', 'pending']), []);
+  const hasInFlightAction = registering || accepting || cancelling;
 
   const isRegisterable = status === 'none';
   const isAssigned = status === 'assigned';
@@ -111,7 +121,7 @@ export function RegistrationAction({
   const handleRegister = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (!canRegister || disabled || registering) {
+    if (!canRegister || disabled || hasInFlightAction) {
       return;
     }
 
@@ -122,11 +132,20 @@ export function RegistrationAction({
 
     setRegistering(true);
     try {
-      const result = await createParticipation(activityId, accessToken, {
-        recommendationItemId,
-      });
-      onRegistered?.(result.participation);
-      notify('success', result.message ?? (result.created ? 'Registration submitted successfully.' : 'Participation already exists.'));
+      if (onRegister) {
+        const participation = await onRegister({
+          activityId,
+          recommendationItemId,
+        });
+        onRegistered?.(participation);
+        notify('success', 'Registration submitted successfully.');
+      } else {
+        const result = await createParticipation(activityId, accessToken, {
+          recommendationItemId,
+        });
+        onRegistered?.(result.participation);
+        notify('success', result.message ?? (result.created ? 'Registration submitted successfully.' : 'Participation already exists.'));
+      }
     } catch (error) {
       notify('error', error instanceof Error ? error.message : 'Failed to register for this activity.');
     } finally {
@@ -137,7 +156,7 @@ export function RegistrationAction({
   const handleCancel = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (!showCancelAction || disabled || cancelling) {
+    if (!showCancelAction || disabled || hasInFlightAction) {
       return;
     }
 
@@ -165,7 +184,7 @@ export function RegistrationAction({
   const handleAccept = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (!canAccept || disabled || accepting) {
+    if (!canAccept || disabled || hasInFlightAction) {
       return;
     }
 
@@ -189,8 +208,18 @@ export function RegistrationAction({
     return (
       <span className={`registration-action registration-action--badge ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
         <Badge className="registration-action-badge" tone={getBadgeTone(status)}>
-          {getStatusLabel(status)}
+          {statusLoading ? 'Loading...' : getStatusLabel(status)}
         </Badge>
+      </span>
+    );
+  }
+
+  if (statusLoading) {
+    return (
+      <span className={`registration-action registration-action--full ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
+        <Button className="registration-action-btn" disabled type="button" variant="secondary">
+          Loading status...
+        </Button>
       </span>
     );
   }
@@ -210,7 +239,7 @@ export function RegistrationAction({
       <span className={`registration-action registration-action--full ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
         <Button
           className="registration-action-btn"
-          disabled={disabled || registering}
+          disabled={disabled || hasInFlightAction}
           onClick={(event) => void handleRegister(event)}
           type="button"
         >
@@ -228,7 +257,7 @@ export function RegistrationAction({
       {canAccept ? (
         <Button
           className="registration-action-btn"
-          disabled={disabled || accepting}
+          disabled={disabled || hasInFlightAction}
           onClick={(event) => void handleAccept(event)}
           type="button"
         >
@@ -238,7 +267,7 @@ export function RegistrationAction({
       {showCancelAction ? (
         <Button
           className="registration-action-btn registration-action-btn--secondary"
-          disabled={disabled || cancelling || !canCancel}
+          disabled={disabled || hasInFlightAction || !canCancel}
           onClick={(event) => void handleCancel(event)}
           type="button"
           variant="secondary"

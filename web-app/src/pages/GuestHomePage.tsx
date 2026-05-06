@@ -1,18 +1,14 @@
-﻿import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, BrainCircuit, Compass, HeartHandshake, Sparkles } from 'lucide-react';
 
 import { AuthRequiredModal } from '../components/auth/AuthRequiredModal';
+import { EmptyLoadingErrorState } from '../components/feedback';
 import { GuestActivityCard, GuestFooter } from '../components/guest';
-import { Badge, Card } from '../components/ui';
+import { Badge, Button, Card } from '../components/ui';
 import { buildGuestActivityIntentPath, type GuestProtectedAction } from '../lib/guestAuth';
-import {
-  getGuestDomains,
-  getGuestAvailabilityMeta,
-  listFeaturedGuestActivities,
-  listGuestActivities,
-  type GuestActivityRecord,
-} from '../lib/guestActivities';
+import { getGuestDomains, getGuestAvailabilityMeta, type GuestActivityRecord } from '../lib/guestActivities';
+import { listPublicGuestActivities } from '../lib/publicGuestActivities';
 import { GuestShell } from '../layouts/GuestShell';
 import './GuestHomePage.css';
 
@@ -45,12 +41,59 @@ const whyCards = [
   { title: 'Easy Routing', description: 'Guest visitors can explore first and sign in only when they are ready.' },
 ];
 
+function toFeaturedActivities(activities: GuestActivityRecord[], limit = 3) {
+  return activities
+    .filter((activity) => {
+      const end = new Date(activity.endTime);
+      return Number.isNaN(end.getTime()) || end.getTime() > Date.now();
+    })
+    .sort((left, right) => {
+      const leftSpots = Math.max(left.capacity - left.currentParticipants, 0);
+      const rightSpots = Math.max(right.capacity - right.currentParticipants, 0);
+      if (leftSpots === 0 && rightSpots > 0) {
+        return 1;
+      }
+      if (rightSpots === 0 && leftSpots > 0) {
+        return -1;
+      }
+
+      const leftStart = new Date(left.startTime).getTime();
+      const rightStart = new Date(right.startTime).getTime();
+      const safeLeftStart = Number.isNaN(leftStart) ? Number.MAX_SAFE_INTEGER : leftStart;
+      const safeRightStart = Number.isNaN(rightStart) ? Number.MAX_SAFE_INTEGER : rightStart;
+      return safeLeftStart - safeRightStart;
+    })
+    .slice(0, limit);
+}
+
 export function GuestHomePage() {
   const navigate = useNavigate();
   const [authPrompt, setAuthPrompt] = useState<{ action: GuestProtectedAction; activity: GuestActivityRecord } | null>(null);
-  const featuredActivities = listFeaturedGuestActivities(3);
-  const allPublished = listGuestActivities();
-  const heroActivity = featuredActivities[0] ?? allPublished[0];
+  const [activities, setActivities] = useState<GuestActivityRecord[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(true);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
+  const loadActivities = useCallback(async () => {
+    setIsLoadingActivities(true);
+    setActivitiesError(null);
+    try {
+      const rows = await listPublicGuestActivities();
+      setActivities(rows);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load public activities.';
+      setActivities([]);
+      setActivitiesError(message);
+    } finally {
+      setIsLoadingActivities(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadActivities();
+  }, [loadActivities]);
+
+  const featuredActivities = useMemo(() => toFeaturedActivities(activities, 3), [activities]);
+  const heroActivity = featuredActivities[0] ?? activities[0];
   const domains = getGuestDomains();
   const heroAvailability = heroActivity ? getGuestAvailabilityMeta(heroActivity) : null;
 
@@ -154,19 +197,50 @@ export function GuestHomePage() {
           </Link>
         </div>
 
-        <div className="guest-featured-grid">
-          {featuredActivities.map((activity) => (
-            <GuestActivityCard
-              activity={activity}
-              key={activity.id}
-              onProtectedAction={(action, targetActivity) => {
-                setAuthPrompt({ action, activity: targetActivity });
-              }}
-              onViewDetails={(activityId) => navigate(`/guest/activity/${activityId}`)}
-              variant="featured"
+        {isLoadingActivities ? (
+          <Card className="guest-home-empty-card">
+            <EmptyLoadingErrorState
+              description="Loading published activities for guests..."
+              state="loading"
+              title="Loading featured opportunities"
             />
-          ))}
-        </div>
+          </Card>
+        ) : activitiesError ? (
+          <Card className="guest-home-empty-card">
+            <EmptyLoadingErrorState
+              action={
+                <Button onClick={() => void loadActivities()} type="button" variant="secondary">
+                  Retry
+                </Button>
+              }
+              description="We couldn't load featured opportunities right now."
+              state="error"
+              title="Unable to load featured opportunities"
+            />
+          </Card>
+        ) : featuredActivities.length === 0 ? (
+          <Card className="guest-home-empty-card">
+            <EmptyLoadingErrorState
+              description="There are no published opportunities to feature right now."
+              state="empty"
+              title="No featured opportunities yet"
+            />
+          </Card>
+        ) : (
+          <div className="guest-featured-grid">
+            {featuredActivities.map((activity) => (
+              <GuestActivityCard
+                activity={activity}
+                key={activity.id}
+                onProtectedAction={(action, targetActivity) => {
+                  setAuthPrompt({ action, activity: targetActivity });
+                }}
+                onViewDetails={(activityId) => navigate(`/guest/activity/${activityId}`)}
+                variant="featured"
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="guest-journey-section" id="journey">
