@@ -13,7 +13,7 @@ import {
 
 import { useAuth } from '../auth/useAuth';
 import { EmptyLoadingErrorState } from '../components/feedback';
-import { apiRequest } from '../lib/api';
+import { ApiRequestError, apiRequest } from '../lib/api';
 import type { UserRecord } from '../types/domain';
 
 const roleOptions = ['admin', 'organizer', 'volunteer'];
@@ -41,6 +41,8 @@ interface AdminUserDeleteResponse {
 interface AdminUserCreateResponse {
   user: UserRecord;
   message?: string;
+  code?: string;
+  repaired?: boolean;
 }
 
 interface AddUserFormState {
@@ -178,6 +180,25 @@ function buildPaginationItems(currentPage: number, totalPages: number): PageItem
 
 function getFriendlyAddUserErrorMessage(error: unknown): string {
   const fallback = 'Failed to create user.';
+  if (error instanceof ApiRequestError) {
+    switch (error.code) {
+      case 'EMAIL_EXISTS_AUTH_AND_PROFILE':
+        return 'This email already belongs to an existing user account. If you cannot find it, clear the current search and filters.';
+      case 'EMAIL_EXISTS_AUTH_AND_ARCHIVED_PROFILE':
+        return 'This email belongs to an archived user profile. Restore that account instead of creating a duplicate.';
+      case 'PHONE_EXISTS_DURING_PROFILE_REPAIR':
+        return 'This email already exists in authentication records, but profile repair failed because the phone number is already used.';
+      case 'PHONE_EXISTS_PROFILE':
+        return 'Phone number already exists';
+      case 'AUTH_CREATE_FAILED':
+      case 'PROFILE_CREATE_FAILED':
+      case 'CREATE_USER_FAILED':
+        return 'Failed to create user. Please try again.';
+      default:
+        break;
+    }
+  }
+
   if (!(error instanceof Error)) {
     return fallback;
   }
@@ -293,7 +314,9 @@ export function AdminUsersPage() {
         user.id.toLowerCase().includes(keyword) ||
         (user.full_name ?? '').toLowerCase().includes(keyword) ||
         (user.phone ?? '').toLowerCase().includes(keyword) ||
-        (user.email ?? '').toLowerCase().includes(keyword);
+        (user.email ?? '').toLowerCase().includes(keyword) ||
+        String(user.role ?? '').toLowerCase().includes(keyword) ||
+        String(user.status ?? '').toLowerCase().includes(keyword);
 
       const matchesRole = roleFilter === 'all' || String(user.role) === roleFilter;
       const matchesStatus = statusFilter === 'all' || String(user.status ?? 'active') === statusFilter;
@@ -547,6 +570,9 @@ export function AdminUsersPage() {
 
       await loadUsers();
       setNotice(response.message ?? `User "${payload.fullName}" created successfully.`);
+      setRoleFilter('all');
+      setStatusFilter('all');
+      setSearchTerm(payload.email);
       setIsAddUserModalOpen(false);
       setAddUserSubmitError(null);
       setAddUserErrors({});
@@ -860,7 +886,7 @@ export function AdminUsersPage() {
                 {filteredUsers.length === 0 && (
                   <tr>
                     <td colSpan={7}>
-                      <p className="muted">No users match the filter.</p>
+                      <p className="muted">No users match the current search/filter. Try clearing filters to locate an existing account.</p>
                     </td>
                   </tr>
                 )}

@@ -118,6 +118,23 @@ function normalizeActivityStatus(status: string | null | undefined): ActivitySta
   return KNOWN_ACTIVITY_STATUSES.has(normalized) ? (normalized as ActivityStatus) : 'unknown';
 }
 
+function deriveLifecycleActivityStatus(activity: ActivityRecord): ActivityStatus | 'unknown' {
+  const normalized = normalizeActivityStatus(activity.status);
+  if (normalized === 'draft' || normalized === 'cancelled' || normalized === 'completed' || normalized === 'unknown') {
+    return normalized;
+  }
+
+  if (normalized === 'published') {
+    const end = parseDate(activity.end_time);
+    if (end && end.getTime() <= Date.now()) {
+      return 'completed';
+    }
+    return 'published';
+  }
+
+  return normalized;
+}
+
 function formatActivityStatusLabel(status: string | null | undefined): string {
   const normalized = normalizeActivityStatus(status);
   return normalized === 'unknown' ? 'Unknown' : toTitleCase(normalized);
@@ -211,6 +228,7 @@ export function AdminActivitiesPage() {
     const [activitiesResult, participationsResult, usersResult] = await Promise.allSettled([
       listActivities({
         accessToken,
+        mine: true,
         status: 'all',
         limit: 100,
       }),
@@ -306,10 +324,10 @@ export function AdminActivitiesPage() {
   const metrics = useMemo(
     () => ({
       total: activities.length,
-      published: activities.filter((activity) => normalizeActivityStatus(activity.status) === 'published').length,
-      completed: activities.filter((activity) => normalizeActivityStatus(activity.status) === 'completed').length,
+      published: activities.filter((activity) => deriveLifecycleActivityStatus(activity) === 'published').length,
+      completed: activities.filter((activity) => deriveLifecycleActivityStatus(activity) === 'completed').length,
       draftOrCancelled: activities.filter((activity) => {
-        const status = normalizeActivityStatus(activity.status);
+        const status = deriveLifecycleActivityStatus(activity);
         return status === 'draft' || status === 'cancelled';
       }).length,
     }),
@@ -320,7 +338,7 @@ export function AdminActivitiesPage() {
     const keyword = searchTerm.trim().toLowerCase();
 
     return activities.filter((activity) => {
-      const status = normalizeActivityStatus(activity.status);
+      const status = deriveLifecycleActivityStatus(activity);
       const organizer = organizerById.get(activity.organizer_id) ?? null;
       const organizerName = String(organizer?.full_name ?? '').trim();
       const organizerEmail = String(organizer?.email ?? '').trim();
@@ -564,7 +582,7 @@ export function AdminActivitiesPage() {
                 </tr>
               ) : (
                 paginatedActivities.map((activity, rowIndex) => {
-                  const status = normalizeActivityStatus(activity.status);
+                  const status = deriveLifecycleActivityStatus(activity);
                   const skills = getActivitySkills(activity);
                   const registrationStats = registrationStatsByActivity.get(activity.id);
                   const organizer = organizerById.get(activity.organizer_id) ?? null;
@@ -725,8 +743,8 @@ export function AdminActivitiesPage() {
                 <h3 id="admin-activity-detail-title">{selectedActivity.title}</h3>
                 <p>ID: {selectedActivity.id}</p>
               </div>
-              <Badge tone={getStatusTone(String(selectedActivity.status ?? 'unknown'))}>
-                {formatActivityStatusLabel(selectedActivity.status)}
+              <Badge tone={getStatusTone(deriveLifecycleActivityStatus(selectedActivity))}>
+                {formatActivityStatusLabel(deriveLifecycleActivityStatus(selectedActivity))}
               </Badge>
             </div>
 

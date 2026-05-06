@@ -12,6 +12,23 @@ interface ApiRequestOptions {
 
 interface ErrorPayload {
   message?: string;
+  code?: string;
+  repaired?: boolean;
+  userId?: string;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+  code: string | null;
+  details: ErrorPayload | null;
+
+  constructor(message: string, status: number, code: string | null = null, details: ErrorPayload | null = null) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -29,15 +46,16 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let payload: ErrorPayload | null = null;
     try {
-      const payload = (await response.json()) as ErrorPayload;
+      payload = (await response.json()) as ErrorPayload;
       if (payload.message) {
         message = payload.message;
       }
     } catch {
       // Ignore JSON parse failures for non-JSON error responses.
     }
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status, payload?.code ?? null, payload);
   }
 
   return (await response.json()) as T;
