@@ -7,6 +7,7 @@ import { Badge, Button, Card, Select } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { createParticipation } from '../lib/participations';
+import { usePrefetchActivityDetail } from '../lib/queries';
 import { getVolunteerRecommendationPayload, logRecommendationInteraction } from '../lib/recommendations';
 import type { ActivityLocation } from '../types/activity';
 import type {
@@ -406,6 +407,7 @@ function hasSkillSignal(item: RecommendationViewModel) {
 export function VolunteerAiRecommendedActivitiesPage() {
   const navigate = useNavigate();
   const { profile, session } = useAuth();
+  const prefetchActivityDetail = usePrefetchActivityDetail(session?.access_token ?? null, profile?.id ?? null);
 
   const [recommendations, setRecommendations] = useState<RecommendationViewModel[]>([]);
   const [recommendationSession, setRecommendationSession] = useState<RecommendationControllerSession | null>(null);
@@ -585,6 +587,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
         // Best-effort analytics logging only.
       });
     }
+    void prefetchActivityDetail(activityId);
     const query = recommendationItemId ? `?recommendationItemId=${encodeURIComponent(recommendationItemId)}` : '';
     navigate(`/volunteer/activity/${activityId}${query}`);
   };
@@ -747,7 +750,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                     <Button
                       className="ai-reco-view-btn"
                       onClick={() =>
-                        handleViewDetails(
+                        void handleViewDetails(
                           selectedRecommendation.activityId,
                           selectedRecommendation.recommendationItemId
                         )
@@ -870,7 +873,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                       {item.dateLabel} | {item.locationLabel}
                     </p>
                     <Button
-                      onClick={() => handleViewDetails(item.activityId, item.recommendationItemId)}
+                      onClick={() => void handleViewDetails(item.activityId, item.recommendationItemId)}
                       type="button"
                       variant="secondary"
                     >
@@ -928,7 +931,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                     <p className="ai-reco-score-note">Similar overall score, different contributing factors.</p>
                   ) : null}
                   <Button
-                    onClick={() => handleViewDetails(item.activityId, item.recommendationItemId)}
+                    onClick={() => void handleViewDetails(item.activityId, item.recommendationItemId)}
                     type="button"
                     variant="secondary"
                   >

@@ -53,7 +53,13 @@ export function VolunteerShell({
 
   return (
     <div className="vol-shell">
-      <VolunteerSidebar activeKey={activeNav} fullName={fullName} onSignOut={handleSignOut} roleLabel={roleLabel} />
+      <VolunteerSidebar
+        activeKey={activeNav}
+        fullName={fullName}
+        onSignOut={handleSignOut}
+        roleLabel={roleLabel}
+        avatarUrl={profile?.avatar_url ?? null}
+      />
 
       <section className="vol-shell-main">
         <header className="vol-shell-topbar">

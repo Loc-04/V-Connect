@@ -269,13 +269,23 @@
 
 .org-checkin-volunteer-cell {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.45rem;
 }
 
+.org-checkin-avatar-image,
 .org-checkin-avatar {
   width: 30px;
   height: 30px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.org-checkin-avatar-image {
+  object-fit: cover;
+}
+
+.org-checkin-avatar {
   border-radius: 999px;
   background: linear-gradient(135deg, #fdba74, #93c5fd);
   color: #0f172a;
@@ -285,6 +295,11 @@
   place-items: center;
 }
 
+.org-checkin-volunteer-meta {
+  display: grid;
+  gap: 0.08rem;
+}
+
 .org-checkin-volunteer-cell strong {
   display: block;
   color: #0f172a;
@@ -292,8 +307,11 @@
 }
 
 .org-checkin-volunteer-cell small {
+  display: block;
   color: #94a3b8;
   font-size: 0.66rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .org-checkin-time-cell {

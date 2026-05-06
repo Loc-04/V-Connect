@@ -1,5 +1,6 @@
 import { CheckCircle2, Search, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select, Table } from '../components/ui';
@@ -103,8 +104,13 @@ function statusSortWeight(status: string) {
   return 3;
 }
 
+function canReviewRegistration(status: string) {
+  return status === 'pending';
+}
+
 export function OrganizerRegistrationApprovalPage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState('');
@@ -139,8 +145,12 @@ export function OrganizerRegistrationApprovalPage() {
         limit: 120,
       });
       const activeRows = activityRows.filter((activity) => !isActivityExpired(activity));
+      const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
       setActivities(activeRows);
       setSelectedActivityId((current) => {
+        if (requestedActivityId && activeRows.some((activity) => activity.id === requestedActivityId)) {
+          return requestedActivityId;
+        }
         if (current && activeRows.some((activity) => activity.id === current)) {
           return current;
         }
@@ -151,7 +161,7 @@ export function OrganizerRegistrationApprovalPage() {
     } finally {
       setActivitiesLoading(false);
     }
-  }, [session?.access_token]);
+  }, [searchParams, session?.access_token]);
 
   useEffect(() => {
     void loadActiveActivities();
@@ -275,7 +285,13 @@ export function OrganizerRegistrationApprovalPage() {
   }, [pagedApplicants, selectedApplicantId]);
 
   useEffect(() => {
-    setSelectedIds((current) => current.filter((id) => filteredApplicants.some((item) => item.participation.id === id)));
+    setSelectedIds((current) =>
+      current.filter((id) =>
+        filteredApplicants.some(
+          (item) => item.participation.id === id && canReviewRegistration(item.status)
+        )
+      )
+    );
   }, [filteredApplicants]);
 
   const selectedApplicant = useMemo(
@@ -309,11 +325,18 @@ export function OrganizerRegistrationApprovalPage() {
   }, [applicants, selectedActivity]);
 
   const toggleSelected = (id: string) => {
+    const selectedApplicantItem = applicants.find((item) => item.participation.id === id);
+    if (!selectedApplicantItem || !canReviewRegistration(selectedApplicantItem.status)) {
+      return;
+    }
+
     setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
   };
 
   const toggleSelectAllOnPage = () => {
-    const pageIds = pagedApplicants.map((item) => item.participation.id);
+    const pageIds = pagedApplicants
+      .filter((item) => canReviewRegistration(item.status))
+      .map((item) => item.participation.id);
     const allSelected = pageIds.every((id) => selectedIds.includes(id));
 
     setSelectedIds((current) => {
@@ -326,7 +349,13 @@ export function OrganizerRegistrationApprovalPage() {
   };
 
   const applyStatus = async (ids: string[], nextStatus: ApprovalStatus) => {
-    if (ids.length === 0) {
+    const actionableIds = ids.filter((id) => {
+      const participation = participations.find((item) => item.id === id);
+      const status = String(participation?.status ?? 'pending').toLowerCase();
+      return canReviewRegistration(status);
+    });
+
+    if (actionableIds.length === 0) {
       return;
     }
 
@@ -340,7 +369,7 @@ export function OrganizerRegistrationApprovalPage() {
     setMessage(null);
 
     const action = nextStatus === 'approved' ? approveRegistration : rejectRegistration;
-    const results = await Promise.allSettled(ids.map((id) => action(id, session.access_token)));
+    const results = await Promise.allSettled(actionableIds.map((id) => action(id, session.access_token)));
 
     const successfulResults = results.filter(
       (result): result is PromiseFulfilledResult<{ registration: ParticipationRecord; message?: string }> =>
@@ -406,8 +435,12 @@ export function OrganizerRegistrationApprovalPage() {
     ? Math.max(30, selectedApplicant.matchScore - (selectedApplicant.status === 'pending' ? 8 : 4))
     : 0;
 
+  const selectablePageIds = useMemo(
+    () => pagedApplicants.filter((item) => canReviewRegistration(item.status)).map((item) => item.participation.id),
+    [pagedApplicants]
+  );
   const pageAllSelected =
-    pagedApplicants.length > 0 && pagedApplicants.every((item) => selectedIds.includes(item.participation.id));
+    selectablePageIds.length > 0 && selectablePageIds.every((id) => selectedIds.includes(id));
   const loading = activitiesLoading || applicantsLoading;
 
   return (
@@ -530,6 +563,7 @@ export function OrganizerRegistrationApprovalPage() {
                     <th>
                       <input
                         aria-label="Select all applicants on page"
+                        disabled={selectablePageIds.length === 0}
                         checked={pageAllSelected}
                         onChange={toggleSelectAllOnPage}
                         type="checkbox"
@@ -548,7 +582,7 @@ export function OrganizerRegistrationApprovalPage() {
                     const id = item.participation.id;
                     const checked = selectedIds.includes(id);
                     const isSelected = selectedApplicantId === id;
-                    const canApproveOrReject = item.status === 'pending';
+                    const canApproveOrReject = canReviewRegistration(item.status);
 
                     return (
                       <tr
@@ -560,6 +594,7 @@ export function OrganizerRegistrationApprovalPage() {
                           <input
                             aria-label={`Select ${item.name}`}
                             checked={checked}
+                            disabled={!canApproveOrReject}
                             onChange={() => toggleSelected(id)}
                             onClick={(event) => event.stopPropagation()}
                             type="checkbox"

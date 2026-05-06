@@ -31,6 +31,7 @@ shared-backend listening on http://localhost:3000
 ### Core Endpoints
 
 - `GET /health`
+- `POST /auth/register`
 - `POST /auth/reset-password`
 - `GET /auth/me`
 - `POST /auth/register-profile`

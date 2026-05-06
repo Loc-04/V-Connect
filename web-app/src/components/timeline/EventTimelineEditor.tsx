@@ -1,7 +1,7 @@
-import { AlertCircle, ArrowDown, ArrowUp, PencilLine, PlusCircle, Save, Trash2 } from 'lucide-react';
+import { AlertCircle, PencilLine, PlusCircle, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { createTimelineMilestone, deleteTimelineMilestone, listActivityTimeline, moveTimelineMilestone, updateTimelineMilestone, updateTimelineMilestoneStatus } from '../../lib/timeline';
+import { createTimelineMilestone, deleteTimelineMilestone, listActivityTimeline, updateTimelineMilestone, updateTimelineMilestoneStatus } from '../../lib/timeline';
 import { formatTimelineRangeLabel } from '../../lib/dateTimeFormat';
 import { normalizeTimelineItem, safeText } from '../../lib/timelineNormalization';
 import { resolveTimelineMilestoneStatus } from '../../lib/timelineStatus';
@@ -73,6 +73,10 @@ function createInitialDraft(activityStartTime?: string | null, activityEndTime?:
 
 function getInlineFieldError(issueMessages: string[], targetText: string) {
   return issueMessages.find((message) => message.toLowerCase().includes(targetText));
+}
+
+function isCompletedMilestoneStatus(status: TimelineMilestoneStatus | string | null | undefined) {
+  return String(status ?? '').trim().toLowerCase() === 'completed';
 }
 
 interface EventTimelineEditorProps {
@@ -202,6 +206,11 @@ export function EventTimelineEditor({
   };
 
   const handleEditMilestone = (milestone: TimelineMilestone) => {
+    if (isCompletedMilestoneStatus(resolveTimelineMilestoneStatus(milestone, nowMs))) {
+      setNotice('Completed milestones are locked and cannot be edited.');
+      return;
+    }
+
     const normalized = normalizeTimelineItem(milestone, activityId, milestone.orderIndex);
     setEditingMilestoneId(milestone.id);
     setFormDraft({
@@ -267,6 +276,12 @@ export function EventTimelineEditor({
     setIsSubmittingDraft(true);
     try {
       if (editingMilestoneId) {
+        const targetMilestone = displayedMilestones.find((item) => item.id === editingMilestoneId);
+        if (targetMilestone && isCompletedMilestoneStatus(targetMilestone.status)) {
+          setNotice('Completed milestones are locked and cannot be edited.');
+          return;
+        }
+
         const result = await updateTimelineMilestone(activityId, editingMilestoneId, payload, accessToken);
         setMilestones(result.milestones);
         setNotice('Milestone updated.');
@@ -284,6 +299,12 @@ export function EventTimelineEditor({
   };
 
   const handleDeleteMilestone = async (milestoneId: string) => {
+    const targetMilestone = displayedMilestones.find((item) => item.id === milestoneId);
+    if (targetMilestone && isCompletedMilestoneStatus(targetMilestone.status)) {
+      setNotice('Completed milestones are locked and cannot be deleted.');
+      return;
+    }
+
     const confirmed = window.confirm('Delete this milestone?');
     if (!confirmed) {
       return;
@@ -304,21 +325,14 @@ export function EventTimelineEditor({
     }
   };
 
-  const handleMoveMilestone = async (milestoneId: string, direction: 'up' | 'down') => {
-    setBusyMilestoneId(milestoneId);
-    try {
-      const result = await moveTimelineMilestone(activityId, milestoneId, direction, accessToken);
-      setMilestones(result.milestones);
-      setNotice(`Milestone moved ${direction}.`);
-    } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : 'Failed to reorder milestone.');
-    } finally {
-      setBusyMilestoneId(null);
-    }
-  };
-
   const handleUpdateMilestoneStatus = async (milestoneId: string, status: TimelineMilestoneStatus) => {
     if (status !== 'cancelled') {
+      return;
+    }
+
+    const targetMilestone = displayedMilestones.find((item) => item.id === milestoneId);
+    if (targetMilestone && isCompletedMilestoneStatus(targetMilestone.status)) {
+      setNotice('Completed milestones are locked and cannot be changed.');
       return;
     }
 
@@ -462,6 +476,9 @@ export function EventTimelineEditor({
             <small>Add the first timeline milestone to plan event flow.</small>
           </div>
         ) : (
+          <p className="muted">Milestones are automatically ordered by start time.</p>
+        )}
+        {!loading && displayedMilestones.length > 0 && (
           displayedMilestones.map((milestone, index) => (
             <article className={`timeline-editor-item ${milestone.status === 'in_progress' ? 'is-current' : ''}`} key={milestone.id}>
               <div className="timeline-item-top">
@@ -482,32 +499,17 @@ export function EventTimelineEditor({
 
               <div className="timeline-item-controls">
                 <div className="timeline-item-order-controls">
-                  <Button
-                    disabled={busyMilestoneId === milestone.id || index === 0}
-                    onClick={() => void handleMoveMilestone(milestone.id, 'up')}
-                    type="button"
-                    variant="secondary"
-                  >
-                    <ArrowUp size={14} />
-                    <span>Up</span>
-                  </Button>
-                  <Button
-                    disabled={busyMilestoneId === milestone.id || index === orderedMilestones.length - 1}
-                    onClick={() => void handleMoveMilestone(milestone.id, 'down')}
-                    type="button"
-                    variant="secondary"
-                  >
-                    <ArrowDown size={14} />
-                    <span>Down</span>
-                  </Button>
+                  <Badge tone="neutral">#{index + 1}</Badge>
                 </div>
 
                 <div className="timeline-item-status-controls">
                   {milestone.status === 'cancelled' ? (
                     <Badge tone="danger">Cancelled</Badge>
+                  ) : milestone.status === 'completed' ? (
+                    <Badge tone="success">Completed milestone (locked)</Badge>
                   ) : (
                     <Button
-                      disabled={busyMilestoneId === milestone.id}
+                      disabled={busyMilestoneId === milestone.id || isCompletedMilestoneStatus(milestone.status)}
                       onClick={() => void handleUpdateMilestoneStatus(milestone.id, 'cancelled')}
                       type="button"
                       variant="danger"
@@ -519,7 +521,7 @@ export function EventTimelineEditor({
 
                 <div className="timeline-item-action-controls">
                   <Button
-                    disabled={busyMilestoneId === milestone.id}
+                    disabled={busyMilestoneId === milestone.id || isCompletedMilestoneStatus(milestone.status)}
                     onClick={() => handleEditMilestone(milestone)}
                     type="button"
                     variant="secondary"
@@ -528,7 +530,7 @@ export function EventTimelineEditor({
                     <span>Edit</span>
                   </Button>
                   <Button
-                    disabled={busyMilestoneId === milestone.id}
+                    disabled={busyMilestoneId === milestone.id || isCompletedMilestoneStatus(milestone.status)}
                     onClick={() => void handleDeleteMilestone(milestone.id)}
                     type="button"
                     variant="danger"

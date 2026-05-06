@@ -1219,7 +1219,12 @@ router.get('/participations', requireAuth, async (req, res) => {
     }
 
     const participationsWithVolunteers = await attachVolunteerSummaries(data ?? []);
-    const participations = await attachActivitySummaries(participationsWithVolunteers);
+    let participations = await attachActivitySummaries(participationsWithVolunteers);
+
+    if (role === 'volunteer' && mine) {
+      participations = participations.filter((item) => !item.activityDeleted && Boolean(item.activityId));
+    }
+
     res.json({ participations });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load participations.';

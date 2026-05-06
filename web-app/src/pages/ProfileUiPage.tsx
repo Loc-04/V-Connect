@@ -26,6 +26,8 @@ import {
   normalizeAvailableChoices,
   summarizeAvailableChoices,
 } from '../lib/availability';
+import { isValidVietnamPhone } from '../lib/registerValidation';
+import { usePrefetchActivityDetail } from '../lib/queries';
 import { listParticipations } from '../lib/participations';
 import { getProfileMe, patchProfileMe } from '../lib/profile';
 import type { UserRecord } from '../types/domain';
@@ -212,6 +214,10 @@ function toEditForm(profile: UserRecord | null): EditFormState {
   };
 }
 
+function normalizePhoneInput(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 10);
+}
+
 function buildProfileSummary(profile: UserRecord | null, volunteerProfile: VolunteerProfile | null): string {
   const skills = volunteerProfile?.skills ?? [];
   const interests = volunteerProfile?.interests ?? [];
@@ -264,6 +270,7 @@ export function ProfileUiPage() {
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const accessToken = session?.access_token ?? '';
+  const prefetchActivityDetail = usePrefetchActivityDetail(accessToken || null, profile?.id ?? null);
 
   const loadProfile = useCallback(async () => {
     if (!accessToken) {
@@ -438,13 +445,20 @@ export function ProfileUiPage() {
     setSaveNotice(null);
 
     try {
+      const phone = form.phone.trim();
+      if (!isValidVietnamPhone(phone)) {
+        setSaveError('Invalid phone number format');
+        setSaving(false);
+        return;
+      }
+
       const payload: {
         fullName: string;
         phone: string;
         avatarUrl?: string | null;
       } = {
         fullName: form.fullName.trim(),
-        phone: form.phone.trim(),
+        phone,
       };
       if (avatarUploadDataUrl) {
         payload.avatarUrl = avatarUploadDataUrl;
@@ -636,7 +650,9 @@ export function ProfileUiPage() {
                       </label>
                       <Input
                         id="editPhone"
-                        onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                        inputMode="numeric"
+                        maxLength={10}
+                        onChange={(event) => setForm((current) => ({ ...current, phone: normalizePhoneInput(event.target.value) }))}
                         required
                         value={form.phone}
                       />
@@ -762,12 +778,21 @@ export function ProfileUiPage() {
                           className="vol-profile-history-item"
                           key={record.id}
                           onClick={() =>
-                            navigate(
-                              record.activityDeleted || !record.activityId
-                                ? '/volunteer/participation-history'
-                                : `/volunteer/activity/${record.activityId}`
-                            )
+                            void (async () => {
+                              if (record.activityDeleted || !record.activityId) {
+                                navigate('/volunteer/participation-history');
+                                return;
+                              }
+
+                              void prefetchActivityDetail(record.activityId);
+                              navigate(`/volunteer/activity/${record.activityId}`);
+                            })()
                           }
+                          onMouseEnter={() => {
+                            if (!record.activityDeleted && record.activityId) {
+                              void prefetchActivityDetail(record.activityId);
+                            }
+                          }}
                           type="button"
                         >
                           <div className="vol-profile-history-copy">

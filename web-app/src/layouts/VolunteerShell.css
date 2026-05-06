@@ -96,6 +96,14 @@
   font-weight: 800;
 }
 
+.vol-shell-profile-avatar-img {
+  width: 29px;
+  height: 29px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: #eef2f7;
+}
+
 .vol-shell-profile-chip strong {
   display: block;
   font-size: 0.72rem;
