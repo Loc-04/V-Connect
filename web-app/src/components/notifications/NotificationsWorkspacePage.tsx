@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../auth/useAuth';
 import { Button, Card } from '../../components/ui';
@@ -20,6 +21,7 @@ import {
   getNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  resolveNotificationPath,
   type NotificationEntry,
   type NotificationType,
 } from '../../lib/notifications';
@@ -198,6 +200,7 @@ function NotificationsCardBody({
 }
 
 export function NotificationsWorkspacePage({ workspace }: { workspace: NotificationWorkspace }) {
+  const navigate = useNavigate();
   const { profile, session } = useAuth();
   const userId = profile?.id ?? null;
   const accessToken = session?.access_token ?? null;
@@ -294,18 +297,25 @@ export function NotificationsWorkspacePage({ workspace }: { workspace: Notificat
   };
 
   const handleNotificationClick = async (notification: NotificationEntry) => {
-    if (!accessToken || notification.read) {
+    const targetPath = resolveNotificationPath(notification, workspace);
+
+    if (!accessToken) {
+      navigate(targetPath);
       return;
     }
 
-    try {
-      const updatedNotification = await markNotificationAsRead(accessToken, notification.id);
-      setNotifications((current) =>
-        current.map((item) => (item.id === updatedNotification.id ? updatedNotification : item))
-      );
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Failed to update notification status.');
+    if (!notification.read) {
+      try {
+        const updatedNotification = await markNotificationAsRead(accessToken, notification.id);
+        setNotifications((current) =>
+          current.map((item) => (item.id === updatedNotification.id ? updatedNotification : item))
+        );
+      } catch (actionError) {
+        setError(actionError instanceof Error ? actionError.message : 'Failed to update notification status.');
+      }
     }
+
+    navigate(targetPath);
   };
 
   const content = (

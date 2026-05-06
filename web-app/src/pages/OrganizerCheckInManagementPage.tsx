@@ -26,6 +26,20 @@ function normalizeActivityStatus(value: string | null | undefined) {
   return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_');
 }
 
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function normalizeContactValue(value: string | null | undefined, fallback: string) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length > 0 ? normalized : fallback;
+}
+
 function toDateKey(value: string | Date | null | undefined) {
   if (!value) {
     return '';
@@ -273,9 +287,11 @@ export function OrganizerCheckInManagementPage() {
       }
 
       const fullName = String(item.volunteer?.full_name ?? '').toLowerCase();
+      const email = String(item.volunteer?.email ?? '').toLowerCase();
       const phone = String(item.volunteer?.phone ?? '').toLowerCase();
       return (
         fullName.includes(normalizedSearch) ||
+        email.includes(normalizedSearch) ||
         phone.includes(normalizedSearch) ||
         item.id.toLowerCase().includes(normalizedSearch)
       );
@@ -566,16 +582,27 @@ export function OrganizerCheckInManagementPage() {
                 {filteredAttendees.map((attendee) => {
                   const status = normalizeParticipationStatus(attendee.status);
                   const volunteerName = attendee.volunteer?.full_name?.trim() || 'Volunteer';
-                  const volunteerMeta = attendee.volunteer?.phone?.trim() || attendee.id.slice(0, 8);
+                  const volunteerEmail = normalizeContactValue(attendee.volunteer?.email, 'No email provided');
+                  const volunteerPhone = normalizeContactValue(attendee.volunteer?.phone, 'No phone provided');
+                  const volunteerAvatarUrl = normalizeContactValue(attendee.volunteer?.avatar_url, '');
 
                   return (
                     <tr key={attendee.id}>
                       <td>
                         <div className="org-checkin-volunteer-cell">
-                          <span className="org-checkin-avatar">{volunteerName.charAt(0).toUpperCase()}</span>
-                          <div>
+                          {volunteerAvatarUrl ? (
+                            <img
+                              alt={volunteerName}
+                              className="org-checkin-avatar-image"
+                              src={volunteerAvatarUrl}
+                            />
+                          ) : (
+                            <span className="org-checkin-avatar">{getInitials(volunteerName) || 'V'}</span>
+                          )}
+                          <div className="org-checkin-volunteer-meta">
                             <strong>{volunteerName}</strong>
-                            <small>{volunteerMeta}</small>
+                            <small>Email: {volunteerEmail}</small>
+                            <small>Phone: {volunteerPhone}</small>
                           </div>
                         </div>
                       </td>

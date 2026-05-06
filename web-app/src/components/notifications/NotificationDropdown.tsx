@@ -6,7 +6,9 @@ import { useAuth } from '../../auth/useAuth';
 import {
   getNotifications,
   markNotificationAsRead,
+  resolveNotificationPath,
   type NotificationEntry,
+  type NotificationWorkspace,
 } from '../../lib/notifications';
 import { NotificationItem } from './NotificationItem';
 import './NotificationDropdown.css';
@@ -140,6 +142,10 @@ export function NotificationDropdown({
     return list.slice(0, MAX_VISIBLE_NOTIFICATIONS);
   }, [filter, notifications]);
   const hasVisibleNotifications = visibleNotifications.length > 0;
+  const workspace: NotificationWorkspace = useMemo(() => {
+    const role = String(profile?.role ?? '').trim().toLowerCase();
+    return role === 'organizer' ? 'organizer' : 'volunteer';
+  }, [profile?.role]);
 
   const navigateToNotifications = (options?: { requireNotifications?: boolean }) => {
     if (options?.requireNotifications && !hasVisibleNotifications) {
@@ -150,16 +156,27 @@ export function NotificationDropdown({
   };
 
   const handleSelectNotification = async (notification: NotificationEntry) => {
+    const targetPath = resolveNotificationPath(notification, workspace);
+
     if (!userId || !accessToken) {
+      setIsOpen(false);
+      navigate(targetPath);
       return;
     }
 
     if (!notification.read) {
-      const updatedNotification = await markNotificationAsRead(accessToken, notification.id);
-      setNotifications((current) =>
-        current.map((item) => (item.id === updatedNotification.id ? updatedNotification : item))
-      );
+      try {
+        const updatedNotification = await markNotificationAsRead(accessToken, notification.id);
+        setNotifications((current) =>
+          current.map((item) => (item.id === updatedNotification.id ? updatedNotification : item))
+        );
+      } catch (actionError) {
+        setError(actionError instanceof Error ? actionError.message : 'Failed to update notification status.');
+      }
     }
+
+    setIsOpen(false);
+    navigate(targetPath);
   };
 
   return (

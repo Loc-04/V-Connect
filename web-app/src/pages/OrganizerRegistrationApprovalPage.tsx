@@ -1,5 +1,6 @@
 import { CheckCircle2, Search, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '../auth/useAuth';
 import { Badge, Button, Card, Select, Table } from '../components/ui';
@@ -109,6 +110,7 @@ function canReviewRegistration(status: string) {
 
 export function OrganizerRegistrationApprovalPage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [selectedActivityId, setSelectedActivityId] = useState('');
@@ -143,8 +145,12 @@ export function OrganizerRegistrationApprovalPage() {
         limit: 120,
       });
       const activeRows = activityRows.filter((activity) => !isActivityExpired(activity));
+      const requestedActivityId = searchParams.get('activityId')?.trim() ?? '';
       setActivities(activeRows);
       setSelectedActivityId((current) => {
+        if (requestedActivityId && activeRows.some((activity) => activity.id === requestedActivityId)) {
+          return requestedActivityId;
+        }
         if (current && activeRows.some((activity) => activity.id === current)) {
           return current;
         }
@@ -155,7 +161,7 @@ export function OrganizerRegistrationApprovalPage() {
     } finally {
       setActivitiesLoading(false);
     }
-  }, [session?.access_token]);
+  }, [searchParams, session?.access_token]);
 
   useEffect(() => {
     void loadActiveActivities();
