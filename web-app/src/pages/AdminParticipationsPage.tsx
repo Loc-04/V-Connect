@@ -21,6 +21,7 @@ import type { ParticipationRecord } from '../types/participation';
 import './AdminParticipationsPage.css';
 
 const BASE_STATUS_OPTIONS = ['assigned', 'pending', 'approved', 'rejected', 'cancelled', 'checked_in', 'completed'];
+const PARTICIPATIONS_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 type CheckInResultTone = 'success' | 'error';
 
@@ -196,6 +197,8 @@ export function AdminParticipationsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [checkInCode, setCheckInCode] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PARTICIPATIONS_PAGE_SIZE_OPTIONS[0]);
 
   const loadData = useCallback(async () => {
     if (!accessToken) {
@@ -316,6 +319,24 @@ export function AdminParticipationsPage() {
       return matchesSearch && matchesStatus && matchesAttendance && matchesActivity && matchesOrganizer;
     });
   }, [activityFilter, attendanceFilter, organizerFilter, rows, searchTerm, statusFilter]);
+
+  const totalFilteredRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalFilteredRows / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safePage - 1) * pageSize;
+  const paginatedRows = filteredRows.slice(pageStartIndex, pageStartIndex + pageSize);
+  const showingFrom = totalFilteredRows === 0 ? 0 : pageStartIndex + 1;
+  const showingTo = totalFilteredRows === 0 ? 0 : Math.min(pageStartIndex + pageSize, totalFilteredRows);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, attendanceFilter, activityFilter, organizerFilter, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const hasActiveFilters =
     searchTerm.trim().length > 0 ||
@@ -577,10 +598,22 @@ export function AdminParticipationsPage() {
           <div>
             <h3>Participation records</h3>
             <p className="muted">
-              Showing {filteredRows.length} of {rows.length} records.
+              Showing {showingFrom}-{showingTo} of {totalFilteredRows} filtered records ({rows.length} total loaded).
             </p>
           </div>
-          <span className="admin-participations-limit-pill">Max 300 records</span>
+          <div className="admin-participations-table-head-actions">
+            <label className="admin-participations-page-size">
+              <span>Page size</span>
+              <Select aria-label="Select participations page size" onChange={(event) => setPageSize(Number(event.target.value))} value={String(pageSize)}>
+                {PARTICIPATIONS_PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={String(size)}>
+                    {size}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <span className="admin-participations-limit-pill">Max 300 records</span>
+          </div>
         </div>
 
         {message ? <p className="form-success">{message}</p> : null}
@@ -636,7 +669,7 @@ export function AdminParticipationsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredRows.length === 0 ? (
+              {totalFilteredRows === 0 ? (
                 <tr>
                   <td colSpan={7}>
                     <div className="admin-participations-state admin-participations-state--compact">
@@ -651,7 +684,7 @@ export function AdminParticipationsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row, rowIndex) => (
+                paginatedRows.map((row, rowIndex) => (
                   <tr
                     className="admin-participations-data-row"
                     key={row.id}
@@ -665,7 +698,7 @@ export function AdminParticipationsPage() {
                       }
                     }}
                   >
-                    <td>{rowIndex + 1}</td>
+                    <td>{pageStartIndex + rowIndex + 1}</td>
                     <td>
                       <div className="admin-participations-volunteer-cell">
                         {row.avatarUrl ? <img alt={row.volunteerName} src={row.avatarUrl} /> : <span>{getInitials(row.volunteerName) || 'V'}</span>}
@@ -704,6 +737,32 @@ export function AdminParticipationsPage() {
               )}
             </tbody>
           </Table>
+        ) : null}
+
+        {!isBlockingError && !loading && totalFilteredRows > 0 ? (
+          <div className="admin-participations-pagination">
+            <small>
+              Page {safePage} of {totalPages}
+            </small>
+            <div className="admin-participations-pagination-actions">
+              <Button
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                type="button"
+                variant="secondary"
+              >
+                Previous
+              </Button>
+              <Button
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                type="button"
+                variant="secondary"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         ) : null}
       </Card>
 

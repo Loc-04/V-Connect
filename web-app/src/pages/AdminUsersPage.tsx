@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BriefcaseBusiness,
   ChevronLeft,
@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
-import { apiRequest } from '../lib/api';
+import { EmptyLoadingErrorState } from '../components/feedback';
+import { ApiRequestError, apiRequest } from '../lib/api';
 import type { UserRecord } from '../types/domain';
 
 const roleOptions = ['admin', 'organizer', 'volunteer'];
@@ -37,7 +38,67 @@ interface AdminUserDeleteResponse {
   userId: string;
 }
 
+interface AdminUserCreateResponse {
+  user: UserRecord;
+  message?: string;
+  code?: string;
+  repaired?: boolean;
+}
+
+interface AddUserFormState {
+  fullName: string;
+  email: string;
+  role: string;
+  phone: string;
+  password: string;
+}
+
+interface AddUserFieldErrors {
+  fullName?: string;
+  email?: string;
+  role?: string;
+  password?: string;
+}
+
 type PageItem = number | 'ellipsis';
+
+function createInitialAddUserForm(): AddUserFormState {
+  return {
+    fullName: '',
+    email: '',
+    role: 'volunteer',
+    phone: '',
+    password: '',
+  };
+}
+
+function validateAddUserForm(form: AddUserFormState): AddUserFieldErrors {
+  const errors: AddUserFieldErrors = {};
+  const normalizedRole = form.role.trim().toLowerCase();
+
+  if (!form.fullName.trim()) {
+    errors.fullName = 'Full name is required.';
+  }
+
+  const email = form.email.trim().toLowerCase();
+  if (!email) {
+    errors.email = 'Email is required.';
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = 'Please provide a valid email address.';
+  }
+
+  if (!roleOptions.includes(normalizedRole)) {
+    errors.role = 'Please choose a valid role.';
+  }
+
+  if (!form.password) {
+    errors.password = 'Password is required.';
+  } else if (form.password.length < 8) {
+    errors.password = 'Password must be at least 8 characters.';
+  }
+
+  return errors;
+}
 
 function formatRelativeDate(date: string | null): string {
   if (!date) {
@@ -117,6 +178,45 @@ function buildPaginationItems(currentPage: number, totalPages: number): PageItem
   return items;
 }
 
+function getFriendlyAddUserErrorMessage(error: unknown): string {
+  const fallback = 'Failed to create user.';
+  if (error instanceof ApiRequestError) {
+    switch (error.code) {
+      case 'EMAIL_EXISTS_AUTH_AND_PROFILE':
+        return 'This email already belongs to an existing user account. If you cannot find it, clear the current search and filters.';
+      case 'EMAIL_EXISTS_AUTH_AND_ARCHIVED_PROFILE':
+        return 'This email belongs to an archived user profile. Restore that account instead of creating a duplicate.';
+      case 'PHONE_EXISTS_DURING_PROFILE_REPAIR':
+        return 'This email already exists in authentication records, but profile repair failed because the phone number is already used.';
+      case 'PHONE_EXISTS_PROFILE':
+        return 'Phone number already exists';
+      case 'AUTH_CREATE_FAILED':
+      case 'PROFILE_CREATE_FAILED':
+      case 'CREATE_USER_FAILED':
+        return 'Failed to create user. Please try again.';
+      default:
+        break;
+    }
+  }
+
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const normalized = error.message.trim().toLowerCase();
+  if (normalized.includes('email') && normalized.includes('exist')) {
+    return 'Email already exists';
+  }
+  if (normalized.includes('phone') && normalized.includes('exist')) {
+    return 'Phone number already exists';
+  }
+  if (normalized.includes('users_pkey') || normalized.includes('duplicate key') || normalized.includes('user already exists')) {
+    return 'User already exists';
+  }
+
+  return error.message || fallback;
+}
+
 export function AdminUsersPage() {
   const { session } = useAuth();
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -131,6 +231,12 @@ export function AdminUsersPage() {
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [addUserSubmitting, setAddUserSubmitting] = useState(false);
+  const [addUserSubmitError, setAddUserSubmitError] = useState<string | null>(null);
+  const [addUserForm, setAddUserForm] = useState<AddUserFormState>(() => createInitialAddUserForm());
+  const [addUserErrors, setAddUserErrors] = useState<AddUserFieldErrors>({});
 
   const loadUsers = useCallback(async () => {
     if (!session?.access_token) {
@@ -208,7 +314,9 @@ export function AdminUsersPage() {
         user.id.toLowerCase().includes(keyword) ||
         (user.full_name ?? '').toLowerCase().includes(keyword) ||
         (user.phone ?? '').toLowerCase().includes(keyword) ||
-        (user.email ?? '').toLowerCase().includes(keyword);
+        (user.email ?? '').toLowerCase().includes(keyword) ||
+        String(user.role ?? '').toLowerCase().includes(keyword) ||
+        String(user.status ?? '').toLowerCase().includes(keyword);
 
       const matchesRole = roleFilter === 'all' || String(user.role) === roleFilter;
       const matchesStatus = statusFilter === 'all' || String(user.status ?? 'active') === statusFilter;
@@ -391,6 +499,91 @@ export function AdminUsersPage() {
     })();
   };
 
+  const openAddUserModal = () => {
+    setNotice(null);
+    setError(null);
+    setAddUserSubmitError(null);
+    setAddUserErrors({});
+    setAddUserForm(createInitialAddUserForm());
+    setIsAddUserModalOpen(true);
+  };
+
+  const closeAddUserModal = () => {
+    if (addUserSubmitting) {
+      return;
+    }
+    setIsAddUserModalOpen(false);
+    setAddUserSubmitError(null);
+    setAddUserErrors({});
+    setAddUserForm(createInitialAddUserForm());
+  };
+
+  const handleAddUserFieldChange = (field: keyof AddUserFormState, value: string) => {
+    setAddUserForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+
+    setAddUserErrors((current) => {
+      if (!current[field as keyof AddUserFieldErrors]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[field as keyof AddUserFieldErrors];
+      return next;
+    });
+  };
+
+  const handleAddUserSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!session?.access_token) {
+      setAddUserSubmitError('No active session token.');
+      return;
+    }
+
+    const validationErrors = validateAddUserForm(addUserForm);
+    if (Object.keys(validationErrors).length > 0) {
+      setAddUserErrors(validationErrors);
+      return;
+    }
+
+    setAddUserSubmitting(true);
+    setAddUserSubmitError(null);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const payload = {
+        fullName: addUserForm.fullName.trim(),
+        email: addUserForm.email.trim().toLowerCase(),
+        role: addUserForm.role.trim().toLowerCase(),
+        phone: addUserForm.phone.trim(),
+        password: addUserForm.password,
+      };
+
+      const response = await apiRequest<AdminUserCreateResponse>('/admin/users', {
+        method: 'POST',
+        accessToken: session.access_token,
+        body: payload,
+      });
+
+      await loadUsers();
+      setNotice(response.message ?? `User "${payload.fullName}" created successfully.`);
+      setRoleFilter('all');
+      setStatusFilter('all');
+      setSearchTerm(payload.email);
+      setIsAddUserModalOpen(false);
+      setAddUserSubmitError(null);
+      setAddUserErrors({});
+      setAddUserForm(createInitialAddUserForm());
+    } catch (submitError) {
+      setAddUserSubmitError(getFriendlyAddUserErrorMessage(submitError));
+    } finally {
+      setAddUserSubmitting(false);
+    }
+  };
+
   return (
     <section className="admin-users-page">
       <p className="users-caption">Admin User Management Main Dashboard</p>
@@ -410,14 +603,8 @@ export function AdminUsersPage() {
               value={searchTerm}
             />
           </label>
-          <button
-            aria-label="Add user is not available yet"
-            className="primary-btn add-user-btn"
-            disabled
-            title="Creating users from admin panel requires backend support."
-            type="button"
-          >
-            + Add User (Soon)
+          <button className="primary-btn add-user-btn" onClick={openAddUserModal} type="button">
+            + Add User
           </button>
         </div>
       </div>
@@ -528,10 +715,26 @@ export function AdminUsersPage() {
           </div>
         </div>
 
-        {error && <p className="form-error">{error}</p>}
+        {notice && <p className="form-success">{notice}</p>}
+        {error && users.length > 0 ? <p className="form-error">{error}</p> : null}
 
         {loading ? (
-          <p className="muted">Loading users...</p>
+          <EmptyLoadingErrorState
+            description="Loading users and role data for administration."
+            state="loading"
+            title="Loading users"
+          />
+        ) : error && users.length === 0 ? (
+          <EmptyLoadingErrorState
+            action={
+              <button className="ghost-btn" onClick={() => void loadUsers()} type="button">
+                Retry
+              </button>
+            }
+            description={error}
+            state="error"
+            title="Unable to load users"
+          />
         ) : (
           <div className="table-wrap users-table-wrap">
             <table className="users-table">
@@ -683,7 +886,7 @@ export function AdminUsersPage() {
                 {filteredUsers.length === 0 && (
                   <tr>
                     <td colSpan={7}>
-                      <p className="muted">No users match the filter.</p>
+                      <p className="muted">No users match the current search/filter. Try clearing filters to locate an existing account.</p>
                     </td>
                   </tr>
                 )}
@@ -731,6 +934,106 @@ export function AdminUsersPage() {
           </div>
         )}
       </section>
+
+      {isAddUserModalOpen && (
+        <div className="admin-user-modal-backdrop" onClick={closeAddUserModal} role="presentation">
+          <section
+            aria-labelledby="admin-add-user-title"
+            aria-modal="true"
+            className="admin-user-modal card"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="admin-user-modal-head">
+              <div>
+                <h3 id="admin-add-user-title">Add User</h3>
+                <p>Create a new user account with role access.</p>
+              </div>
+              <button className="ghost-btn small" onClick={closeAddUserModal} type="button">
+                Close
+              </button>
+            </div>
+
+            <form className="admin-user-modal-form" onSubmit={(event) => void handleAddUserSubmit(event)}>
+              {addUserSubmitError && <p className="form-error">{addUserSubmitError}</p>}
+              <label>
+                Full Name
+                <input
+                  autoComplete="name"
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('fullName', event.target.value)}
+                  placeholder="Enter full name"
+                  value={addUserForm.fullName}
+                />
+                {addUserErrors.fullName && <small className="form-error">{addUserErrors.fullName}</small>}
+              </label>
+
+              <label>
+                Email
+                <input
+                  autoComplete="email"
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('email', event.target.value)}
+                  placeholder="name@example.com"
+                  type="email"
+                  value={addUserForm.email}
+                />
+                {addUserErrors.email && <small className="form-error">{addUserErrors.email}</small>}
+              </label>
+
+              <label>
+                Role
+                <select
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('role', event.target.value)}
+                  value={addUserForm.role}
+                >
+                  {roleOptions.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+                {addUserErrors.role && <small className="form-error">{addUserErrors.role}</small>}
+              </label>
+
+              <label>
+                Phone (Optional)
+                <input
+                  autoComplete="tel"
+                  className="text-input small"
+                  onChange={(event) => handleAddUserFieldChange('phone', event.target.value)}
+                  placeholder="Enter phone number"
+                  value={addUserForm.phone}
+                />
+              </label>
+
+              <label>
+                Temporary Password
+                <input
+                  autoComplete="new-password"
+                  className="text-input small"
+                  minLength={8}
+                  onChange={(event) => handleAddUserFieldChange('password', event.target.value)}
+                  placeholder="At least 8 characters"
+                  type="password"
+                  value={addUserForm.password}
+                />
+                {addUserErrors.password && <small className="form-error">{addUserErrors.password}</small>}
+              </label>
+
+              <div className="admin-user-modal-actions">
+                <button className="ghost-btn" disabled={addUserSubmitting} onClick={closeAddUserModal} type="button">
+                  Cancel
+                </button>
+                <button className="primary-btn" disabled={addUserSubmitting} type="submit">
+                  {addUserSubmitting ? 'Creating...' : 'Create User'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

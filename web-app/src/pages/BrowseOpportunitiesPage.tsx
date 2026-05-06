@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, FilterX, Heart, MapPin, Search } from 'lucide-react';
+import { CalendarDays, FilterX, MapPin, Search } from 'lucide-react';
 
 import { useAuth } from '../auth/useAuth';
 import { RegistrationAction } from '../components/activities/RegistrationAction';
@@ -8,7 +8,8 @@ import { Badge, Button, Card, Input } from '../components/ui';
 import { VolunteerShell } from '../layouts/VolunteerShell';
 import { formatActivityLocation } from '../lib/activityLocation';
 import { searchActivities } from '../lib/activities';
-import { cancelParticipation, listParticipations } from '../lib/participations';
+import { formatActivityCardDateLabel } from '../lib/dateTimeFormat';
+import { cancelParticipation, listParticipations, respondToAssignedParticipation } from '../lib/participations';
 import type { ActivityRecord, ActivityStatus } from '../types/activity';
 import type { ParticipationRecord } from '../types/participation';
 import './BrowseOpportunitiesPage.css';
@@ -19,7 +20,7 @@ interface OpportunityViewModel {
   id: string;
   category: string;
   categoryTone: CategoryTone;
-  isExpired: boolean;
+  isRegisterable: boolean;
   imageUrl: string;
   date: string;
   title: string;
@@ -51,20 +52,6 @@ function mapStatusToTone(status: string): CategoryTone {
   }
 }
 
-function formatDateLabel(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return 'Date TBD';
-  }
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 function getLocationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
@@ -78,15 +65,16 @@ function toOpportunity(activity: ActivityRecord): OpportunityViewModel {
   const baseStatus = String(activity.status ?? '').toLowerCase();
   const isExpired = baseStatus === 'published' && isActivityExpired(activity);
   const status = isExpired ? 'expired' : baseStatus;
+  const isRegisterable = status === 'published';
   const requiredSkills = Array.isArray(activity.required_skills) ? activity.required_skills : [];
 
   return {
     id: activity.id,
     category: status || 'opportunity',
     categoryTone: mapStatusToTone(status),
-    isExpired,
+    isRegisterable,
     imageUrl: String(activity.cover_image_url ?? '').trim(),
-    date: formatDateLabel(activity.start_time),
+    date: formatActivityCardDateLabel(activity.start_time, activity.end_time, { includeWeekday: true }),
     title: activity.title ?? 'Untitled activity',
     location: getLocationLabel(activity.location),
     tags: requiredSkills.slice(0, 3),
@@ -364,15 +352,6 @@ export function BrowseOpportunitiesPage() {
                   <Badge className="browse-category" tone={opportunity.categoryTone}>
                     {opportunity.category}
                   </Badge>
-                  <button
-                    aria-label="Save opportunity"
-                    className="browse-favorite-btn"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    type="button"
-                  >
-                    <Heart className="browse-icon-sm" />
-                  </button>
                 </div>
 
                 <div className="browse-card-body">
@@ -406,14 +385,42 @@ export function BrowseOpportunitiesPage() {
                     <RegistrationAction
                       accessToken={session?.access_token ?? null}
                       activityId={opportunity.id}
-                      canRegister={canApply && !opportunity.isExpired}
+                      canRegister={canApply && opportunity.isRegisterable}
                       className="browse-registration-action"
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
                       participationId={participationByActivityId[opportunity.id]?.participationId ?? null}
                       registerDisabledLabel={canApply ? 'Registration closed' : 'Volunteer only'}
+                      onAccept={async ({ participationId }) => {
+                        if (!session?.access_token) {
+                          throw new Error('No active session token.');
+                        }
+                        if (!participationId) {
+                          throw new Error('Missing participation id for assignment response.');
+                        }
+
+                        const result = await respondToAssignedParticipation(participationId, 'accept', session.access_token);
+                        setParticipationByActivityId((current) => ({
+                          ...current,
+                          [opportunity.id]: result.registration,
+                        }));
+                      }}
                       onCancel={async ({ activityId }) => {
                         if (!session?.access_token) {
                           throw new Error('No active session token.');
+                        }
+
+                        const currentParticipation = participationByActivityId[activityId];
+                        if (currentParticipation?.status?.toLowerCase() === 'assigned' && currentParticipation.participationId) {
+                          const result = await respondToAssignedParticipation(
+                            currentParticipation.participationId,
+                            'decline',
+                            session.access_token
+                          );
+                          setParticipationByActivityId((current) => ({
+                            ...current,
+                            [activityId]: result.registration,
+                          }));
+                          return;
                         }
 
                         const cancelledParticipation = await cancelParticipation(activityId, session.access_token);

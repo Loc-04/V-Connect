@@ -201,6 +201,49 @@
   padding: 0.32rem 0.62rem;
 }
 
+.admin-participations-table-head-actions {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.admin-participations-page-size {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 120px;
+}
+
+.admin-participations-page-size > span {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-participations-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  border-top: 1px solid #e8edf6;
+  padding-top: 0.7rem;
+}
+
+.admin-participations-pagination small {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.admin-participations-pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .admin-participations-table-wrap {
   border: 1px solid var(--border);
   border-radius: 14px;

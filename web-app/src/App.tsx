@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthProvider } from './auth/AuthContext';
-import { PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute } from './auth/RouteGuards';
+import { GuestOnlyRoute, PublicOnlyRoute, RequireAdminRoute, RequireRoleRoute } from './auth/RouteGuards';
 import { getRoleHomePath } from './auth/rolePaths';
 import { normalizeRole } from './auth/roleUtils';
 import { useAuth } from './auth/useAuth';
@@ -87,8 +87,22 @@ function App() {
         <Routes>
           <Route path="/" element={<RootRouteEntry />} />
           <Route path="/about" element={<GuestAboutPage />} />
-          <Route path="/guest/browse" element={<GuestBrowsePage />} />
-          <Route path="/guest/activity/:id" element={<GuestActivityDetailPage />} />
+          <Route
+            path="/guest/browse"
+            element={
+              <GuestOnlyRoute>
+                <GuestBrowsePage />
+              </GuestOnlyRoute>
+            }
+          />
+          <Route
+            path="/guest/activity/:id"
+            element={
+              <GuestOnlyRoute>
+                <GuestActivityDetailPage />
+              </GuestOnlyRoute>
+            }
+          />
           <Route
             path="/login"
             element={

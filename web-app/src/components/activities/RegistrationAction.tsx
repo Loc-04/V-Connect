@@ -19,6 +19,7 @@ interface RegistrationActionProps {
   className?: string;
   disabled?: boolean;
   onRegistered?: (participation: ParticipationRecord) => void;
+  onAccept?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onCancel?: (context: { activityId: string; participationId: string | null }) => Promise<void> | void;
   onNotice?: (type: NoticeType, message: string) => void;
   confirmCancelMessage?: string;
@@ -79,6 +80,7 @@ export function RegistrationAction({
   className = '',
   disabled = false,
   onRegistered,
+  onAccept,
   onCancel,
   onNotice,
   confirmCancelMessage = 'Cancel this registration request?',
@@ -86,10 +88,13 @@ export function RegistrationAction({
 }: RegistrationActionProps) {
   const status = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const [registering, setRegistering] = useState(false);
+  const [accepting, setAccepting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const cancelableStatuses = useMemo(() => new Set(['assigned', 'pending']), []);
 
   const isRegisterable = status === 'none';
+  const isAssigned = status === 'assigned';
+  const canAccept = mode === 'full' && isAssigned && typeof onAccept === 'function';
   const showCancelAction = mode === 'full' && cancelableStatuses.has(status);
   const canCancel = showCancelAction && typeof onCancel === 'function';
 
@@ -157,6 +162,29 @@ export function RegistrationAction({
     }
   };
 
+  const handleAccept = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    if (!canAccept || disabled || accepting) {
+      return;
+    }
+
+    if (!onAccept) {
+      notify('error', 'Accept assignment is not available yet.');
+      return;
+    }
+
+    setAccepting(true);
+    try {
+      await onAccept({ activityId, participationId });
+      notify('success', 'Assignment accepted.');
+    } catch (error) {
+      notify('error', error instanceof Error ? error.message : 'Failed to accept assignment.');
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   if (mode === 'badge') {
     return (
       <span className={`registration-action registration-action--badge ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
@@ -187,6 +215,16 @@ export function RegistrationAction({
       <Badge className="registration-action-badge" tone={getBadgeTone(status)}>
         {getStatusLabel(status)}
       </Badge>
+      {canAccept ? (
+        <Button
+          className="registration-action-btn"
+          disabled={disabled || accepting}
+          onClick={(event) => void handleAccept(event)}
+          type="button"
+        >
+          {accepting ? 'Accepting...' : 'Accept Assignment'}
+        </Button>
+      ) : null}
       {showCancelAction ? (
         <Button
           className="registration-action-btn registration-action-btn--secondary"
@@ -195,7 +233,7 @@ export function RegistrationAction({
           type="button"
           variant="secondary"
         >
-          {cancelling ? 'Cancelling...' : canCancel ? 'Cancel' : 'Cancel unavailable'}
+          {cancelling ? 'Cancelling...' : canCancel ? (isAssigned ? 'Decline' : 'Cancel') : 'Cancel unavailable'}
         </Button>
       ) : null}
     </span>
