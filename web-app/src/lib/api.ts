@@ -61,7 +61,6 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   const elapsedMs = performance.now() - startedAt;
   if (elapsedMs > 500) {
-    // eslint-disable-next-line no-console
     console.warn(`[api-slow] ${method} ${path} took ${Math.round(elapsedMs)}ms`);
   }
 

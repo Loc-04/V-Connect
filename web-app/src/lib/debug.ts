@@ -8,8 +8,6 @@ export function useRenderDebug(name: string, enabled = false) {
       return;
     }
     renderCountRef.current += 1;
-    // eslint-disable-next-line no-console
     console.debug(`[render-debug] ${name} rendered ${renderCountRef.current} times`);
   });
 }
-
