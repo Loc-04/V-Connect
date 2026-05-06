@@ -11,6 +11,12 @@ interface MeResponse {
   profile: UserRecord | null;
 }
 
+interface RegisterApiResponse {
+  success: boolean;
+  requiresEmailConfirmation?: boolean;
+  profile?: UserRecord | null;
+}
+
 interface ProfileSeed {
   role: 'volunteer' | 'organizer';
   fullName: string;
@@ -394,59 +400,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (input: RegisterInput): Promise<RegisterResult> => {
     setError(null);
-
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: input.email,
-      password: input.password,
-      options: {
-        data: {
-          role: input.role,
-          full_name: input.fullName,
-          phone: input.phone,
-        },
+    const response = await apiRequest<RegisterApiResponse>('/auth/register', {
+      method: 'POST',
+      body: {
+        email: input.email,
+        password: input.password,
+        confirmPassword: input.password,
+        fullName: input.fullName,
+        phone: input.phone,
+        role: input.role,
       },
     });
 
-    if (signUpError) {
-      throw signUpError;
+    if (!response.success) {
+      throw new Error('Registration failed. Please try again.');
     }
 
-    const identities = signUpData.user?.identities ?? [];
-    const isDuplicateEmailSignup =
-      !signUpData.session &&
-      signUpData.user &&
-      Array.isArray(identities) &&
-      identities.length === 0;
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email: input.email,
+      password: input.password,
+    });
 
-    if (isDuplicateEmailSignup) {
-      throw new Error('Email already registered. Please log in instead.');
-    }
-
-    const userId = signUpData.user?.id;
-    if (!userId) {
-      throw new Error('Registration succeeded but no user id was returned.');
-    }
-
-    if (signUpData.session) {
-      await apiRequest('/auth/register-profile', {
-        method: 'POST',
-        accessToken: signUpData.session.access_token,
-        body: {
-          role: input.role,
-          fullName: input.fullName,
-          phone: input.phone,
-        },
-      });
-
-      const nextProfile = await ensureProfile(signUpData.session.access_token, signUpData.session);
-      setSession(signUpData.session);
+    if (!signInError && data.session) {
+      const nextProfile = await ensureProfile(data.session.access_token, data.session);
+      setSession(data.session);
       setProfile(nextProfile);
       writeCachedProfile(nextProfile);
       setLoading(false);
       return { requiresEmailConfirmation: false, profile: nextProfile };
     }
 
-    return { requiresEmailConfirmation: true, profile: null };
+    if (signInError) {
+      throw new Error(`Account created, but automatic sign-in failed: ${signInError.message}`);
+    }
+
+    return {
+      requiresEmailConfirmation: response.requiresEmailConfirmation ?? false,
+      profile: response.profile ?? null,
+    };
   };
 
   const signOut = async (): Promise<void> => {
