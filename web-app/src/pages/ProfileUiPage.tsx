@@ -26,6 +26,7 @@ import {
   normalizeAvailableChoices,
   summarizeAvailableChoices,
 } from '../lib/availability';
+import { isValidVietnamPhone } from '../lib/registerValidation';
 import { listParticipations } from '../lib/participations';
 import { getProfileMe, patchProfileMe } from '../lib/profile';
 import type { UserRecord } from '../types/domain';
@@ -210,6 +211,10 @@ function toEditForm(profile: UserRecord | null): EditFormState {
     fullName: profile?.full_name ?? '',
     phone: profile?.phone ?? '',
   };
+}
+
+function normalizePhoneInput(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 10);
 }
 
 function buildProfileSummary(profile: UserRecord | null, volunteerProfile: VolunteerProfile | null): string {
@@ -438,13 +443,20 @@ export function ProfileUiPage() {
     setSaveNotice(null);
 
     try {
+      const phone = form.phone.trim();
+      if (!isValidVietnamPhone(phone)) {
+        setSaveError('Invalid phone number format');
+        setSaving(false);
+        return;
+      }
+
       const payload: {
         fullName: string;
         phone: string;
         avatarUrl?: string | null;
       } = {
         fullName: form.fullName.trim(),
-        phone: form.phone.trim(),
+        phone,
       };
       if (avatarUploadDataUrl) {
         payload.avatarUrl = avatarUploadDataUrl;
@@ -636,7 +648,9 @@ export function ProfileUiPage() {
                       </label>
                       <Input
                         id="editPhone"
-                        onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                        inputMode="numeric"
+                        maxLength={10}
+                        onChange={(event) => setForm((current) => ({ ...current, phone: normalizePhoneInput(event.target.value) }))}
                         required
                         value={form.phone}
                       />

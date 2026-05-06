@@ -49,7 +49,7 @@ function isValidFullName(fullName: string): boolean {
   return !/^([a-z])\1+$/.test(normalized);
 }
 
-function isValidVietnamPhone(phone: string): boolean {
+export function isValidVietnamPhone(phone: string): boolean {
   if (!/^\d{10}$/.test(phone)) {
     return false;
   }

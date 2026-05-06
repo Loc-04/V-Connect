@@ -166,6 +166,15 @@ function getActivityReferenceDate(activity: ActivityRecord) {
   return parseDate(activity.end_time) ?? parseDate(activity.start_time);
 }
 
+function getActivityNewestTimestamp(activity: ActivityRecord) {
+  return (
+    parseDate(activity.created_at)?.getTime() ??
+    parseDate(activity.updated_at)?.getTime() ??
+    parseDate(activity.start_time)?.getTime() ??
+    0
+  );
+}
+
 function matchesDateFilter(activity: ActivityRecord, filter: ActivityDateFilter) {
   if (filter === 'all') {
     return true;
@@ -337,17 +346,19 @@ export function AdminActivitiesPage() {
   const filteredActivities = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
 
-    return activities.filter((activity) => {
-      const status = deriveLifecycleActivityStatus(activity);
-      const organizer = organizerById.get(activity.organizer_id) ?? null;
-      const organizerName = String(organizer?.full_name ?? '').trim();
-      const organizerEmail = String(organizer?.email ?? '').trim();
-      const matchesSearch = !keyword || getFilterSearchText(activity, organizerName, organizerEmail).includes(keyword);
-      const matchesStatus = statusFilter === 'all' || status === statusFilter;
-      const matchesDate = matchesDateFilter(activity, dateFilter);
+    return activities
+      .filter((activity) => {
+        const status = deriveLifecycleActivityStatus(activity);
+        const organizer = organizerById.get(activity.organizer_id) ?? null;
+        const organizerName = String(organizer?.full_name ?? '').trim();
+        const organizerEmail = String(organizer?.email ?? '').trim();
+        const matchesSearch = !keyword || getFilterSearchText(activity, organizerName, organizerEmail).includes(keyword);
+        const matchesStatus = statusFilter === 'all' || status === statusFilter;
+        const matchesDate = matchesDateFilter(activity, dateFilter);
 
-      return matchesSearch && matchesStatus && matchesDate;
-    });
+        return matchesSearch && matchesStatus && matchesDate;
+      })
+      .sort((left, right) => getActivityNewestTimestamp(right) - getActivityNewestTimestamp(left));
   }, [activities, dateFilter, organizerById, searchTerm, statusFilter]);
   const totalPages = Math.max(1, Math.ceil(filteredActivities.length / ACTIVITIES_PAGE_SIZE));
   const paginatedActivities = useMemo(() => {
