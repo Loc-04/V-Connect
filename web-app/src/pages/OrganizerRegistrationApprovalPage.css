@@ -228,6 +228,12 @@
   gap: 0.42rem;
 }
 
+.org-approval-volunteer-cell > div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
 .org-approval-avatar,
 .org-approval-avatar-fallback {
   width: 30px;
@@ -255,8 +261,11 @@
 }
 
 .org-approval-volunteer-cell small {
+  display: block;
   color: #94a3b8;
   font-size: 0.64rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .org-approval-skill-list {

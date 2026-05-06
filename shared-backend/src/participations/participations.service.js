@@ -1,6 +1,42 @@
 import { supabaseAdmin } from '../database/supabase.js';
 import { computeDurationHours, mapParticipationStatus } from '../activities/activities.service.js';
 
+async function getAuthEmailByUserIdMap(userIds) {
+  const targetIds = Array.from(new Set((userIds ?? []).map((id) => String(id ?? '').trim()).filter(Boolean)));
+  const emailByUserId = new Map();
+
+  if (targetIds.length === 0) {
+    return emailByUserId;
+  }
+
+  const wanted = new Set(targetIds);
+  const perPage = 200;
+
+  for (let page = 1; page <= 50; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const users = Array.isArray(data?.users) ? data.users : [];
+    for (const user of users) {
+      const id = String(user?.id ?? '').trim();
+      if (!wanted.has(id)) {
+        continue;
+      }
+
+      const email = String(user?.email ?? '').trim();
+      emailByUserId.set(id, email || null);
+    }
+
+    if (users.length < perPage || emailByUserId.size === wanted.size) {
+      break;
+    }
+  }
+
+  return emailByUserId;
+}
+
 async function attachVolunteerSummaries(participations) {
   if (!Array.isArray(participations) || participations.length === 0) {
     return [];
@@ -28,10 +64,26 @@ async function attachVolunteerSummaries(participations) {
   }
 
   const byId = new Map((data ?? []).map((user) => [user.id, user]));
+  let authEmailByUserId = new Map();
+  try {
+    authEmailByUserId = await getAuthEmailByUserIdMap(volunteerIds);
+  } catch (authError) {
+    const message = authError instanceof Error ? authError.message : String(authError);
+    console.error(`Failed to load volunteer emails from auth: ${message}`);
+  }
 
   return participations.map((row) => ({
     ...row,
-    volunteer: byId.get(row.volunteer_id) ?? null,
+    volunteer: (() => {
+      const volunteer = byId.get(row.volunteer_id);
+      if (!volunteer) {
+        return null;
+      }
+      return {
+        ...volunteer,
+        email: authEmailByUserId.get(volunteer.id) ?? null,
+      };
+    })(),
   }));
 }
 
