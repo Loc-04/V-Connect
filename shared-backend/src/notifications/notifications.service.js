@@ -1,6 +1,217 @@
 import { notificationColumns } from '../config/constants.js';
 import { supabaseAdmin } from '../database/supabase.js';
 
+const reminderSource = 'activity-start-reminder';
+const reminderStatuses = ['assigned', 'pending', 'approved'];
+const reminderWindowMinutesDefault = 120;
+
+function isFiniteTimestamp(value) {
+  return Number.isFinite(value) && !Number.isNaN(value);
+}
+
+function formatReminderTimeLabel(isoString) {
+  const date = new Date(isoString);
+  if (!isFiniteTimestamp(date.getTime())) {
+    return 'thoi gian sap toi';
+  }
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+function buildReminderKey(activityId, startTime) {
+  return `${reminderSource}:${activityId}:${startTime}`;
+}
+
+async function listVolunteerReminderCandidates({ userId, windowStartIso, windowEndIso }) {
+  const { data: participations, error: participationsError } = await supabaseAdmin
+    .from('activity_participations')
+    .select('activity_id, status')
+    .eq('volunteer_id', userId)
+    .in('status', reminderStatuses)
+    .order('created_at', { ascending: false })
+    .limit(300);
+
+  if (participationsError) {
+    throw new Error(participationsError.message);
+  }
+
+  const activityIds = Array.from(
+    new Set(
+      (participations ?? [])
+        .map((row) => (typeof row.activity_id === 'string' ? row.activity_id : ''))
+        .filter((id) => id.length > 0)
+    )
+  );
+
+  if (activityIds.length === 0) {
+    return [];
+  }
+
+  const { data: activities, error: activitiesError } = await supabaseAdmin
+    .from('activities')
+    .select('id, title, start_time, status, deleted_at')
+    .in('id', activityIds)
+    .is('deleted_at', null)
+    .gte('start_time', windowStartIso)
+    .lte('start_time', windowEndIso)
+    .neq('status', 'cancelled')
+    .neq('status', 'completed');
+
+  if (activitiesError) {
+    throw new Error(activitiesError.message);
+  }
+
+  const activityById = new Map((activities ?? []).map((activity) => [activity.id, activity]));
+  return (participations ?? [])
+    .map((participation) => {
+      const activity = activityById.get(participation.activity_id);
+      if (!activity || !activity.start_time) {
+        return null;
+      }
+      return {
+        activityId: activity.id,
+        activityTitle: String(activity.title ?? '').trim() || 'Hoat dong',
+        startTime: activity.start_time,
+        participantStatus: String(participation.status ?? '').trim().toLowerCase() || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function listOrganizerReminderCandidates({ userId, windowStartIso, windowEndIso }) {
+  const { data, error } = await supabaseAdmin
+    .from('activities')
+    .select('id, title, start_time, status')
+    .eq('organizer_id', userId)
+    .is('deleted_at', null)
+    .gte('start_time', windowStartIso)
+    .lte('start_time', windowEndIso)
+    .neq('status', 'cancelled')
+    .neq('status', 'completed')
+    .limit(150);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? [])
+    .map((activity) => ({
+      activityId: activity.id,
+      activityTitle: String(activity.title ?? '').trim() || 'Hoat dong',
+      startTime: activity.start_time,
+      participantStatus: null,
+    }))
+    .filter((item) => typeof item.activityId === 'string' && item.activityId.length > 0 && Boolean(item.startTime));
+}
+
+async function listReminderKeysForUser({ userId, fromIso }) {
+  const { data, error } = await supabaseAdmin
+    .from('notifications')
+    .select('data')
+    .eq('user_id', userId)
+    .gte('created_at', fromIso)
+    .limit(600);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const keys = new Set();
+  for (const row of data ?? []) {
+    const payload = row?.data;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      continue;
+    }
+    const source = typeof payload.source === 'string' ? payload.source : '';
+    const reminderKey = typeof payload.reminderKey === 'string' ? payload.reminderKey : '';
+    if (source === reminderSource && reminderKey) {
+      keys.add(reminderKey);
+    }
+  }
+  return keys;
+}
+
+async function ensureUpcomingActivityReminders({
+  userId,
+  role,
+  windowMinutes = reminderWindowMinutesDefault,
+}) {
+  const normalizedRole = String(role ?? '').trim().toLowerCase();
+  if (!userId || (normalizedRole !== 'volunteer' && normalizedRole !== 'organizer')) {
+    return 0;
+  }
+
+  const now = new Date();
+  const nowTs = now.getTime();
+  if (!isFiniteTimestamp(nowTs)) {
+    return 0;
+  }
+
+  const safeWindowMinutes = Number.isFinite(windowMinutes)
+    ? Math.max(5, Math.min(Math.trunc(windowMinutes), 24 * 60))
+    : reminderWindowMinutesDefault;
+  const windowEnd = new Date(nowTs + safeWindowMinutes * 60 * 1000);
+  const windowStartIso = now.toISOString();
+  const windowEndIso = windowEnd.toISOString();
+  const dedupeFromIso = new Date(nowTs - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const candidates =
+    normalizedRole === 'volunteer'
+      ? await listVolunteerReminderCandidates({ userId, windowStartIso, windowEndIso })
+      : await listOrganizerReminderCandidates({ userId, windowStartIso, windowEndIso });
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  const existingKeys = await listReminderKeysForUser({ userId, fromIso: dedupeFromIso });
+  const uniqueByKey = new Map();
+  for (const candidate of candidates) {
+    const reminderKey = buildReminderKey(candidate.activityId, candidate.startTime);
+    if (existingKeys.has(reminderKey)) {
+      continue;
+    }
+    if (!uniqueByKey.has(reminderKey)) {
+      uniqueByKey.set(reminderKey, { ...candidate, reminderKey });
+    }
+  }
+
+  const newCandidates = [...uniqueByKey.values()];
+  if (newCandidates.length === 0) {
+    return 0;
+  }
+
+  const nowIso = new Date().toISOString();
+  const insertPayload = newCandidates.map((candidate) => ({
+    user_id: userId,
+    title: 'Nhac nho hoat dong sap bat dau',
+    message: `"${candidate.activityTitle}" se bat dau luc ${formatReminderTimeLabel(candidate.startTime)}.`,
+    type: 'opportunity',
+    data: {
+      activityId: candidate.activityId,
+      startTime: candidate.startTime,
+      source: reminderSource,
+      reminderKey: candidate.reminderKey,
+      status: candidate.participantStatus ?? 'upcoming',
+    },
+    created_at: nowIso,
+  }));
+
+  const { error: insertError } = await supabaseAdmin.from('notifications').insert(insertPayload);
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return insertPayload.length;
+}
+
 async function listNotifications({ userId, limit = 50, unreadOnly = false }) {
   let query = supabaseAdmin
     .from('notifications')
@@ -231,6 +442,7 @@ export {
   clearNotifications,
   createNotificationRecord,
   deleteNotificationRecord,
+  ensureUpcomingActivityReminders,
   getNotificationById,
   listNotifications,
   listNotificationsForAdmin,

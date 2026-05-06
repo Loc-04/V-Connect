@@ -4,6 +4,7 @@ import { normalizeNotificationPayload } from './notifications.validation.js';
 import {
   clearNotifications,
   createNotificationRecord,
+  ensureUpcomingActivityReminders,
   listNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
@@ -22,6 +23,16 @@ router.get('/notifications', requireAuth, async (req, res) => {
   const userId = role === 'admin' && requestedUserId ? requestedUserId : req.auth.user.id;
 
   try {
+    try {
+      await ensureUpcomingActivityReminders({
+        userId,
+        role,
+      });
+    } catch (reminderError) {
+      const message = reminderError instanceof Error ? reminderError.message : String(reminderError);
+      console.error(`Failed to sync upcoming activity reminders: ${message}`);
+    }
+
     const notifications = await listNotifications({
       userId,
       limit,

@@ -102,6 +102,14 @@
   font-weight: 800;
 }
 
+.activity-detail-org-avatar-img {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: #eef2f7;
+}
+
 .activity-detail-organizer-card p {
   margin: 0;
   font-size: 0.82rem;

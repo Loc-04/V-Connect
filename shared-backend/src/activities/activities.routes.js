@@ -20,6 +20,7 @@ import {
 } from './activities.service.js';
 
 const router = Router();
+const activeParticipantStatuses = ['assigned', 'pending', 'approved', 'checked_in'];
 
 const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 const timelineColumns = 'id, activity_id, title, description, timeline_choice, created_at';
@@ -1018,9 +1019,91 @@ router.get('/activities/:id/viewer', requireAuth, async (req, res) => {
     return;
   }
 
+  let organizer = null;
+  try {
+    const organizerById = await getOrganizerPublicProfilesByIds([activity.organizer_id]);
+    const organizerProfile = organizerById.get(activity.organizer_id) ?? null;
+    if (organizerProfile) {
+      organizer = {
+        id: organizerProfile.id,
+        fullName: String(organizerProfile.full_name ?? '').trim() || 'Community Organizer',
+        avatarUrl: typeof organizerProfile.avatar_url === 'string' ? organizerProfile.avatar_url : null,
+      };
+    }
+  } catch (organizerError) {
+    res.status(500).json({
+      message: organizerError instanceof Error ? organizerError.message : 'Failed to load organizer profile.',
+    });
+    return;
+  }
+
+  let currentParticipants = 0;
+  try {
+    const countsByActivityId = await getActiveParticipationCountsByActivityIds([activityId]);
+    currentParticipants = Number(countsByActivityId.get(activityId) ?? 0);
+  } catch (countError) {
+    res.status(500).json({
+      message: countError instanceof Error ? countError.message : 'Failed to load participants count.',
+    });
+    return;
+  }
+
+  const { data: participantRows, error: participantRowsError } = await supabaseAdmin
+    .from('activity_participations')
+    .select('volunteer_id, created_at')
+    .eq('activity_id', activityId)
+    .in('status', activeParticipantStatuses)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (participantRowsError) {
+    res.status(500).json({ message: participantRowsError.message });
+    return;
+  }
+
+  const volunteerIds = Array.from(
+    new Set(
+      (participantRows ?? [])
+        .map((row) => (typeof row.volunteer_id === 'string' ? row.volunteer_id : ''))
+        .filter((id) => id.length > 0)
+    )
+  ).slice(0, 4);
+
+  let participantPreview = [];
+  if (volunteerIds.length > 0) {
+    const { data: volunteerProfiles, error: volunteerProfilesError } = await supabaseAdmin
+      .from('users')
+      .select('id, full_name, avatar_url')
+      .in('id', volunteerIds);
+
+    if (volunteerProfilesError) {
+      res.status(500).json({ message: volunteerProfilesError.message });
+      return;
+    }
+
+    const volunteerById = new Map((volunteerProfiles ?? []).map((item) => [item.id, item]));
+    participantPreview = volunteerIds
+      .map((volunteerId) => {
+        const volunteer = volunteerById.get(volunteerId);
+        if (!volunteer) {
+          return null;
+        }
+
+        return {
+          id: volunteer.id,
+          fullName: String(volunteer.full_name ?? '').trim() || 'Volunteer',
+          avatarUrl: typeof volunteer.avatar_url === 'string' ? volunteer.avatar_url : null,
+        };
+      })
+      .filter(Boolean);
+  }
+
   res.json({
     activity: withResolvedActivityCoverImage(activity),
     participation,
+    organizer,
+    currentParticipants,
+    participantPreview,
   });
 });
 

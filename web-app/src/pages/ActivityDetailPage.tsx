@@ -17,7 +17,12 @@ import {
 } from '../lib/activityLocation';
 import { formatActivityCardDateLabel, formatDateAndTimeLabels, formatHumanDuration } from '../lib/dateTimeFormat';
 import { getGuestIntentParamName, readGuestIntent, type GuestProtectedAction } from '../lib/guestAuth';
-import { useActivityTimelineQuery, useActivityViewerContextQuery, useRegistrationMutations } from '../lib/queries';
+import {
+  useActivityTimelineQuery,
+  useActivityViewerContextQuery,
+  useRegistrationMutations,
+  type ActivityViewerPersonSummary,
+} from '../lib/queries';
 import type { ActivityRecord } from '../types/activity';
 import type { TimelineMilestone } from '../types/timeline';
 import './ActivityDetailPage.css';
@@ -27,6 +32,7 @@ interface ActivityDetailViewModel {
   id: string;
   title: string;
   organization: string;
+  organizationAvatarUrl: string | null;
   description: string;
   locationName: string;
   locationAddress: string;
@@ -43,14 +49,8 @@ interface ActivityDetailViewModel {
   heroImageUrl: string;
   locationCoordinates: ActivityCoordinates | null;
   mapUrl: string | null;
+  participantPreview: ActivityViewerPersonSummary[];
 }
-
-const PARTICIPANT_AVATARS = [
-  'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&cs=tinysrgb&w=150',
-  'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150',
-  'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150',
-  'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150',
-];
 
 function toStatus(value: string, endTime?: string | null): ViewStatus {
   const normalized = value.trim().toLowerCase();
@@ -81,7 +81,15 @@ function locationLabel(location: ActivityRecord['location']) {
   return formatActivityLocation(location);
 }
 
-function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
+function mapFromApi(
+  activity: ActivityRecord,
+  options: {
+    organizationName?: string | null;
+    organizationAvatarUrl?: string | null;
+    currentParticipants?: number | null;
+    participantPreview?: ActivityViewerPersonSummary[];
+  } = {}
+): ActivityDetailViewModel {
   const { dateLabel, timeLabel } = formatDateAndTimeLabels(activity.start_time, activity.end_time, {
     includeWeekday: true,
   });
@@ -93,7 +101,8 @@ function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
   return {
     id: activity.id,
     title: activity.title || 'Untitled Activity',
-    organization: 'Community Organizer',
+    organization: String(options.organizationName ?? '').trim() || 'Community Organizer',
+    organizationAvatarUrl: String(options.organizationAvatarUrl ?? '').trim() || null,
     description:
       activity.description?.trim() ||
       'Details for this activity are being updated by the organizer.',
@@ -106,7 +115,10 @@ function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
     timeLabel,
     durationLabel: formatHumanDuration(activity.start_time, activity.end_time),
     maxParticipants,
-    currentParticipants: null,
+    currentParticipants:
+      typeof options.currentParticipants === 'number' && Number.isFinite(options.currentParticipants)
+        ? Math.max(0, Math.trunc(options.currentParticipants))
+        : null,
     status: toStatus(String(activity.status ?? 'upcoming'), activity.end_time),
     level: 'Open to all levels',
     categories,
@@ -114,6 +126,7 @@ function mapFromApi(activity: ActivityRecord): ActivityDetailViewModel {
     heroImageUrl: String(activity.cover_image_url ?? '').trim(),
     locationCoordinates: getActivityCoordinates(activity.location),
     mapUrl: buildActivityMapUrl(activity.location),
+    participantPreview: Array.isArray(options.participantPreview) ? options.participantPreview : [],
   };
 }
 
@@ -183,16 +196,26 @@ export function ActivityDetailPage() {
   const timelineQuery = useActivityTimelineQuery(sessionToken, id ?? null);
   const { registerMutation, cancelMutation, respondMutation } = useRegistrationMutations(sessionToken, userId);
 
-  const resolvedActivity = useMemo(
-    () => (viewerContextQuery.data?.activity ? mapFromApi(viewerContextQuery.data.activity) : null),
-    [viewerContextQuery.data]
-  );
+  const resolvedActivity = useMemo(() => {
+    const viewerData = viewerContextQuery.data;
+    if (!viewerData?.activity) {
+      return null;
+    }
+
+    return mapFromApi(viewerData.activity, {
+      organizationName: viewerData.organizer?.fullName,
+      organizationAvatarUrl: viewerData.organizer?.avatarUrl,
+      currentParticipants: viewerData.currentParticipants,
+      participantPreview: viewerData.participantPreview,
+    });
+  }, [viewerContextQuery.data]);
   const resolvedParticipation = useMemo(() => {
     if (!id || !canRegister) {
       return null;
     }
     return viewerContextQuery.data?.participation ?? null;
   }, [canRegister, id, viewerContextQuery.data]);
+  const resolvedParticipationId = resolvedParticipation?.participationId ?? resolvedParticipation?.id ?? null;
   const resolvedTimelineMilestones: TimelineMilestone[] = timelineQuery.data?.milestones ?? [];
   const isLoading = Boolean(id && sessionToken && viewerContextQuery.isLoading);
   const hasLoadError = Boolean(viewerContextQuery.isError);
@@ -206,7 +229,10 @@ export function ActivityDetailPage() {
     viewerContextQuery.error instanceof Error ? viewerContextQuery.error.message : !sessionToken ? 'No active session token.' : null;
   const resolvedTimelineLoading = Boolean(isLoaded && timelineQuery.isLoading);
   const resolvedTimelineError = timelineQuery.error instanceof Error ? timelineQuery.error.message : null;
-  const participationStatusLoading = Boolean(canRegister && isLoaded && viewerContextQuery.isLoading);
+  const isRegistrationMutating = Boolean(
+    registerMutation.isPending || cancelMutation.isPending || respondMutation.isPending
+  );
+  const participationStatusLoading = Boolean(canRegister && isLoaded && (viewerContextQuery.isLoading || isRegistrationMutating));
 
   const handleRetryLoad = () => {
     setActionError(null);
@@ -439,9 +465,17 @@ export function ActivityDetailPage() {
                 <h1>{resolvedActivity.title}</h1>
 
                 <article className="activity-detail-organizer-card">
-                  <div className="activity-detail-org-avatar" aria-hidden="true">
-                    {resolvedActivity.organization.slice(0, 1).toUpperCase()}
-                  </div>
+                  {resolvedActivity.organizationAvatarUrl ? (
+                    <img
+                      alt={resolvedActivity.organization}
+                      className="activity-detail-org-avatar-img"
+                      src={resolvedActivity.organizationAvatarUrl}
+                    />
+                  ) : (
+                    <div className="activity-detail-org-avatar" aria-hidden="true">
+                      {resolvedActivity.organization.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <p>{resolvedActivity.organization}</p>
                     <small>Verified Organizer</small>
@@ -516,12 +550,20 @@ export function ActivityDetailPage() {
                       <Users className="activity-detail-side-icon" /> Current Participants
                     </small>
                     <div className="activity-detail-avatars">
-                      {PARTICIPANT_AVATARS.map((avatar) => (
-                        <img alt="" key={avatar} src={avatar} />
-                      ))}
-                      <span>
-                        +{resolvedActivity.currentParticipants === null ? '--' : Math.max(resolvedActivity.currentParticipants - 4, 0)}
-                      </span>
+                      {resolvedActivity.participantPreview.map((participant) =>
+                        participant.avatarUrl ? (
+                          <img alt={participant.fullName} key={participant.id} src={participant.avatarUrl} />
+                        ) : (
+                          <span key={participant.id} title={participant.fullName}>
+                            {participant.fullName.slice(0, 1).toUpperCase()}
+                          </span>
+                        )
+                      )}
+                      {resolvedActivity.currentParticipants === null ? (
+                        <span>--</span>
+                      ) : resolvedActivity.currentParticipants > resolvedActivity.participantPreview.length ? (
+                        <span>+{resolvedActivity.currentParticipants - resolvedActivity.participantPreview.length}</span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -538,8 +580,10 @@ export function ActivityDetailPage() {
                       activityId={resolvedActivity.id}
                       canRegister={canSubmitRegistration}
                       className="activity-detail-registration-action"
+                      disabled={isRegistrationMutating}
                       recommendationItemId={recommendationItemIdFromQuery}
                       currentStatus={resolvedParticipation?.status ?? 'none'}
+                      participationId={resolvedParticipationId}
                       statusLoading={participationStatusLoading}
                       confirmCancelMessage={
                         resolvedParticipation?.status?.toLowerCase() === 'assigned'
@@ -547,21 +591,26 @@ export function ActivityDetailPage() {
                           : 'Cancel this registration for the activity?'
                       }
                       registerDisabledLabel={canRegister ? 'Registration closed' : 'Volunteer only'}
-                      onAccept={async ({ participationId }) => {
-                        if (!participationId) {
-                          throw new Error('Missing participation id for assignment response.');
+                      onAccept={async ({ activityId, participationId }) => {
+                        const targetParticipationId = participationId ?? resolvedParticipationId;
+                        if (!targetParticipationId) {
+                          await viewerContextQuery.refetch();
+                          throw new Error('Unable to process assignment right now. Please refresh and try again.');
                         }
 
                         await respondMutation.mutateAsync({
-                          participationId,
+                          participationId: targetParticipationId,
                           decision: 'accept',
+                          activityId,
                         });
                       }}
-                      onCancel={async ({ activityId }) => {
-                        if (resolvedParticipation?.status?.toLowerCase() === 'assigned' && resolvedParticipation.participationId) {
+                      onCancel={async ({ activityId, participationId }) => {
+                        const targetParticipationId = participationId ?? resolvedParticipationId;
+                        if (resolvedParticipation?.status?.toLowerCase() === 'assigned' && targetParticipationId) {
                           await respondMutation.mutateAsync({
-                            participationId: resolvedParticipation.participationId,
+                            participationId: targetParticipationId,
                             decision: 'decline',
+                            activityId,
                           });
                           return;
                         }

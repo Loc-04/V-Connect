@@ -100,6 +100,7 @@ export function RegistrationAction({
   const [accepting, setAccepting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const cancelableStatuses = useMemo(() => new Set(['assigned', 'pending']), []);
+  const hasInFlightAction = registering || accepting || cancelling;
 
   const isRegisterable = status === 'none';
   const isAssigned = status === 'assigned';
@@ -120,7 +121,7 @@ export function RegistrationAction({
   const handleRegister = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (!canRegister || disabled || registering) {
+    if (!canRegister || disabled || hasInFlightAction) {
       return;
     }
 
@@ -155,7 +156,7 @@ export function RegistrationAction({
   const handleCancel = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (!showCancelAction || disabled || cancelling) {
+    if (!showCancelAction || disabled || hasInFlightAction) {
       return;
     }
 
@@ -183,7 +184,7 @@ export function RegistrationAction({
   const handleAccept = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    if (!canAccept || disabled || accepting) {
+    if (!canAccept || disabled || hasInFlightAction) {
       return;
     }
 
@@ -238,7 +239,7 @@ export function RegistrationAction({
       <span className={`registration-action registration-action--full ${className}`.trim()} onClick={stopEventBubble} onKeyDown={stopEventBubble}>
         <Button
           className="registration-action-btn"
-          disabled={disabled || registering}
+          disabled={disabled || hasInFlightAction}
           onClick={(event) => void handleRegister(event)}
           type="button"
         >
@@ -256,7 +257,7 @@ export function RegistrationAction({
       {canAccept ? (
         <Button
           className="registration-action-btn"
-          disabled={disabled || accepting}
+          disabled={disabled || hasInFlightAction}
           onClick={(event) => void handleAccept(event)}
           type="button"
         >
@@ -266,7 +267,7 @@ export function RegistrationAction({
       {showCancelAction ? (
         <Button
           className="registration-action-btn registration-action-btn--secondary"
-          disabled={disabled || cancelling || !canCancel}
+          disabled={disabled || hasInFlightAction || !canCancel}
           onClick={(event) => void handleCancel(event)}
           type="button"
           variant="secondary"

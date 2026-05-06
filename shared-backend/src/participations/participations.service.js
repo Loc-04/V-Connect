@@ -108,12 +108,14 @@ async function attachActivitySummaries(participations) {
       organization: 'Organizer unavailable',
       date: row.created_at ?? null,
       hours: null,
+      activityDeleted: true,
+      activityDeletedAt: null,
     }));
   }
 
   const { data: activities, error: activitiesError } = await supabaseAdmin
     .from('activities')
-    .select('id, title, start_time, end_time, organizer_id')
+    .select('id, title, start_time, end_time, organizer_id, deleted_at')
     .in('id', activityIds);
 
   if (activitiesError) {
@@ -146,14 +148,17 @@ async function attachActivitySummaries(participations) {
   return participations.map((row) => {
     const activity = activityById.get(row.activity_id);
     const organizer = activity ? organizerById.get(activity.organizer_id) : null;
+    const activityDeleted = !activity || Boolean(activity.deleted_at);
 
     return {
       ...row,
-      activityId: activity?.id ?? row.activity_id ?? null,
+      activityId: activityDeleted ? null : (activity?.id ?? row.activity_id ?? null),
       activityName: activity?.title ?? 'Removed Activity',
       organization: organizer?.full_name ?? 'Organizer unavailable',
       date: activity?.start_time ?? row.created_at ?? null,
       hours: computeDurationHours(activity?.start_time, activity?.end_time),
+      activityDeleted,
+      activityDeletedAt: activity?.deleted_at ?? null,
     };
   });
 }

@@ -27,6 +27,8 @@ interface OpportunityViewModel {
   spotsLeft: number;
 }
 
+const EMPTY_ACTIVITIES: ActivityRecord[] = [];
+
 const statusFilters: Array<{ label: string; value: ActivityStatus | 'all' }> = [
   { label: 'Published', value: 'published' },
   { label: 'All', value: 'all' },
@@ -106,7 +108,7 @@ export function BrowseOpportunitiesPage() {
   });
   const participationByActivityQuery = useParticipationByActivityQuery(accessToken, userId, canApply);
   const { registerMutation, cancelMutation, respondMutation } = useRegistrationMutations(accessToken, userId);
-  const activities: ActivityRecord[] = activitiesQuery.data ?? [];
+  const activities: ActivityRecord[] = activitiesQuery.data ?? EMPTY_ACTIVITIES;
   const loading = activitiesQuery.isLoading || participationByActivityQuery.isLoading;
   const error = activitiesQuery.error instanceof Error
     ? activitiesQuery.error.message
@@ -333,21 +335,29 @@ export function BrowseOpportunitiesPage() {
                       canRegister={canApply && opportunity.isRegisterable}
                       className="browse-registration-action"
                       currentStatus={participationByActivityId[opportunity.id]?.status ?? 'none'}
-                      statusLoading={canApply && participationByActivityQuery.isLoading}
+                      statusLoading={
+                        canApply &&
+                        (participationByActivityQuery.isLoading ||
+                          registerMutation.isPending ||
+                          cancelMutation.isPending ||
+                          respondMutation.isPending)
+                      }
+                      disabled={registerMutation.isPending || cancelMutation.isPending || respondMutation.isPending}
                       participationId={participationByActivityId[opportunity.id]?.participationId ?? null}
                       registerDisabledLabel={canApply ? 'Registration closed' : 'Volunteer only'}
                       onRegister={async ({ activityId, recommendationItemId }) => {
                         const result = await registerMutation.mutateAsync({ activityId, recommendationItemId });
                         return result.participation;
                       }}
-                      onAccept={async ({ participationId }) => {
+                      onAccept={async ({ activityId, participationId }) => {
                         if (!participationId) {
-                          throw new Error('Missing participation id for assignment response.');
+                          throw new Error('Unable to process assignment right now. Please refresh and try again.');
                         }
 
                         await respondMutation.mutateAsync({
                           participationId,
                           decision: 'accept',
+                          activityId,
                         });
                       }}
                       onCancel={async ({ activityId }) => {
@@ -356,6 +366,7 @@ export function BrowseOpportunitiesPage() {
                           await respondMutation.mutateAsync({
                             participationId: currentParticipation.participationId,
                             decision: 'decline',
+                            activityId,
                           });
                           return;
                         }

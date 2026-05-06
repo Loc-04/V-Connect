@@ -20,7 +20,110 @@ const STATUS_TABS: Array<{ label: string; value: StatusFilter }> = [
   { label: 'Cancelled', value: 'cancelled' },
 ];
 
-const PAGE_SIZE = 4;
+const PAGE_SIZE = 6;
+const EMPTY_PARTICIPATIONS: ParticipationRecord[] = [];
+const UPCOMING_LIKE_STATUSES = new Set(['assigned', 'pending', 'approved', 'upcoming']);
+
+function toTimestamp(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function statusPriorityForAll(status: string): number {
+  if (status === 'assigned') return 0;
+  if (status === 'pending') return 1;
+  if (status === 'approved') return 2;
+  if (status === 'upcoming') return 3;
+  if (status === 'checked_in') return 4;
+  if (status === 'completed') return 5;
+  if (status === 'expired') return 6;
+  if (status === 'rejected') return 7;
+  if (status === 'cancelled') return 8;
+  return 9;
+}
+
+function compareByDateAsc(left: ParticipationRecord, right: ParticipationRecord): number {
+  const leftTs = toTimestamp(left.date);
+  const rightTs = toTimestamp(right.date);
+
+  if (leftTs === null && rightTs === null) {
+    return 0;
+  }
+  if (leftTs === null) {
+    return 1;
+  }
+  if (rightTs === null) {
+    return -1;
+  }
+
+  return leftTs - rightTs;
+}
+
+function compareByDateDesc(left: ParticipationRecord, right: ParticipationRecord): number {
+  return compareByDateAsc(right, left);
+}
+
+function compareParticipationRecords(left: ParticipationRecord, right: ParticipationRecord, filter: StatusFilter): number {
+  if (filter === 'all') {
+    const byDate = compareByDateDesc(left, right);
+    if (byDate !== 0) {
+      return byDate;
+    }
+  } else if (filter === 'upcoming') {
+    const byDate = compareByDateAsc(left, right);
+    if (byDate !== 0) {
+      return byDate;
+    }
+  } else if (filter === 'completed' || filter === 'expired' || filter === 'cancelled') {
+    const byDate = compareByDateDesc(left, right);
+    if (byDate !== 0) {
+      return byDate;
+    }
+  } else {
+    const leftStatus = normalizeStatus(left.status);
+    const rightStatus = normalizeStatus(right.status);
+    const statusDiff = statusPriorityForAll(leftStatus) - statusPriorityForAll(rightStatus);
+    if (statusDiff !== 0) {
+      return statusDiff;
+    }
+
+    const byDate = UPCOMING_LIKE_STATUSES.has(leftStatus)
+      ? compareByDateAsc(left, right)
+      : compareByDateDesc(left, right);
+    if (byDate !== 0) {
+      return byDate;
+    }
+  }
+
+  const byName = left.activityName.localeCompare(right.activityName);
+  if (byName !== 0) {
+    return byName;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function isUpcomingEligibleRecord(record: ParticipationRecord): boolean {
+  const status = normalizeStatus(record.status);
+  if (!UPCOMING_LIKE_STATUSES.has(status)) {
+    return false;
+  }
+
+  const startTimestamp = toTimestamp(record.date);
+  if (startTimestamp === null) {
+    return false;
+  }
+
+  return startTimestamp > Date.now();
+}
 
 function formatDateLabel(value: string | null) {
   if (!value) {
@@ -54,7 +157,7 @@ export function ParticipationHistoryPage() {
   const participationsQuery = useParticipationMineQuery(accessToken, userId, { limit: 250 });
   const prefetchActivityDetail = usePrefetchActivityDetail(accessToken, userId);
   const loading = participationsQuery.isLoading;
-  const records: ParticipationRecord[] = participationsQuery.data ?? [];
+  const records: ParticipationRecord[] = participationsQuery.data ?? EMPTY_PARTICIPATIONS;
   const error =
     participationsQuery.error instanceof Error
       ? participationsQuery.error.message
@@ -78,8 +181,13 @@ export function ParticipationHistoryPage() {
   const filteredRecords = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return records.filter((record) => {
-      const matchStatus = statusFilter === 'all' || record.status === statusFilter;
+    const filtered = records.filter((record) => {
+      const matchStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'upcoming'
+            ? isUpcomingEligibleRecord(record)
+            : normalizeStatus(record.status) === normalizeStatus(statusFilter);
       if (!matchStatus) {
         return false;
       }
@@ -93,6 +201,8 @@ export function ParticipationHistoryPage() {
         record.organization.toLowerCase().includes(normalizedQuery)
       );
     });
+
+    return [...filtered].sort((left, right) => compareParticipationRecords(left, right, statusFilter));
   }, [query, records, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));

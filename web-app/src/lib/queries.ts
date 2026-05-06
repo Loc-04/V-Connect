@@ -27,12 +27,29 @@ export interface BrowseActivitiesParams {
 interface ActivityViewerContextResponse {
   activity: ActivityRecord;
   participation: ParticipationRecord | null;
+  organizer?: ActivityViewerPersonSummary | null;
+  currentParticipants?: number | null;
+  participantPreview?: ActivityViewerPersonSummary[] | null;
+}
+
+export interface ActivityViewerPersonSummary {
+  id: string;
+  fullName: string;
+  avatarUrl: string | null;
+}
+
+export interface ActivityViewerContext {
+  activity: ActivityRecord;
+  participation: ParticipationRecord | null;
+  organizer: ActivityViewerPersonSummary | null;
+  currentParticipants: number | null;
+  participantPreview: ActivityViewerPersonSummary[];
 }
 
 async function fetchActivityViewerContext(
   accessToken: string,
   activityId: string
-): Promise<{ activity: ActivityRecord; participation: ParticipationRecord | null }> {
+): Promise<ActivityViewerContext> {
   try {
     const response = await apiRequest<ActivityViewerContextResponse>(`/activities/${activityId}/viewer`, {
       accessToken,
@@ -41,6 +58,12 @@ async function fetchActivityViewerContext(
     return {
       activity: response.activity,
       participation: response.participation ? normalizeParticipationRecord(response.participation) : null,
+      organizer: response.organizer ?? null,
+      currentParticipants:
+        typeof response.currentParticipants === 'number' && Number.isFinite(response.currentParticipants)
+          ? Math.max(0, Math.trunc(response.currentParticipants))
+          : null,
+      participantPreview: Array.isArray(response.participantPreview) ? response.participantPreview : [],
     };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 403) {
@@ -58,6 +81,9 @@ async function fetchActivityViewerContext(
     return {
       activity,
       participation: rows[0] ?? null,
+      organizer: null,
+      currentParticipants: null,
+      participantPreview: [],
     };
   }
 }
@@ -181,7 +207,7 @@ export function useActivityViewerContextQuery(
   accessToken: string | null | undefined,
   activityId: string | null | undefined
 ) {
-  return useQuery<{ activity: ActivityRecord; participation: ParticipationRecord | null }>({
+  return useQuery<ActivityViewerContext>({
     queryKey: ['activity', 'viewer', activityId ?? ''],
     queryFn: async () => {
       if (!accessToken) {
@@ -193,7 +219,7 @@ export function useActivityViewerContextQuery(
       return fetchActivityViewerContext(accessToken, activityId);
     },
     enabled: Boolean(accessToken && activityId),
-    placeholderData: (previous: { activity: ActivityRecord; participation: ParticipationRecord | null } | undefined) =>
+    placeholderData: (previous: ActivityViewerContext | undefined) =>
       previous,
   });
 }
@@ -266,27 +292,43 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
   type CacheContext = {
     previousSingle: ParticipationRecord | null;
     previousMap: Record<string, ParticipationRecord> | null;
+    previousViewer: ActivityViewerContext | undefined;
+  };
+
+  const patchViewerParticipationCache = (activityId: string, participation: ParticipationRecord | null) => {
+    queryClient.setQueryData<ActivityViewerContext>(
+      ['activity', 'viewer', activityId],
+      (current: ActivityViewerContext | undefined) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          participation,
+        };
+      }
+    );
   };
 
   const patchParticipationCaches = (activityId: string, participation: ParticipationRecord | null) => {
-    if (!userId) {
-      return;
+    patchViewerParticipationCache(activityId, participation);
+
+    if (userId) {
+      queryClient.setQueryData<Record<string, ParticipationRecord>>(
+        queryKeys.participation.mine(userId),
+        (current: Record<string, ParticipationRecord> | undefined) => {
+          const next = { ...(current ?? {}) };
+          if (participation) {
+            next[activityId] = participation;
+          } else {
+            delete next[activityId];
+          }
+          return next;
+        }
+      );
+
+      queryClient.setQueryData(queryKeys.participation.mineByActivity(userId, activityId), participation);
     }
-
-    queryClient.setQueryData<Record<string, ParticipationRecord>>(
-      queryKeys.participation.mine(userId),
-      (current: Record<string, ParticipationRecord> | undefined) => {
-      const next = { ...(current ?? {}) };
-      if (participation) {
-        next[activityId] = participation;
-      } else {
-        delete next[activityId];
-      }
-      return next;
-      }
-    );
-
-    queryClient.setQueryData(queryKeys.participation.mineByActivity(userId, activityId), participation);
   };
 
   const registerMutation = useMutation<
@@ -303,7 +345,7 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
     },
     onMutate: async ({ activityId }) => {
       if (!userId) {
-        return { previousSingle: null, previousMap: null } satisfies CacheContext;
+        return { previousSingle: null, previousMap: null, previousViewer: undefined } satisfies CacheContext;
       }
 
       await Promise.all([
@@ -316,6 +358,11 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
       ) ?? null;
       const previousMap =
         queryClient.getQueryData<Record<string, ParticipationRecord>>(queryKeys.participation.mine(userId)) ?? null;
+      const previousViewer = queryClient.getQueryData<ActivityViewerContext>([
+        'activity',
+        'viewer',
+        activityId,
+      ]);
 
       const optimistic = normalizeParticipationRecord({
         id: previousSingle?.id ?? previousSingle?.participationId ?? `optimistic-${activityId}`,
@@ -329,9 +376,10 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
       } as ParticipationRecord);
 
       patchParticipationCaches(activityId, optimistic);
-      return { previousSingle, previousMap };
+      return { previousSingle, previousMap, previousViewer };
     },
     onError: (_error, variables, context) => {
+      queryClient.setQueryData(['activity', 'viewer', variables.activityId], context?.previousViewer);
       if (!userId) {
         return;
       }
@@ -343,6 +391,7 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
       emitParticipationSync(variables.activityId);
     },
     onSettled: (_result, _error, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['activity', 'viewer', variables.activityId] });
       if (!userId) {
         return;
       }
@@ -365,7 +414,7 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
     },
     onMutate: async ({ activityId }) => {
       if (!userId) {
-        return { previousSingle: null, previousMap: null } satisfies CacheContext;
+        return { previousSingle: null, previousMap: null, previousViewer: undefined } satisfies CacheContext;
       }
       await Promise.all([
         queryClient.cancelQueries({ queryKey: queryKeys.participation.mineByActivity(userId, activityId) }),
@@ -377,6 +426,11 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
       ) ?? null;
       const previousMap =
         queryClient.getQueryData<Record<string, ParticipationRecord>>(queryKeys.participation.mine(userId)) ?? null;
+      const previousViewer = queryClient.getQueryData<ActivityViewerContext>([
+        'activity',
+        'viewer',
+        activityId,
+      ]);
 
       patchParticipationCaches(
         activityId,
@@ -388,9 +442,10 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
           : null
       );
 
-      return { previousSingle, previousMap };
+      return { previousSingle, previousMap, previousViewer };
     },
     onError: (_error, variables, context) => {
+      queryClient.setQueryData(['activity', 'viewer', variables.activityId], context?.previousViewer);
       if (!userId) {
         return;
       }
@@ -402,6 +457,7 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
       emitParticipationSync(variables.activityId);
     },
     onSettled: (_result, _error, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['activity', 'viewer', variables.activityId] });
       if (!userId) {
         return;
       }
@@ -413,13 +469,86 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
   const respondMutation = useMutation<
     { registration: ParticipationRecord; message?: string },
     Error,
-    { participationId: string; decision: 'accept' | 'decline' }
+    { participationId: string; decision: 'accept' | 'decline'; activityId?: string | null },
+    CacheContext & { activityId: string | null }
   >({
-    mutationFn: async ({ participationId, decision }: { participationId: string; decision: 'accept' | 'decline' }) => {
+    mutationFn: async ({
+      participationId,
+      decision,
+    }: {
+      participationId: string;
+      decision: 'accept' | 'decline';
+      activityId?: string | null;
+    }) => {
       if (!accessToken) {
         throw new Error('No active session token.');
       }
       return respondToAssignedParticipation(participationId, decision, accessToken);
+    },
+    onMutate: async ({ participationId, decision, activityId: hintedActivityId }) => {
+      let activityId = String(hintedActivityId ?? '').trim() || null;
+      let previousSingle: ParticipationRecord | null = null;
+      let previousMap: Record<string, ParticipationRecord> | null = null;
+      let previousViewer:
+        | ActivityViewerContext
+        | undefined;
+
+      if (userId) {
+        previousMap = queryClient.getQueryData<Record<string, ParticipationRecord>>(queryKeys.participation.mine(userId)) ?? null;
+        if (!activityId && previousMap) {
+          const matched = Object.values(previousMap).find((item) => {
+            const existingParticipationId = String(item.participationId ?? item.id ?? '').trim();
+            return existingParticipationId.length > 0 && existingParticipationId === participationId;
+          });
+          activityId = matched?.activityId ?? matched?.activity_id ?? null;
+        }
+      }
+
+      if (activityId && userId) {
+        await Promise.all([
+          queryClient.cancelQueries({ queryKey: queryKeys.participation.mineByActivity(userId, activityId) }),
+          queryClient.cancelQueries({ queryKey: queryKeys.participation.mine(userId) }),
+          queryClient.cancelQueries({ queryKey: ['activity', 'viewer', activityId] }),
+        ]);
+        previousSingle =
+          queryClient.getQueryData<ParticipationRecord | null>(queryKeys.participation.mineByActivity(userId, activityId)) ?? null;
+      } else if (activityId) {
+        await queryClient.cancelQueries({ queryKey: ['activity', 'viewer', activityId] });
+      }
+
+      if (activityId) {
+        previousViewer = queryClient.getQueryData<ActivityViewerContext>([
+          'activity',
+          'viewer',
+          activityId,
+        ]);
+      }
+
+      if (activityId) {
+        const current = previousSingle ?? previousViewer?.participation ?? null;
+        if (current) {
+          const optimisticStatus = decision === 'accept' ? 'approved' : 'cancelled';
+          patchParticipationCaches(
+            activityId,
+            normalizeParticipationRecord({
+              ...current,
+              status: optimisticStatus,
+            } as ParticipationRecord)
+          );
+        }
+      }
+
+      return { previousSingle, previousMap, previousViewer, activityId };
+    },
+    onError: (_error, _variables, context) => {
+      const activityId = context?.activityId ?? null;
+      if (userId && activityId) {
+        queryClient.setQueryData(queryKeys.participation.mineByActivity(userId, activityId), context?.previousSingle ?? null);
+        queryClient.setQueryData(queryKeys.participation.mine(userId), context?.previousMap ?? {});
+      }
+      if (activityId) {
+        queryClient.setQueryData(['activity', 'viewer', activityId], context?.previousViewer);
+      }
     },
     onSuccess: (result) => {
       const updated = result.registration;
@@ -429,6 +558,17 @@ export function useRegistrationMutations(accessToken: string | null | undefined,
       }
       patchParticipationCaches(activityId, updated);
       emitParticipationSync(activityId);
+    },
+    onSettled: (_result, _error, variables, context) => {
+      const activityId = String(variables.activityId ?? context?.activityId ?? '').trim();
+      if (!activityId) {
+        return;
+      }
+      if (userId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.participation.mineByActivity(userId, activityId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.participation.mine(userId) });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['activity', 'viewer', activityId] });
     },
   });
 

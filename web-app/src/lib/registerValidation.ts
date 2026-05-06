@@ -25,7 +25,15 @@ export const REGISTER_MESSAGES = {
 };
 
 function sanitizeInput(value: string): string {
-  return value.replace(/[\u0000-\u001F\u007F]/g, '').trim();
+  let sanitized = '';
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if ((code >= 0 && code <= 31) || code === 127) {
+      continue;
+    }
+    sanitized += char;
+  }
+  return sanitized.trim();
 }
 
 function isValidFullName(fullName: string): boolean {
