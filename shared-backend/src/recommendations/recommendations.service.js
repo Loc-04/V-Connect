@@ -22,10 +22,16 @@ const MATCH_TIER_STRONG = 'strong_match';
 const MATCH_TIER_GOOD = 'good_match';
 const MATCH_TIER_POTENTIAL = 'potential_match';
 const MATCH_TIER_LOW = 'low_match';
+const TOTAL_AVAILABILITY_SLOTS = 21;
 
 const INTERNAL_RECOMMENDATION_CONTROLLER_VERSION = 'internal-recommendation-controller-v1';
 const INTERNAL_RECOMMENDATION_DECISION_POLICY = 'ml_score_plus_profile_fit_policy_v1';
 const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in']);
+const RECOMMENDATION_DEBUG = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.RECOMMENDATION_DEBUG ?? '')
+    .trim()
+    .toLowerCase()
+);
 
 const synonymGroups = [
   ['first aid', ['first-aid', 'medical aid', 'basic medical']],
@@ -139,6 +145,7 @@ function humanizeReasonCode(code) {
     skills_not_required_profile_has_skills: 'relevant profile skills',
     interest_overlap: 'interest alignment',
     availability_overlap: 'availability fit',
+    availability_broad_overlap: 'availability broadly overlaps',
     experience_signal: 'relevant volunteer experience',
     organizer_history_signal: 'prior organizer history',
   };
@@ -175,7 +182,99 @@ function getReasonsFromScoreBreakdown(scoreBreakdown) {
   return reasons;
 }
 
+function normalizeContributionFeatureKey(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z_]/g, '');
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.startsWith('skill')) {
+    return 'skill';
+  }
+  if (normalized.startsWith('interest')) {
+    return 'interest';
+  }
+  if (normalized.startsWith('availability')) {
+    return 'availability';
+  }
+  if (normalized.startsWith('experience')) {
+    return 'experience';
+  }
+  if (normalized.startsWith('history')) {
+    return 'history';
+  }
+  return '';
+}
+
+function getReasonsFromFeatureContributions(featureContributions, scoreBreakdown, featureSnapshot = null) {
+  if (!Array.isArray(featureContributions) || featureContributions.length === 0) {
+    return [];
+  }
+
+  const hasSkillSignal = Number(scoreBreakdown?.skill_score ?? 0) > 0;
+  const hasInterestSignal = Number(scoreBreakdown?.interest_score ?? 0) > 0;
+  const hasAvailabilitySignal = Number(scoreBreakdown?.availability_score ?? 0) > 0;
+  const hasBroadAvailability = Boolean(featureSnapshot?.availability_is_broad);
+  const labelByFeature = {
+    skill: 'skill alignment',
+    interest: 'interest alignment',
+    availability: 'availability fit',
+    experience: 'relevant volunteer experience',
+    history: 'prior organizer history',
+  };
+
+  const minNormalizedContribution = 0.12;
+  const minRawContribution = 0.02;
+  const ranked = [];
+
+  for (const contribution of featureContributions) {
+    const featureKey = normalizeContributionFeatureKey(contribution?.feature);
+    const label = labelByFeature[featureKey];
+    if (!label) {
+      continue;
+    }
+
+    if (featureKey === 'skill' && !hasSkillSignal) {
+      continue;
+    }
+    if (featureKey === 'interest' && !hasInterestSignal) {
+      continue;
+    }
+    if (featureKey === 'availability' && !hasAvailabilitySignal) {
+      continue;
+    }
+    if (featureKey === 'availability' && hasBroadAvailability && hasSkillSignal) {
+      continue;
+    }
+
+    const rawContribution = Number(contribution?.raw_contribution ?? Number.NaN);
+    const contributionScore = Number(contribution?.score ?? 0);
+    const maxScore = Number(contribution?.max_score ?? 0);
+    const normalizedContribution = maxScore > 0 ? contributionScore / maxScore : 0;
+
+    const hasPositiveRawContribution = Number.isFinite(rawContribution) && rawContribution > 0;
+    const hasSignificantNormalized = normalizedContribution >= minNormalizedContribution;
+    const hasSignificantRaw = hasPositiveRawContribution && rawContribution >= minRawContribution;
+    if (!hasSignificantRaw && !hasSignificantNormalized) {
+      continue;
+    }
+
+    const importance = hasPositiveRawContribution ? rawContribution : normalizedContribution;
+    ranked.push({ label, importance });
+  }
+
+  ranked.sort((left, right) => right.importance - left.importance);
+  return uniqueReasons(ranked.map((item) => item.label)).slice(0, 3);
+}
+
 function toDisplayReasons(score) {
+  const fromFeatureContributions = getReasonsFromFeatureContributions(
+    Array.isArray(score?.feature_contributions) ? score.feature_contributions : [],
+    score?.score_breakdown,
+    score?.feature_snapshot
+  );
   const fromReasonCodes = Array.isArray(score?.reason_codes)
     ? score.reason_codes.map((code) => humanizeReasonCode(code)).filter(Boolean)
     : [];
@@ -185,7 +284,9 @@ function toDisplayReasons(score) {
     : [];
 
   const merged =
-    fromReasonCodes.length > 0
+    fromFeatureContributions.length > 0
+      ? fromFeatureContributions
+      : fromReasonCodes.length > 0
       ? fromReasonCodes
       : fromScoreBreakdown.length > 0
         ? fromScoreBreakdown
@@ -204,6 +305,9 @@ function lowerFirst(value) {
 function toDisplayExplanation(score) {
   const matchTier = getMatchTier(score?.matchScore ?? score?.score_breakdown?.final_score);
   const reasons = toDisplayReasons(score);
+  const hasAvailabilitySignal =
+    Number(score?.score_breakdown?.availability_score ?? 0) > 0 ||
+    (Array.isArray(score?.reason_codes) && score.reason_codes.includes('availability_overlap'));
   const primary = reasons[0] ?? '';
   const secondary = reasons[1] ?? '';
 
@@ -215,7 +319,9 @@ function toDisplayExplanation(score) {
     if (primary && secondary) {
       return `This activity strongly matches your profile, especially ${lowerFirst(primary)} and ${lowerFirst(secondary)}.`;
     }
-    return 'This activity strongly matches your skills and interests, and fits your availability.';
+    return hasAvailabilitySignal
+      ? 'This activity strongly matches your skills and interests, and fits your availability.'
+      : 'This activity strongly matches your skills and interests based on your current profile signals.';
   }
 
   if (matchTier === MATCH_TIER_GOOD) {
@@ -229,7 +335,9 @@ function toDisplayExplanation(score) {
     if (primary) {
       return `This activity partially matches your profile, mainly through ${lowerFirst(primary)}.`;
     }
-    return 'This activity partially matches your profile, mainly because of availability or interest alignment.';
+    return hasAvailabilitySignal
+      ? 'This activity partially matches your profile, mainly because of availability or interest alignment.'
+      : 'This activity partially matches your profile, mainly through limited skill or interest alignment.';
   }
 
   if (primary) {
@@ -338,18 +446,35 @@ function buildDecisionReasons({ scoreBreakdown, displayReasons }) {
   return fallback.slice(0, 3);
 }
 
-function buildDecisionExplanation({ decision, recommendationGroup, reasons }) {
+function buildDecisionExplanation({
+  decision,
+  recommendationGroup,
+  reasons,
+  hasAvailabilitySignal = false,
+  hasBroadAvailability = false,
+}) {
   const primary = reasons[0] ? lowerFirst(reasons[0]) : '';
   const secondary = reasons[1] ? lowerFirst(reasons[1]) : '';
+  const primaryIsSkill = primary.includes('skill alignment');
 
   if (decision === 'recommend' && recommendationGroup === 'recommended') {
+    if (primaryIsSkill && !secondary) {
+      return 'Recommended based on your skill match.';
+    }
     if (primary && secondary) {
       return `This activity is recommended because it strongly matches your ${primary} and ${secondary}.`;
     }
-    return 'This activity is recommended because it strongly matches your skills, interests, and availability.';
+    return hasAvailabilitySignal
+      ? hasBroadAvailability
+        ? 'This activity is recommended because your skills align well and your broad availability can still support it.'
+        : 'This activity is recommended because it strongly matches your skills, interests, and availability.'
+      : 'This activity is recommended because it strongly matches your skills and interest signals.';
   }
 
   if (decision === 'recommend') {
+    if (primaryIsSkill && !secondary) {
+      return 'Recommended based on your skill match.';
+    }
     if (primary && secondary) {
       return `This activity is a good match because your ${primary} and ${secondary} align with the activity requirements.`;
     }
@@ -357,6 +482,9 @@ function buildDecisionExplanation({ decision, recommendationGroup, reasons }) {
   }
 
   if (decision === 'consider') {
+    if (primaryIsSkill && !secondary) {
+      return 'Recommended based on your skill match. Add interests and availability to improve future ranking.';
+    }
     if (primary) {
       return `This activity may be worth exploring, with partial alignment on ${primary}.`;
     }
@@ -371,6 +499,10 @@ function buildDecisionExplanation({ decision, recommendationGroup, reasons }) {
     return `This activity is not prioritized because ${primary} is limited for your current profile.`;
   }
   return 'This activity is not prioritized because it has limited match with your current skills and interests.';
+}
+
+function hasAvailabilitySignalFromScoreBreakdown(scoreBreakdown) {
+  return Number(scoreBreakdown?.availability_score ?? 0) > 0;
 }
 
 function evaluateActivityEligibility({ activity, activeParticipantCount, volunteerHistory }) {
@@ -403,6 +535,7 @@ function decideRecommendation({
   modelKind,
   eligibility,
   displayReasons,
+  featureSnapshot,
 }) {
   if (!eligibility.eligible) {
     const reasons = buildDecisionReasons({ scoreBreakdown, displayReasons });
@@ -419,6 +552,8 @@ function decideRecommendation({
         decision: 'ineligible',
         recommendationGroup: 'ineligible',
         reasons,
+        hasAvailabilitySignal: false,
+        hasBroadAvailability: false,
       }),
     };
   }
@@ -436,20 +571,46 @@ function decideRecommendation({
     historyRatio * 0.05;
   const confidence = roundTwo(Math.max(matchScore / 100, blendedProfileFit));
   const reasons = buildDecisionReasons({ scoreBreakdown, displayReasons });
+  const hasAvailabilitySignal = hasAvailabilitySignalFromScoreBreakdown(scoreBreakdown);
+  const hasBroadAvailability = Boolean(featureSnapshot?.availability_is_broad);
+  const hasInterestSignal = Number(scoreBreakdown?.interest_score ?? 0) > 0;
+  const hasExperienceSignal = Number(scoreBreakdown?.experience_score ?? 0) >= Math.max(1, Math.floor(EXPERIENCE_SCORE_MAX * 0.3));
+  const hasHistorySignal = Number(scoreBreakdown?.history_score ?? 0) > 0;
+  const hasSkillSignal = skillRatio >= 0.2;
+  const hasStrongSkillSignal = skillRatio >= 0.4;
+  const hasTrustedAvailabilitySignal = hasAvailabilitySignal && !hasBroadAvailability && availabilityRatio >= 0.35;
+  const trustedSignalCount =
+    Number(hasSkillSignal) +
+    Number(hasInterestSignal) +
+    Number(hasTrustedAvailabilitySignal) +
+    Number(hasExperienceSignal) +
+    Number(hasHistorySignal);
 
   let decision = 'not_recommended';
   let recommendationGroup = 'not_recommended';
   let ctaLabel = 'Browse all opportunities';
   let priorityLabel = 'Low match';
   let decisionReason = 'low_profile_match';
+  let explanation = buildDecisionExplanation({
+    decision,
+    recommendationGroup,
+    reasons,
+    hasAvailabilitySignal,
+    hasBroadAvailability,
+  });
 
-  if (matchScore >= 78 && (skillRatio >= 0.4 || (availabilityRatio >= 0.5 && interestRatio >= 0.25))) {
+  if (matchScore >= 78 && hasStrongSkillSignal && trustedSignalCount >= 3) {
     decision = 'recommend';
     recommendationGroup = 'recommended';
     ctaLabel = 'Join now';
     priorityLabel = 'Best match';
     decisionReason = 'high_skill_and_availability_match';
-  } else if (matchScore >= 60 && (skillRatio >= 0.3 || interestRatio >= 0.25 || availabilityRatio >= 0.3)) {
+  } else if (
+    matchScore >= 60 &&
+    hasSkillSignal &&
+    trustedSignalCount >= 2 &&
+    (hasInterestSignal || hasExperienceSignal || hasHistorySignal || hasTrustedAvailabilitySignal)
+  ) {
     decision = 'recommend';
     recommendationGroup = 'good_match';
     ctaLabel = 'Join now';
@@ -466,22 +627,40 @@ function decideRecommendation({
     decisionReason = 'partial_profile_alignment';
   } else if (
     matchScore >= 35 &&
-    (interestRatio >= 0.25 || availabilityRatio >= 0.3)
+    (hasInterestSignal || hasTrustedAvailabilitySignal)
   ) {
     decision = 'consider';
     recommendationGroup = 'consider_later';
     ctaLabel = 'Explore option';
     priorityLabel = 'Potential fit';
     decisionReason = 'limited_but_promising_signal';
+  } else if (skillRatio >= 0.2 && !hasAvailabilitySignal && !hasInterestSignal) {
+    decision = 'consider';
+    recommendationGroup = 'consider_later';
+    ctaLabel = 'Explore option';
+    priorityLabel = 'Starter match';
+    decisionReason = 'cold_start_skill_match';
+    explanation =
+      'Recommended based on your skills. Add availability and interests to improve future matches.';
   }
 
   const effectiveTier =
-    decision === 'not_recommended' && matchTier !== MATCH_TIER_LOW ? MATCH_TIER_LOW : matchTier;
-  const explanation = buildDecisionExplanation({
-    decision,
-    recommendationGroup,
-    reasons,
-  });
+    decision === 'recommend'
+      ? matchScore >= 75
+        ? MATCH_TIER_STRONG
+        : MATCH_TIER_GOOD
+      : decision === 'consider'
+        ? MATCH_TIER_POTENTIAL
+        : MATCH_TIER_LOW;
+  if (decisionReason !== 'cold_start_skill_match') {
+    explanation = buildDecisionExplanation({
+      decision,
+      recommendationGroup,
+      reasons,
+      hasAvailabilitySignal,
+      hasBroadAvailability,
+    });
+  }
 
   return {
     decision,
@@ -508,6 +687,7 @@ function buildCandidateActivityRow({ activity, score, organizerName }) {
     modelKind: structured.model_kind,
     eligibility: activity.eligibility,
     displayReasons: structured.display_reasons,
+    featureSnapshot: structured.feature_snapshot,
   });
 
   const decisionSnapshot = {
@@ -548,7 +728,7 @@ function buildCandidateActivityRow({ activity, score, organizerName }) {
   };
 }
 
-function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHistory = false }) {
+function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHistory = false, organizerHistoryCount = 0 }) {
   const requiredSkills = normalizeStringSet(activity?.required_skills);
   const volunteerSkills = normalizeStringSet(profile?.skills);
   const interests = normalizeStringSet(profile?.interests);
@@ -564,6 +744,20 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     return tokens.length > 0 && tokens.every((token) => activityTextTokens.has(token));
   });
   const availabilityMatch = computeAvailabilityMatch(profile?.available_choices, activity?.start_time, activity?.end_time);
+  const normalizedAvailableChoices = getAvailableChoices(profile?.available_choices);
+  const availabilityCoverage =
+    TOTAL_AVAILABILITY_SLOTS > 0 ? normalizedAvailableChoices.length / TOTAL_AVAILABILITY_SLOTS : 0;
+  const availabilityIsBroad = availabilityCoverage >= 0.85;
+  let availabilityWeight = 1;
+  if (availabilityCoverage >= 0.95) {
+    availabilityWeight = 0.35;
+  } else if (availabilityCoverage >= 0.8) {
+    availabilityWeight = 0.55;
+  } else if (availabilityCoverage >= 0.65) {
+    availabilityWeight = 0.75;
+  }
+  const adjustedAvailabilityScore =
+    availabilityMatch.score > 0 ? Math.max(1, Math.round(availabilityMatch.score * availabilityWeight)) : 0;
 
   let skillScore = 0;
   if (requiredSkills.size === 0) {
@@ -578,7 +772,9 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
       : 0;
   const totalHours = Number(profile?.total_hours ?? 0);
   const experienceScore = Math.max(0, Math.min(EXPERIENCE_SCORE_MAX, Math.round(totalHours / 10)));
-  const organizerHistoryScore = hasOrganizerHistory ? HISTORY_SCORE_MAX : 0;
+  const effectiveOrganizerHistoryCount = Math.max(0, Math.trunc(Number(organizerHistoryCount ?? 0)));
+  const hasOrganizerHistorySignal = hasOrganizerHistory || effectiveOrganizerHistoryCount > 0;
+  const organizerHistoryScore = hasOrganizerHistorySignal ? HISTORY_SCORE_MAX : 0;
 
   const reasons = [];
   const reasonCodes = [];
@@ -595,9 +791,14 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     reasonCodes.push('interest_overlap');
   }
 
-  if (availabilityMatch.score > 0) {
-    reasons.push(...availabilityMatch.reasons);
-    reasonCodes.push('availability_overlap');
+  if (adjustedAvailabilityScore > 0) {
+    if (availabilityIsBroad) {
+      reasons.push('Availability broadly overlaps this activity schedule');
+      reasonCodes.push('availability_broad_overlap');
+    } else {
+      reasons.push(...availabilityMatch.reasons);
+      reasonCodes.push('availability_overlap');
+    }
   }
 
   if (experienceScore > 0) {
@@ -605,21 +806,23 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     reasonCodes.push('experience_signal');
   }
 
-  if (hasOrganizerHistory) {
+  if (hasOrganizerHistorySignal) {
     reasons.push('Prior participation with this organizer');
     reasonCodes.push('organizer_history_signal');
   }
 
   const matchScore = Math.max(
     0,
-    Math.min(100, skillScore + interestScore + availabilityMatch.score + experienceScore + organizerHistoryScore)
+    Math.min(100, skillScore + interestScore + adjustedAvailabilityScore + experienceScore + organizerHistoryScore)
   );
   const scoreBreakdown = {
     skill_score: skillScore,
     interest_score: interestScore,
-    availability_score: availabilityMatch.score,
+    availability_score: adjustedAvailabilityScore,
     experience_score: experienceScore,
     history_score: organizerHistoryScore,
+    availability_raw_score: availabilityMatch.score,
+    availability_weight: Number(availabilityWeight.toFixed(2)),
     final_score: matchScore,
   };
 
@@ -644,10 +847,12 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     ),
     asContribution(
       'availability',
-      availabilityMatch.score,
+      adjustedAvailabilityScore,
       AVAILABILITY_SCORE_MAX,
-      availabilityMatch.score > 0
-        ? availabilityMatch.reasons[0] ?? 'Availability overlap detected'
+      adjustedAvailabilityScore > 0
+        ? availabilityIsBroad
+          ? 'Availability overlaps, but schedule is broad so contribution is reduced'
+          : availabilityMatch.reasons[0] ?? 'Availability overlap detected'
         : 'No availability overlap detected'
     ),
     asContribution(
@@ -660,7 +865,9 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
       'history',
       organizerHistoryScore,
       HISTORY_SCORE_MAX,
-      hasOrganizerHistory ? 'Volunteer has prior participation with this organizer' : 'No prior organizer history signal'
+      hasOrganizerHistorySignal
+        ? `Volunteer has ${effectiveOrganizerHistoryCount || 1} prior successful participation(s) with this organizer`
+        : 'No prior organizer history signal'
     ),
   ];
 
@@ -682,12 +889,26 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
       skill_score: scoreBreakdown.skill_score,
       interest_score: scoreBreakdown.interest_score,
       availability_score: scoreBreakdown.availability_score,
+      availability_raw_score: scoreBreakdown.availability_raw_score,
+      availability_weight: scoreBreakdown.availability_weight,
+      availability_is_broad: availabilityIsBroad,
       experience_score: scoreBreakdown.experience_score,
       history_score: scoreBreakdown.history_score,
+      volunteer_skills: Array.from(volunteerSkills),
+      required_skills: Array.from(requiredSkills),
+      matched_skills: matchedSkills,
+      volunteer_interests: Array.from(interests),
+      matched_interests: matchedInterests,
+      available_choices: normalizedAvailableChoices,
+      availability_match: adjustedAvailabilityScore > 0,
+      availability_profile_coverage: Number(availabilityCoverage.toFixed(3)),
+      organizer_history_count: effectiveOrganizerHistoryCount,
     },
     prediction_snapshot: {
       strategy: 'heuristic_scoring',
       final_score: matchScore,
+      heuristic_score: matchScore,
+      ml_score: null,
     },
   };
 
@@ -720,7 +941,9 @@ async function getVolunteerHistoryContext(volunteerId) {
 
   const registeredActivityIds = new Set();
   const activeRegisteredActivityIds = new Set();
-  const successfulActivityIds = [];
+  const checkedInActivityIds = new Set();
+  const approvedActivityIds = new Set();
+  const successStatusByActivityId = new Map();
   for (const row of data ?? []) {
     const normalizedStatus = String(row.status ?? '').trim().toLowerCase();
     if (row.activity_id) {
@@ -729,32 +952,68 @@ async function getVolunteerHistoryContext(volunteerId) {
     if (row.activity_id && ACTIVE_PARTICIPATION_STATUSES.has(normalizedStatus)) {
       activeRegisteredActivityIds.add(row.activity_id);
     }
-    if (row.activity_id && ['approved', 'checked_in'].includes(normalizedStatus)) {
-      successfulActivityIds.push(row.activity_id);
+    if (row.activity_id && normalizedStatus === 'checked_in') {
+      checkedInActivityIds.add(row.activity_id);
+      const current = successStatusByActivityId.get(row.activity_id) ?? new Set();
+      current.add('checked_in');
+      successStatusByActivityId.set(row.activity_id, current);
+    }
+    if (row.activity_id && normalizedStatus === 'approved') {
+      approvedActivityIds.add(row.activity_id);
+      const current = successStatusByActivityId.get(row.activity_id) ?? new Set();
+      current.add('approved');
+      successStatusByActivityId.set(row.activity_id, current);
     }
   }
 
-  if (successfulActivityIds.length === 0) {
+  const successfulActivityIds = new Set([...checkedInActivityIds, ...approvedActivityIds]);
+  if (successfulActivityIds.size === 0) {
     return {
       registeredActivityIds,
       activeRegisteredActivityIds,
       organizerHistoryIds: new Set(),
+      organizerHistoryCounts: new Map(),
     };
   }
 
+  const now = Date.now();
   const { data: activities, error: activitiesError } = await supabaseAdmin
     .from('activities')
-    .select('id, organizer_id')
-    .in('id', successfulActivityIds);
+    .select('id, organizer_id, status, end_time, deleted_at')
+    .in('id', Array.from(successfulActivityIds));
 
   if (activitiesError) {
     throw new Error(activitiesError.message);
   }
 
+  const organizerHistoryCounts = new Map();
+  for (const row of activities ?? []) {
+    const activityId = String(row?.id ?? '').trim();
+    const organizerId = String(row?.organizer_id ?? '').trim();
+    if (!activityId || !organizerId || row?.deleted_at) {
+      continue;
+    }
+
+    const statusSet = successStatusByActivityId.get(activityId) ?? new Set();
+    const hasCheckedIn = statusSet.has('checked_in');
+    const hasApproved = statusSet.has('approved');
+    const activityStatus = String(row?.status ?? '').trim().toLowerCase();
+    const endTimeMs = new Date(row?.end_time ?? 0).getTime();
+    const endedInPast = Number.isFinite(endTimeMs) && endTimeMs > 0 && endTimeMs < now;
+    const canCountApprovedHistory = hasApproved && (activityStatus === 'completed' || endedInPast);
+    const qualifiesForHistory = hasCheckedIn || canCountApprovedHistory;
+    if (!qualifiesForHistory) {
+      continue;
+    }
+
+    organizerHistoryCounts.set(organizerId, (organizerHistoryCounts.get(organizerId) ?? 0) + 1);
+  }
+
   return {
     registeredActivityIds,
     activeRegisteredActivityIds,
-    organizerHistoryIds: new Set((activities ?? []).map((row) => row.organizer_id).filter(Boolean)),
+    organizerHistoryIds: new Set(Array.from(organizerHistoryCounts.keys())),
+    organizerHistoryCounts,
   };
 }
 
@@ -856,10 +1115,14 @@ async function getRegisteredVolunteerIdsByActivityIds(activityIds) {
 async function calculateActivityMatchForVolunteer({ activity, volunteerId }) {
   const [{ profile }, history] = await Promise.all([getVolunteerProfileBundle(volunteerId), getVolunteerHistoryContext(volunteerId)]);
 
+  const organizerId = String(activity?.organizer_id ?? '').trim();
+  const organizerHistoryCount =
+    organizerId && history?.organizerHistoryCounts instanceof Map ? Number(history.organizerHistoryCounts.get(organizerId) ?? 0) : 0;
   return scoreActivityForVolunteerProfile({
     activity,
     profile,
-    hasOrganizerHistory: history.organizerHistoryIds.has(activity.organizer_id),
+    hasOrganizerHistory: organizerHistoryCount > 0,
+    organizerHistoryCount,
   });
 }
 
@@ -890,6 +1153,12 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
     getRegisteredVolunteerIdsByActivityIds(allActivities.map((activity) => activity.id)),
   ]);
 
+  if (RECOMMENDATION_DEBUG) {
+    console.info(
+      `[recommendation.debug] volunteer=${userId} profile_skills=${JSON.stringify(Array.isArray(profile?.skills) ? profile.skills : [])} profile_interests=${JSON.stringify(Array.isArray(profile?.interests) ? profile.interests : [])} profile_available_choices=${JSON.stringify(Array.isArray(profile?.available_choices) ? profile.available_choices : [])} total_hours=${Number(profile?.total_hours ?? 0)}`
+    );
+  }
+
   const candidateRows = allActivities.map((activity) => {
     const activeVolunteerSet = registeredByActivityId.get(activity.id) ?? new Set();
     const eligibility = evaluateActivityEligibility({
@@ -902,6 +1171,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       activity,
       profile,
       hasOrganizerHistory: history.organizerHistoryIds.has(activity.organizer_id),
+      organizerHistoryCount: Number(history?.organizerHistoryCounts?.get?.(activity.organizer_id) ?? 0),
     });
 
     return buildCandidateActivityRow({
@@ -913,6 +1183,50 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       organizerName: organizerNameById.get(activity.organizer_id) ?? 'Organizer',
     });
   });
+
+  if (RECOMMENDATION_DEBUG) {
+    const debugRows = candidateRows.slice(0, 30).map((row) => ({
+      volunteer_id: userId,
+      activity_id: row.activityId,
+      title: row.title,
+      model_kind: String(row.model_kind ?? 'heuristic'),
+      volunteer_skills: Array.isArray(row.feature_snapshot?.volunteer_skills) ? row.feature_snapshot.volunteer_skills : [],
+      activity_required_skills: Array.isArray(row.feature_snapshot?.required_skills) ? row.feature_snapshot.required_skills : [],
+      matched_skills: Array.isArray(row.feature_snapshot?.matched_skills) ? row.feature_snapshot.matched_skills : [],
+      volunteer_interests: Array.isArray(row.feature_snapshot?.volunteer_interests) ? row.feature_snapshot.volunteer_interests : [],
+      matched_interests: Array.isArray(row.feature_snapshot?.matched_interests) ? row.feature_snapshot.matched_interests : [],
+      available_choices: Array.isArray(row.feature_snapshot?.available_choices) ? row.feature_snapshot.available_choices : [],
+      availability_match: Boolean(row.feature_snapshot?.availability_match),
+      availability_profile_coverage: Number(row.feature_snapshot?.availability_profile_coverage ?? 0),
+      availability_is_broad: Boolean(row.feature_snapshot?.availability_is_broad),
+      organizer_history_count: Number(row.feature_snapshot?.organizer_history_count ?? 0),
+      skill_ratio: Number((Number(row.score_breakdown?.skill_score ?? 0) / SKILL_SCORE_MAX).toFixed(3)),
+      interest_ratio: Number((Number(row.score_breakdown?.interest_score ?? 0) / INTEREST_SCORE_MAX).toFixed(3)),
+      availability_ratio: Number((Number(row.score_breakdown?.availability_score ?? 0) / AVAILABILITY_SCORE_MAX).toFixed(3)),
+      experience_ratio: Number((Number(row.score_breakdown?.experience_score ?? 0) / EXPERIENCE_SCORE_MAX).toFixed(3)),
+      history_ratio: Number((Number(row.score_breakdown?.history_score ?? 0) / HISTORY_SCORE_MAX).toFixed(3)),
+      heuristic_score: Number(row.prediction_snapshot?.heuristic_score ?? row.score_breakdown?.final_score ?? 0),
+      ml_score: Number(row.prediction_snapshot?.ml_score ?? Number.NaN),
+      final_score: Number(row.prediction_snapshot?.final_score ?? row.matchScore ?? 0),
+      model_weights:
+        row.model_kind === 'ml_logistic_regression_v1' && row.prediction_snapshot?.weights
+          ? row.prediction_snapshot.weights
+          : null,
+      contribution_breakdown: Array.isArray(row.feature_contributions)
+        ? row.feature_contributions.map((item) => ({
+            feature: item?.feature ?? null,
+            score: Number(item?.score ?? 0),
+            raw_contribution: Number(item?.raw_contribution ?? Number.NaN),
+            signal_ratio: Number(item?.signal_ratio ?? Number.NaN),
+          }))
+        : [],
+      reason_codes: Array.isArray(row.reason_codes) ? row.reason_codes : [],
+      display_reasons: Array.isArray(row.display_reasons) ? row.display_reasons : [],
+      decision: row?.ai_decision?.decision ?? null,
+      decision_reason: row?.ai_decision?.decision_reason ?? null,
+    }));
+    console.info(`[recommendation.debug] candidate_summary=${JSON.stringify(debugRows)}`);
+  }
 
   const decisionOrder = {
     recommend: 0,
