@@ -271,7 +271,12 @@ function buildActivitySpecs(count, organizers) {
     const organizer = organizers[index % organizers.length];
     const ordinal = String(index + 1).padStart(2, '0');
     const slot = nextDayWithSession(index, template.session);
-    const requiredSkills = unique(template.required_skills);
+    const expandedSkills = unique([
+      ...template.required_skills,
+      ...rotateArray(HIGH_SKILL_POOL, index * 2, 3),
+    ]);
+    const targetSkillCount = 2 + (index % 3); // 2..4 required skills/activity
+    const requiredSkills = expandedSkills.slice(0, Math.min(4, Math.max(2, targetSkillCount)));
     const descriptionTokens = unique(template.descriptionTokens);
     return {
       key: `activity-${ordinal}`,
