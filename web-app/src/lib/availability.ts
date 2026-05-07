@@ -230,6 +230,7 @@ export function computeWeekBarsFromChoices(choices: string[]) {
   return fallbackAvailabilityDays.map((day) => {
     const count = byDay.get(day.key) ?? 0;
     return {
+      key: day.key,
       day: day.label.charAt(0),
       height: count === 0 ? 24 : 28 + count * 18,
       active: count > 0,

@@ -47,11 +47,12 @@ interface RecommendationViewModel {
   ctaLabel: string;
   priorityLabel: string;
   decision: string;
+  decisionReason: string;
+  hasAvailabilitySignal: boolean;
   locationLabel: string;
   dateLabel: string;
   timeLabel: string;
   hoursLabel: string;
-  categories: string[];
   heroImageUrl: string;
   startTime: string;
 }
@@ -154,14 +155,6 @@ function formatDateTime(startTime: string, endTime: string) {
   };
 }
 
-function toCategoryList(record: RecommendedActivityRecord): string[] {
-  const skills = Array.isArray(record.requiredSkills) ? record.requiredSkills.filter(Boolean) : [];
-  if (skills.length > 0) {
-    return skills.slice(0, 3);
-  }
-  return ['Community', 'General'];
-}
-
 function toHoursLabel(hours: number | null | undefined): string {
   if (typeof hours !== 'number' || Number.isNaN(hours) || hours <= 0) {
     return 'Flexible duration';
@@ -244,6 +237,14 @@ function shouldUsePreciseScoreDisplay(items: RecommendationViewModel[]): boolean
 function pickTopReasons(item: RecommendationViewModel): string[] {
   const maxReasons = item.matchTier === 'strong_match' || item.matchTier === 'good_match' ? 3 : 2;
 
+  const removeAvailabilityWithoutEvidence = (reasons: string[]) =>
+    reasons.filter((reason) => item.hasAvailabilitySignal || !reason.toLowerCase().includes('availability'));
+
+  const fromDisplay = item.displayReasons.map((reason) => String(reason ?? '').trim()).filter((reason) => reason.length > 0);
+  if (fromDisplay.length > 0) {
+    return removeAvailabilityWithoutEvidence(fromDisplay).slice(0, maxReasons);
+  }
+
   const weightedFromFeatures = item.featureContributions
     .map((entry) => {
       const label = FEATURE_REASON_LABELS[entry.feature];
@@ -258,21 +259,15 @@ function pickTopReasons(item: RecommendationViewModel): string[] {
     .filter((entry) => entry.weight > 0.02)
     .sort((left, right) => right.weight - left.weight)
     .map((entry) => entry.label);
-
   if (weightedFromFeatures.length > 0) {
-    return [...new Set(weightedFromFeatures)].slice(0, maxReasons);
-  }
-
-  const fromDisplay = item.displayReasons.map((reason) => String(reason ?? '').trim()).filter((reason) => reason.length > 0);
-  if (fromDisplay.length > 0) {
-    return fromDisplay.slice(0, maxReasons);
+    return removeAvailabilityWithoutEvidence([...new Set(weightedFromFeatures)]).slice(0, maxReasons);
   }
 
   if (item.reasonCodes.length > 0) {
-    return item.reasonCodes.map((code) => humanizeReasonCode(code)).slice(0, maxReasons);
+    return removeAvailabilityWithoutEvidence(item.reasonCodes.map((code) => humanizeReasonCode(code))).slice(0, maxReasons);
   }
 
-  return item.reasons.slice(0, maxReasons);
+  return removeAvailabilityWithoutEvidence(item.reasons).slice(0, maxReasons);
 }
 
 function softenReasonForLowTier(reason: string, tier: MatchTier): string {
@@ -307,6 +302,14 @@ function getPresentationExplanation(item: RecommendationViewModel): string {
       return 'This activity partially matches your profile and may still be worth exploring.';
     }
     return 'This activity has limited profile alignment right now, so it is shown as an explore option.';
+  }
+
+  if (!item.hasAvailabilitySignal && /\bavailability\b/i.test(raw)) {
+    return raw
+      .replace(/\band\s+fits?\s+your\s+availability\b/gi, '')
+      .replace(/\bavailability\s+fit\b/gi, 'profile alignment')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   }
 
   return raw;
@@ -353,6 +356,9 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     : [];
   const ctaLabel = String(aiDecision?.cta_label ?? '').trim();
   const priorityLabel = String(aiDecision?.priority_label ?? '').trim();
+  const decisionReason = String(aiDecision?.decision_reason ?? '').trim().toLowerCase();
+  const hasAvailabilitySignal =
+    Number(scoreBreakdown?.availability_score ?? 0) > 0 || reasonCodes.includes('availability_overlap');
 
   return {
     activityId: record.activityId,
@@ -378,11 +384,12 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     ctaLabel: ctaLabel || (decision === 'consider' ? 'Explore option' : 'Join now'),
     priorityLabel: priorityLabel || matchTierLabel(matchTier),
     decision,
+    decisionReason,
+    hasAvailabilitySignal,
     locationLabel: formatLocation(record.location),
     dateLabel,
     timeLabel,
     hoursLabel: toHoursLabel(record.hours),
-    categories: toCategoryList(record),
     heroImageUrl: String(record.coverImageUrl ?? '').trim(),
     startTime: record.startTime,
   };
@@ -532,6 +539,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
   }, [considerItems, nonStrongRecommendedItems]);
   const hasStrongRecommendations = strongRecommendedItems.length > 0;
   const hasLowConfidenceMatches = !hasStrongRecommendations && lowConfidenceItems.length > 0;
+  const hasStarterRecommendations = lowConfidenceItems.some((item) => item.decisionReason === 'cold_start_skill_match');
   const selectableRecommendations = strongRecommendedItems;
   const selectedRecommendation = useMemo(() => {
     const candidateList = selectableRecommendations;
@@ -698,11 +706,6 @@ export function VolunteerAiRecommendedActivitiesPage() {
                     <Badge className="ai-reco-category-badge" tone={selectedRecommendation.matchTier === 'low_match' ? 'neutral' : 'success'}>
                       {matchTierLabel(selectedRecommendation.matchTier)}
                     </Badge>
-                    {selectedRecommendation.categories.map((category) => (
-                      <Badge className="ai-reco-category-badge" key={category} tone="accent">
-                        {category}
-                      </Badge>
-                    ))}
                   </div>
 
                   <div>
@@ -844,8 +847,12 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
             <Card as="section" className="ai-reco-partial-section">
               <div className="ai-reco-partial-head">
-                <h3>Activities worth exploring</h3>
-                <p>These matches are not yet strong, but still show partial alignment with your profile.</p>
+                <h3>{hasStarterRecommendations ? 'Starter recommendations' : 'Activities worth exploring'}</h3>
+                <p>
+                  {hasStarterRecommendations
+                    ? 'Good starting points based on your skills. Add interests and availability to improve recommendation quality.'
+                    : 'These matches are not yet strong, but still show partial alignment with your profile.'}
+                </p>
               </div>
               <div className="ai-reco-partial-grid">
                 {lowConfidenceItems.map((item) => (

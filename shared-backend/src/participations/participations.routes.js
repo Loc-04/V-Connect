@@ -81,6 +81,20 @@ function createCheckInDateLockedError(activity) {
   return error;
 }
 
+function isActivityApprovalClosed(activity) {
+  const normalizedStatus = String(activity?.status ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'completed' || normalizedStatus === 'cancelled' || normalizedStatus === 'draft') {
+    return true;
+  }
+
+  const endTime = new Date(activity?.end_time ?? '');
+  if (!Number.isNaN(endTime.getTime())) {
+    return endTime.getTime() <= Date.now();
+  }
+
+  return false;
+}
+
 function parseAndValidateCheckInCode(rawCode) {
   const normalized = normalizeCheckInCode(rawCode);
   if (!normalized) {
@@ -658,6 +672,12 @@ async function volunteerRespondToAssignment({ participationId, decision, auth })
 
 async function updateRegistrationStatus({ participationId, nextStatus, auth }) {
   const { participation, activity } = await getRegistrationWithActivityForAccess(participationId, auth);
+
+  if (isActivityApprovalClosed(activity)) {
+    const error = new Error('Approval is closed because this activity has already ended.');
+    error.statusCode = 400;
+    throw error;
+  }
 
   const currentStatus = String(participation.status ?? '');
   if (currentStatus === 'checked_in') {

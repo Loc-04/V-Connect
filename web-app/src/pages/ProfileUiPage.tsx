@@ -851,13 +851,13 @@ export function ProfileUiPage() {
 
                       <div className="vol-profile-week-labels">
                         {weekBars.map((bar) => (
-                          <span key={`label-${bar.day}-${bar.height}`}>{bar.day}</span>
+                          <span key={`label-${bar.key}`}>{bar.day}</span>
                         ))}
                       </div>
 
                       <div className="vol-profile-bars">
-                        {weekBars.map((bar, index) => (
-                          <span className="vol-profile-bar-wrap" key={`${index}-${bar.height}`}>
+                        {weekBars.map((bar) => (
+                          <span className="vol-profile-bar-wrap" key={`bar-${bar.key}`}>
                             <span
                               className={`vol-profile-bar ${bar.active ? 'vol-profile-bar-active' : ''}`}
                               style={{ height: `${bar.height}%` }}
