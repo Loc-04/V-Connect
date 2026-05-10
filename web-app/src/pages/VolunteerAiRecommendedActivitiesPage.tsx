@@ -12,7 +12,6 @@ import { getVolunteerRecommendationPayload, logRecommendationInteraction } from 
 import type { ActivityLocation } from '../types/activity';
 import type {
   RecommendationAiDecision,
-  RecommendationControllerSession,
   RecommendationFeatureContribution,
   RecommendationScoreBreakdown,
   RecommendedActivityRecord,
@@ -39,6 +38,7 @@ interface RecommendationViewModel {
   modelKind: string | null;
   provider: string | null;
   aiBadgeLabel: string | null;
+  friendlyBadgeLabel: string | null;
   displayExplanation: string;
   displayReasons: string[];
   hasAiData: boolean;
@@ -49,6 +49,8 @@ interface RecommendationViewModel {
   decision: string;
   decisionReason: string;
   hasAvailabilitySignal: boolean;
+  hasInterestSignal: boolean;
+  matchedSkills: string[];
   locationLabel: string;
   dateLabel: string;
   timeLabel: string;
@@ -56,14 +58,6 @@ interface RecommendationViewModel {
   heroImageUrl: string;
   startTime: string;
 }
-
-const FEATURE_REASON_LABELS: Record<string, string> = {
-  skill_score: 'Skill alignment',
-  interest_score: 'Interest alignment',
-  availability_score: 'Availability fit',
-  experience_score: 'Experience signal',
-  history_score: 'Prior organizer history',
-};
 
 function resolveMatchTier(rawTier: unknown, score: number): MatchTier {
   const normalized = String(rawTier ?? '').trim().toLowerCase();
@@ -208,20 +202,6 @@ function normalizeScoreBreakdown(value: unknown): RecommendationScoreBreakdown |
   };
 }
 
-function humanizeReasonCode(code: string): string {
-  const dictionary: Record<string, string> = {
-    skills_full_match: 'Full skill match',
-    skills_partial_match: 'Partial skill match',
-    skills_not_required_profile_has_skills: 'Profile skills support this activity',
-    interest_overlap: 'Interest overlap',
-    availability_overlap: 'Availability overlap',
-    experience_signal: 'Experience signal',
-    organizer_history_signal: 'Prior organizer history',
-  };
-  const normalized = String(code ?? '').trim().toLowerCase();
-  return dictionary[normalized] ?? normalized.replace(/_/g, ' ');
-}
-
 function shouldUsePreciseScoreDisplay(items: RecommendationViewModel[]): boolean {
   if (items.length < 2) {
     return false;
@@ -234,85 +214,127 @@ function shouldUsePreciseScoreDisplay(items: RecommendationViewModel[]): boolean
   return [...roundedBuckets.values()].some((count) => count > 1);
 }
 
-function pickTopReasons(item: RecommendationViewModel): string[] {
-  const maxReasons = item.matchTier === 'strong_match' || item.matchTier === 'good_match' ? 3 : 2;
-
-  const removeAvailabilityWithoutEvidence = (reasons: string[]) =>
-    reasons.filter((reason) => item.hasAvailabilitySignal || !reason.toLowerCase().includes('availability'));
-
-  const fromDisplay = item.displayReasons.map((reason) => String(reason ?? '').trim()).filter((reason) => reason.length > 0);
-  if (fromDisplay.length > 0) {
-    return removeAvailabilityWithoutEvidence(fromDisplay).slice(0, maxReasons);
+function toTitleCase(input: string): string {
+  const value = String(input ?? '').trim();
+  if (!value) {
+    return '';
   }
-
-  const weightedFromFeatures = item.featureContributions
-    .map((entry) => {
-      const label = FEATURE_REASON_LABELS[entry.feature];
-      if (!label) {
-        return null;
-      }
-      const maxScore = entry.max_score > 0 ? entry.max_score : 1;
-      const weight = Math.max(0, entry.score / maxScore);
-      return { label, weight };
-    })
-    .filter((entry): entry is { label: string; weight: number } => Boolean(entry))
-    .filter((entry) => entry.weight > 0.02)
-    .sort((left, right) => right.weight - left.weight)
-    .map((entry) => entry.label);
-  if (weightedFromFeatures.length > 0) {
-    return removeAvailabilityWithoutEvidence([...new Set(weightedFromFeatures)]).slice(0, maxReasons);
-  }
-
-  if (item.reasonCodes.length > 0) {
-    return removeAvailabilityWithoutEvidence(item.reasonCodes.map((code) => humanizeReasonCode(code))).slice(0, maxReasons);
-  }
-
-  return removeAvailabilityWithoutEvidence(item.reasons).slice(0, maxReasons);
+  return value
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
 }
 
-function softenReasonForLowTier(reason: string, tier: MatchTier): string {
-  const base = String(reason ?? '').trim();
-  if (!base) {
-    return base;
+function joinReadableList(values: string[]): string {
+  if (values.length === 0) {
+    return '';
   }
-  if (tier !== 'potential_match' && tier !== 'low_match') {
-    return base;
+  if (values.length === 1) {
+    return values[0];
   }
-  const softened = base
-    .replace(/\bstrongly\b/gi, '')
-    .replace(/\bstrong\b/gi, '')
-    .replace(/\bhighly\b/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-  if (!softened) {
-    return base;
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
   }
-  return softened.charAt(0).toUpperCase() + softened.slice(1);
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
 }
 
-function getPresentationExplanation(item: RecommendationViewModel): string {
-  const raw = String(item.displayExplanation || item.explanation || '').trim();
-  if (!raw) {
-    return 'Recommended from profile and activity matching signals.';
+function normalizeFeatureList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0);
+}
+
+function getFriendlyBadgeLabel(modelKind: string | null, provider: string | null): string {
+  if (String(provider ?? '').trim().toLowerCase() === 'external') {
+    return 'AI enhanced';
+  }
+  if (String(modelKind ?? '').trim().toLowerCase() === 'ml_logistic_regression_v1') {
+    return 'AI-assisted';
+  }
+  return 'Profile-based';
+}
+
+function formatFriendlyReasons(item: RecommendationViewModel): string[] {
+  const reasons: string[] = [];
+  const skillHighlights = item.matchedSkills.map((skill) => toTitleCase(skill)).slice(0, 2);
+
+  if (item.matchedSkills.length >= 2) {
+    reasons.push(`Skills: ${joinReadableList(skillHighlights)}`);
+  } else if (item.matchedSkills.length === 1) {
+    reasons.push(`Skill: ${skillHighlights[0]}`);
   }
 
-  const strongLanguage = /\bstrong|strongly|highly|excellent|best match|perfect\b/i.test(raw);
-  if ((item.matchTier === 'potential_match' || item.matchTier === 'low_match') && strongLanguage) {
-    if (item.matchTier === 'potential_match') {
-      return 'This activity partially matches your profile and may still be worth exploring.';
+  if (item.hasAvailabilitySignal) {
+    reasons.push('Fits your availability');
+  }
+
+  if (item.hasInterestSignal) {
+    reasons.push('Matches your interests');
+  }
+
+  if (item.decision === 'consider' || item.matchTier === 'potential_match' || item.matchTier === 'low_match') {
+    reasons.push('Potential match');
+  }
+
+  if (reasons.length === 0) {
+    reasons.push(item.decision === 'recommend' ? 'Recommended for your profile' : 'Worth exploring');
+  }
+
+  return reasons.slice(0, 3);
+}
+
+function getFriendlyRecommendationCopy(item: RecommendationViewModel): string {
+  const isPotential = item.decision === 'consider' || item.matchTier === 'potential_match' || item.matchTier === 'low_match';
+  const skillHighlights = item.matchedSkills.map((skill) => toTitleCase(skill)).slice(0, 2);
+  const hasSkillEvidence = skillHighlights.length > 0 || Number(item.scoreBreakdown?.skill_score ?? 0) > 0;
+  const hasInterestEvidence = item.hasInterestSignal;
+  const hasAvailabilityEvidence = item.hasAvailabilitySignal;
+
+  if (!isPotential) {
+    if (skillHighlights.length >= 2 && hasAvailabilityEvidence) {
+      return `This activity matches several of your skills, including ${joinReadableList(skillHighlights)}, and fits one of your available time slots.`;
     }
-    return 'This activity has limited profile alignment right now, so it is shown as an explore option.';
+    if (skillHighlights.length === 1 && hasAvailabilityEvidence) {
+      return `This activity matches your ${skillHighlights[0]} skill and fits one of your available time slots.`;
+    }
+    if (skillHighlights.length >= 2) {
+      return `This activity matches several of your skills, including ${joinReadableList(skillHighlights)}.`;
+    }
+    if (skillHighlights.length === 1) {
+      return `This activity matches your ${skillHighlights[0]} skill.`;
+    }
+    if (hasAvailabilityEvidence && hasInterestEvidence) {
+      return 'This activity aligns with your interests and fits your available time. It looks like a good fit.';
+    }
+    if (hasAvailabilityEvidence) {
+      return 'This activity fits your available time and has enough profile alignment to be recommended.';
+    }
+    return 'This activity is recommended based on your current profile details.';
   }
 
-  if (!item.hasAvailabilitySignal && /\bavailability\b/i.test(raw)) {
-    return raw
-      .replace(/\band\s+fits?\s+your\s+availability\b/gi, '')
-      .replace(/\bavailability\s+fit\b/gi, 'profile alignment')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+  if (hasSkillEvidence && !hasInterestEvidence && !hasAvailabilityEvidence) {
+    return 'This may be worth exploring because it matches part of your skills, but we need more details to rank it higher.';
   }
 
-  return raw;
+  if (hasSkillEvidence && hasAvailabilityEvidence) {
+    return 'This may be worth exploring because it matches part of your profile, including skill and time availability.';
+  }
+
+  if (!hasAvailabilityEvidence && !hasInterestEvidence) {
+    return 'This is only a partial match. Add interests and availability so we can rank activities more accurately.';
+  }
+
+  if (!hasAvailabilityEvidence) {
+    return 'This is a partial match. Add availability so we can avoid suggesting activities at the wrong time.';
+  }
+
+  if (!hasInterestEvidence) {
+    return 'This is a partial match. Add interests to help us understand which causes matter most to you.';
+  }
+
+  return 'This may be worth exploring because it matches part of your profile, but it is not a top recommendation yet.';
 }
 
 function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel {
@@ -324,6 +346,12 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
   const modelKind = String(record.model_kind ?? '').trim() || null;
   const provider = String(record.provider ?? '').trim() || null;
   const aiBadgeLabel = String(record.ai_badge_label ?? '').trim() || null;
+  const featureSnapshot =
+    record.feature_snapshot && typeof record.feature_snapshot === 'object' && !Array.isArray(record.feature_snapshot)
+      ? record.feature_snapshot
+      : null;
+  const matchedSkills = normalizeFeatureList(featureSnapshot?.matched_skills);
+  const matchedInterests = normalizeFeatureList(featureSnapshot?.matched_interests);
   const displayExplanation =
     String(record.display_explanation ?? '').trim() || String(record.explanation ?? '').trim();
   const displayReasonsRaw = Array.isArray(record.display_reasons) ? record.display_reasons : [];
@@ -359,6 +387,10 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
   const decisionReason = String(aiDecision?.decision_reason ?? '').trim().toLowerCase();
   const hasAvailabilitySignal =
     Number(scoreBreakdown?.availability_score ?? 0) > 0 || reasonCodes.includes('availability_overlap');
+  const hasInterestSignal =
+    Number(scoreBreakdown?.interest_score ?? 0) > 0 ||
+    matchedInterests.length > 0 ||
+    reasonCodes.includes('interest_overlap');
 
   return {
     activityId: record.activityId,
@@ -376,6 +408,7 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     modelKind,
     provider,
     aiBadgeLabel,
+    friendlyBadgeLabel: getFriendlyBadgeLabel(modelKind, provider),
     displayExplanation: decisionDisplayExplanation || displayExplanation,
     displayReasons: decisionDisplayReasons.length > 0 ? decisionDisplayReasons : displayReasons,
     hasAiData,
@@ -386,6 +419,8 @@ function toViewModel(record: RecommendedActivityRecord): RecommendationViewModel
     decision,
     decisionReason,
     hasAvailabilitySignal,
+    hasInterestSignal,
+    matchedSkills,
     locationLabel: formatLocation(record.location),
     dateLabel,
     timeLabel,
@@ -411,13 +446,49 @@ function hasSkillSignal(item: RecommendationViewModel) {
   );
 }
 
+function getRecommendationSubtitle({
+  strongCount,
+  hasPotentialOnly,
+  hasAnyMatch,
+}: {
+  strongCount: number;
+  hasPotentialOnly: boolean;
+  hasAnyMatch: boolean;
+}): string {
+  if (strongCount > 0) {
+    return `${strongCount} strong match${strongCount === 1 ? '' : 'es'} found based on your profile.`;
+  }
+  if (hasPotentialOnly) {
+    return 'We found a few possible matches to explore.';
+  }
+  if (!hasAnyMatch) {
+    return 'Set up your profile to get personalized recommendations.';
+  }
+  return 'Recommended activities based on your skills and availability.';
+}
+
+function getEmptyStateCopy(hasStarterRecommendations: boolean): { title: string; body: string; cta: string } {
+  if (hasStarterRecommendations) {
+    return {
+      title: 'Add a little more detail to improve matches',
+      body: 'Your skills are saved, but interests and availability help us rank activities more accurately.',
+      cta: 'Manage skills & availability',
+    };
+  }
+
+  return {
+    title: 'Set up your profile to get recommendations',
+    body: 'Add your skills, interests, and weekly availability so we can suggest activities that fit you.',
+    cta: 'Update profile',
+  };
+}
+
 export function VolunteerAiRecommendedActivitiesPage() {
   const navigate = useNavigate();
   const { profile, session } = useAuth();
   const prefetchActivityDetail = usePrefetchActivityDetail(session?.access_token ?? null, profile?.id ?? null);
 
   const [recommendations, setRecommendations] = useState<RecommendationViewModel[]>([]);
-  const [recommendationSession, setRecommendationSession] = useState<RecommendationControllerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -449,11 +520,6 @@ export function VolunteerAiRecommendedActivitiesPage() {
         const rows = Array.isArray(payload.activities) ? payload.activities : [];
         const mapped = rows.map((row) => toViewModel(row));
         setRecommendations(mapped);
-        setRecommendationSession(
-          payload.ai_recommendation_session && typeof payload.ai_recommendation_session === 'object'
-            ? payload.ai_recommendation_session
-            : null
-        );
         setSelectedActivityId((current) => {
           if (current && mapped.some((item) => item.activityId === current)) {
             return current;
@@ -465,7 +531,6 @@ export function VolunteerAiRecommendedActivitiesPage() {
           return;
         }
         setRecommendations([]);
-        setRecommendationSession(null);
         setError(loadError instanceof Error ? loadError.message : 'Failed to load recommended activities.');
       } finally {
         if (!cancelled) {
@@ -507,10 +572,6 @@ export function VolunteerAiRecommendedActivitiesPage() {
     return sorted;
   }, [recommendations, matchFilter, sortMode]);
 
-  const hasStructuredAiData = useMemo(
-    () => recommendations.some((item) => item.hasAiData),
-    [recommendations]
-  );
   const recommendedItems = useMemo(
     () => filteredRecommendations.filter((item) => item.decision === 'recommend'),
     [filteredRecommendations]
@@ -540,6 +601,16 @@ export function VolunteerAiRecommendedActivitiesPage() {
   const hasStrongRecommendations = strongRecommendedItems.length > 0;
   const hasLowConfidenceMatches = !hasStrongRecommendations && lowConfidenceItems.length > 0;
   const hasStarterRecommendations = lowConfidenceItems.some((item) => item.decisionReason === 'cold_start_skill_match');
+  const pageSubtitle = useMemo(
+    () =>
+      getRecommendationSubtitle({
+        strongCount: strongRecommendedItems.length,
+        hasPotentialOnly: hasLowConfidenceMatches,
+        hasAnyMatch: filteredRecommendations.length > 0,
+      }),
+    [filteredRecommendations.length, hasLowConfidenceMatches, strongRecommendedItems.length]
+  );
+  const emptyStateCopy = useMemo(() => getEmptyStateCopy(hasStarterRecommendations), [hasStarterRecommendations]);
   const selectableRecommendations = strongRecommendedItems;
   const selectedRecommendation = useMemo(() => {
     const candidateList = selectableRecommendations;
@@ -632,14 +703,8 @@ export function VolunteerAiRecommendedActivitiesPage() {
           Browse all opportunities
         </Button>
       }
-      pageSubtitle={
-        recommendationSession
-          ? `${recommendationSession.recommended_count} recommended out of ${recommendationSession.candidate_count} candidates (${recommendationSession.model_kind}).`
-          : hasStructuredAiData
-            ? 'Recommendations are ranked from structured profile/activity signals.'
-            : 'Recommendations are ranked from profile and activity signals.'
-      }
-      pageTitle={hasStructuredAiData ? 'AI Recommended Activities' : 'Recommended Activities'}
+      pageSubtitle={pageSubtitle}
+      pageTitle="Recommended Activities"
     >
       <section className="ai-reco-page">
         {error && <p className="form-error">{error}</p>}
@@ -653,7 +718,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                 onChange={(event) => setMatchFilter(event.target.value as MatchFilter)}
                 value={matchFilter}
               >
-                <option value="all">AI-selected items</option>
+                <option value="all">Recommended items</option>
                 <option value="high">High match only</option>
                 <option value="weekend">Weekend fit</option>
                 <option value="skill-based">Skill-based</option>
@@ -674,7 +739,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                 ? `Showing ${strongRecommendedItems.length} strong recommendation${strongRecommendedItems.length === 1 ? '' : 's'}`
                 : hasLowConfidenceMatches
                   ? `Showing ${lowConfidenceItems.length} activities worth exploring`
-                  : 'No recommendations available yet'}
+                  : 'No confident matches yet'}
             </p>
           </div>
         </div>
@@ -682,7 +747,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
         {loading ? (
           <Card className="ai-reco-loading-card">
             <LoaderCircle className="ai-reco-loading-icon" />
-            <p>Loading recommendation engine output...</p>
+            <p>Loading your recommendations...</p>
           </Card>
         ) : hasStrongRecommendations ? (
           <div className="ai-reco-main-grid">
@@ -698,11 +763,9 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
                 <div className="ai-reco-featured-body">
                   <div className="ai-reco-category-row">
-                    {selectedRecommendation.priorityLabel && (
-                      <Badge className="ai-reco-category-badge" tone="accent">
-                        {selectedRecommendation.priorityLabel}
-                      </Badge>
-                    )}
+                    <Badge className="ai-reco-category-badge" tone="accent">
+                      Recommended
+                    </Badge>
                     <Badge className="ai-reco-category-badge" tone={selectedRecommendation.matchTier === 'low_match' ? 'neutral' : 'success'}>
                       {matchTierLabel(selectedRecommendation.matchTier)}
                     </Badge>
@@ -723,22 +786,20 @@ export function VolunteerAiRecommendedActivitiesPage() {
                       {selectedRecommendation.locationLabel}
                     </span>
                     <span>{selectedRecommendation.hoursLabel}</span>
-                    {selectedRecommendation.aiBadgeLabel && <span>{selectedRecommendation.aiBadgeLabel}</span>}
+                    {selectedRecommendation.friendlyBadgeLabel && <span>{selectedRecommendation.friendlyBadgeLabel}</span>}
                   </div>
 
                   <div className="ai-reco-why-card">
                     <p className="ai-reco-why-title">
                       {selectedRecommendation.decision === 'consider'
                         ? 'Why this is a potential match'
-                        : selectedRecommendation.hasAiData
-                          ? 'Why this is recommended'
-                          : 'Recommendation summary'}
+                        : 'Why this is recommended'}
                     </p>
-                    <p>{getPresentationExplanation(selectedRecommendation)}</p>
+                    <p>{getFriendlyRecommendationCopy(selectedRecommendation)}</p>
                     <div className="ai-reco-why-tags">
-                      {pickTopReasons(selectedRecommendation).map((reason) => (
+                      {formatFriendlyReasons(selectedRecommendation).map((reason) => (
                         <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                          {softenReasonForLowTier(reason, selectedRecommendation.matchTier)}
+                          {reason}
                         </Badge>
                       ))}
                     </div>
@@ -783,7 +844,9 @@ export function VolunteerAiRecommendedActivitiesPage() {
               </Card>
             ) : (
               <Card className="ai-reco-missing-selected">
-                <p className="muted">No strong recommendations yet. Update your skills, interests, or availability to improve matches.</p>
+                <p className="muted">
+                  No confident matches yet. Add more skills, interests, or availability to improve your recommendations.
+                </p>
                 <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
                   Browse all opportunities
                 </Button>
@@ -798,7 +861,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   </div>
                   <p className="ai-reco-why-title">Up next</p>
                   <h3>{secondaryRecommendation.title}</h3>
-                  <p className="muted">{getPresentationExplanation(secondaryRecommendation)}</p>
+                  <p className="muted">{getFriendlyRecommendationCopy(secondaryRecommendation)}</p>
                   <p className="muted">
                     {matchTierLabel(secondaryRecommendation.matchTier)} - {formatMatchScore(secondaryRecommendation.matchScore, shouldShowPreciseScores)} match -{' '}
                     {secondaryRecommendation.dateLabel}
@@ -815,7 +878,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   <p className="ai-reco-why-title">Recommendation coverage</p>
                   <h3>No secondary match yet</h3>
                   <p className="muted">
-                    The engine currently has {filteredRecommendations.length} result
+                    You currently have {filteredRecommendations.length} result
                     {filteredRecommendations.length === 1 ? '' : 's'} for the active filter set.
                   </p>
                   <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
@@ -829,15 +892,16 @@ export function VolunteerAiRecommendedActivitiesPage() {
           <div className="ai-reco-low-confidence-layout">
             <Card as="section" className="ai-reco-low-hero">
               <div>
-                <h2>No high-confidence matches yet</h2>
+                <h2>{hasStarterRecommendations ? 'Add a little more detail to improve matches' : 'No confident matches yet'}</h2>
                 <p>
-                  Update your skills, interests, or availability to improve match quality. You can still explore partial
-                  matches below.
+                  {hasStarterRecommendations
+                    ? 'Your skills are saved, but interests and availability help us rank activities more accurately.'
+                    : 'We could not find a strong match from your current profile. Add more skills, interests, or availability to improve your recommendations.'}
                 </p>
               </div>
               <div className="ai-reco-low-hero-actions">
                 <Button onClick={() => navigate('/volunteer/profile-ui')} type="button" variant="primary">
-                  Update profile
+                  {hasStarterRecommendations ? 'Manage skills & availability' : 'Update profile'}
                 </Button>
                 <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
                   Browse all opportunities
@@ -847,11 +911,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
             <Card as="section" className="ai-reco-partial-section">
               <div className="ai-reco-partial-head">
-                <h3>{hasStarterRecommendations ? 'Starter recommendations' : 'Activities worth exploring'}</h3>
+                <h3>Potential matches</h3>
                 <p>
                   {hasStarterRecommendations
-                    ? 'Good starting points based on your skills. Add interests and availability to improve recommendation quality.'
-                    : 'These matches are not yet strong, but still show partial alignment with your profile.'}
+                    ? 'These matches can be a good start, but adding interests and availability will improve ranking quality.'
+                    : 'These are not top recommendations, but they may still be worth checking.'}
                 </p>
               </div>
               <div className="ai-reco-partial-grid">
@@ -865,11 +929,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
                     </div>
                     <h4>{item.title}</h4>
                     <p className="ai-reco-partial-organizer">Hosted by {item.organizerName}</p>
-                    <p className="ai-reco-partial-explanation">{getPresentationExplanation(item)}</p>
+                    <p className="ai-reco-partial-explanation">{getFriendlyRecommendationCopy(item)}</p>
                     <div className="ai-reco-why-tags">
-                      {pickTopReasons(item).map((reason) => (
+                      {formatFriendlyReasons(item).map((reason) => (
                         <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                          {softenReasonForLowTier(reason, item.matchTier)}
+                          {reason}
                         </Badge>
                       ))}
                     </div>
@@ -894,15 +958,14 @@ export function VolunteerAiRecommendedActivitiesPage() {
         ) : (
           <Card as="section" className="ai-reco-low-hero">
             <div>
-              <h2>No strong recommendations yet</h2>
+              <h2>{emptyStateCopy.title}</h2>
               <p>
-                We do not have enough strong profile alignment right now. Update your profile to improve recommendations,
-                or browse all opportunities directly.
+                {emptyStateCopy.body}
               </p>
             </div>
             <div className="ai-reco-low-hero-actions">
               <Button onClick={() => navigate('/volunteer/profile-ui')} type="button" variant="primary">
-                Update profile
+                {emptyStateCopy.cta}
               </Button>
               <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
                 Browse all opportunities
@@ -914,8 +977,8 @@ export function VolunteerAiRecommendedActivitiesPage() {
         {!loading && hasStrongRecommendations && considerOptions.length > 0 && (
           <Card as="section" className="ai-reco-next-card">
             <div className="ai-reco-partial-head">
-              <h3>Good matches to consider</h3>
-              <p>These activities are potential fits if you want additional options beyond top recommendations.</p>
+              <h3>Other options to explore</h3>
+              <p>These are not top recommendations, but they may still be worth checking.</p>
             </div>
             <div className="ai-reco-partial-grid">
               {considerOptions.map((item) => (
@@ -926,11 +989,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
                   </div>
                   <h4>{item.title}</h4>
                   <p className="ai-reco-partial-organizer">Hosted by {item.organizerName}</p>
-                  <p className="ai-reco-partial-explanation">{getPresentationExplanation(item)}</p>
+                  <p className="ai-reco-partial-explanation">{getFriendlyRecommendationCopy(item)}</p>
                   <div className="ai-reco-why-tags">
-                    {pickTopReasons(item).map((reason) => (
+                    {formatFriendlyReasons(item).map((reason) => (
                       <Badge className="ai-reco-reason-tag" key={reason} tone="info">
-                        {softenReasonForLowTier(reason, item.matchTier)}
+                        {reason}
                       </Badge>
                     ))}
                   </div>
