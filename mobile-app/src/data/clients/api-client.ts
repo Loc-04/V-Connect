@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://10.0.2.2:3000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://d472-2001-ee1-db03-1340-81b5-24fe-ac48-deeb.ngrok-free.app';
 
 interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';

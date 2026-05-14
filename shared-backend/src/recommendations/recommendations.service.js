@@ -132,7 +132,7 @@ function getMatchTier(scoreLike) {
   if (score >= 50) {
     return MATCH_TIER_GOOD;
   }
-  if (score >= 35) {
+  if (score >= 30) {
     return MATCH_TIER_POTENTIAL;
   }
   return MATCH_TIER_LOW;
@@ -644,14 +644,8 @@ function decideRecommendation({
       'Recommended based on your skills. Add availability and interests to improve future matches.';
   }
 
-  const effectiveTier =
-    decision === 'recommend'
-      ? matchScore >= 75
-        ? MATCH_TIER_STRONG
-        : MATCH_TIER_GOOD
-      : decision === 'consider'
-        ? MATCH_TIER_POTENTIAL
-        : MATCH_TIER_LOW;
+  // Keep user-facing tier tied to score quality, independent from action policy.
+  const effectiveTier = getMatchTier(matchScore);
   if (decisionReason !== 'cold_start_skill_match') {
     explanation = buildDecisionExplanation({
       decision,
@@ -1236,6 +1230,13 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
   };
 
   candidateRows.sort((left, right) => {
+    // Ranking must use the same score shown to users as match percentage.
+    // Decision is only a tie-breaker.
+    const scoreGap = Number(right.matchScore ?? 0) - Number(left.matchScore ?? 0);
+    if (scoreGap !== 0) {
+      return scoreGap;
+    }
+
     const leftDecision = String(left?.ai_decision?.decision ?? 'not_recommended');
     const rightDecision = String(right?.ai_decision?.decision ?? 'not_recommended');
     const leftOrder = decisionOrder[leftDecision] ?? 99;
@@ -1243,11 +1244,13 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
     if (leftOrder !== rightOrder) {
       return leftOrder - rightOrder;
     }
-    const scoreGap = Number(right.matchScore ?? 0) - Number(left.matchScore ?? 0);
-    if (scoreGap !== 0) {
-      return scoreGap;
+
+    const startTimeGap = String(left.startTime ?? '').localeCompare(String(right.startTime ?? ''));
+    if (startTimeGap !== 0) {
+      return startTimeGap;
     }
-    return String(left.startTime ?? '').localeCompare(String(right.startTime ?? ''));
+
+    return String(left.activityId ?? '').localeCompare(String(right.activityId ?? ''));
   });
 
   const selectedRows = candidateRows.filter((row) =>
@@ -1265,8 +1268,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       },
     }));
 
-  const primaryIndex = includedRows.findIndex((row) => row.ai_decision?.decision === 'recommend');
-  const fallbackPrimaryIndex = primaryIndex === -1 ? 0 : primaryIndex;
+  const fallbackPrimaryIndex = 0;
   if (includedRows[fallbackPrimaryIndex]) {
     includedRows[fallbackPrimaryIndex] = {
       ...includedRows[fallbackPrimaryIndex],
