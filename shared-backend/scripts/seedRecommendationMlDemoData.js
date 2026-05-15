@@ -1,6 +1,12 @@
 import { supabaseAdmin } from '../src/database/supabase.js';
 import { calculateActivityMatchForVolunteer } from '../src/recommendations/recommendations.service.js';
 import { isUuid } from '../src/common/utils/validators.js';
+import {
+  findOutOfCatalogInterests,
+  normalizeInterest,
+  resolveInterestCatalogSource,
+  uniqueCanonicalInterests,
+} from './lib/interestCatalogSource.js';
 
 const SEED_PREFIX = String(process.env.RECOMMENDATION_ML_SEED_PREFIX ?? 'ML Seed').trim() || 'ML Seed';
 const SEED_NAMESPACE = String(process.env.RECOMMENDATION_ML_SEED_NAMESPACE ?? 'recommendation-ml-demo')
@@ -24,8 +30,9 @@ const RESET_SEED_DATA = ['1', 'true', 'yes', 'on'].includes(
 const ORGANIZER_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_ORGANIZER_COUNT ?? 8);
 const VOLUNTEER_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_VOLUNTEER_COUNT ?? 96);
 const ACTIVITY_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_ACTIVITY_COUNT ?? 30);
-const TARGET_LABELED_SAMPLES = Number(process.env.RECOMMENDATION_ML_SEED_TARGET_SAMPLES ?? 420);
+const TARGET_LABELED_SAMPLES = Number(process.env.RECOMMENDATION_ML_SEED_TARGET_SAMPLES ?? 900);
 const SOURCE_SURFACE = String(process.env.RECOMMENDATION_ML_SEED_SOURCE_SURFACE ?? 'web-seed').trim() || 'web-seed';
+const SKILL_CATALOG_COLUMNS = ['skill_name', 'name', 'label'];
 
 const ACTIVITY_TEMPLATE = [
   {
@@ -126,51 +133,6 @@ const ACTIVITY_TEMPLATE = [
   },
 ];
 
-const HIGH_SKILL_POOL = [
-  'First Aid',
-  'Teaching',
-  'Event Organization',
-  'Logistics',
-  'Project Management',
-  'Fundraising',
-  'Public Speaking',
-  'Customer Service',
-  'Gardening/Landscaping',
-  'Crowd Control',
-  'IT Support',
-];
-
-const MID_SKILL_POOL = [
-  'Cleaning',
-  'Data Entry',
-  'Customer Service',
-  'Event Organization',
-  'Public Speaking',
-  'Teaching',
-  'Logistics',
-  'Photography/Videography',
-  'Graphic Design',
-  'Copywriting',
-  'Social Media Management',
-];
-
-const LOW_SKILL_POOL = [
-  'Cooking',
-  'Photography/Videography',
-  'Graphic Design',
-  'Data Entry',
-  'Customer Service',
-  'Cleaning',
-  'Social Media Management',
-  'Copywriting',
-  'IT Support',
-  'Driving',
-];
-
-const HIGH_INTEREST_POOL = ['education', 'health', 'environment', 'community', 'outreach', 'campaign'];
-const MID_INTEREST_POOL = ['community', 'events', 'learning', 'environment', 'health', 'youth'];
-const LOW_INTEREST_POOL = ['community', 'learning', 'events', 'environment'];
-
 const SLOT_PATTERNS = [
   ['mon_mor', 'tue_mor', 'wed_mor', 'thu_aft', 'fri_aft', 'sat_mor'],
   ['mon_eve', 'tue_eve', 'wed_eve', 'thu_eve', 'fri_eve', 'sat_eve'],
@@ -242,6 +204,139 @@ function pickAvailabilityPattern(index, group) {
   return unique(basePattern.slice(0, 4));
 }
 
+function buildInterestPoolFromCatalog(catalog, preferredTokens, fallbackStart, size) {
+  const preferred = [];
+  const seen = new Set();
+  for (const token of preferredTokens) {
+    const normalizedToken = normalizeInterest(token);
+    const matched = catalog.find((item) => normalizeInterest(item).includes(normalizedToken));
+    if (!matched) {
+      continue;
+    }
+    const key = normalizeInterest(matched);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    preferred.push(matched);
+  }
+
+  const rotatedFallback = rotateArray(catalog, fallbackStart, size * 2);
+  for (const item of rotatedFallback) {
+    if (preferred.length >= size) {
+      break;
+    }
+    const key = normalizeInterest(item);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    preferred.push(item);
+  }
+  return uniqueCanonicalInterests(preferred).slice(0, size);
+}
+
+function buildInterestPools(interestCatalog) {
+  return {
+    high: buildInterestPoolFromCatalog(
+      interestCatalog,
+      ['education', 'environment', 'health', 'community', 'sustainability', 'children', 'youth'],
+      0,
+      8
+    ),
+    medium: buildInterestPoolFromCatalog(
+      interestCatalog,
+      ['community', 'event', 'technology', 'arts', 'sports', 'fundraising', 'social'],
+      3,
+      8
+    ),
+    low: buildInterestPoolFromCatalog(
+      interestCatalog,
+      ['community', 'support', 'education', 'event', 'food'],
+      6,
+      8
+    ),
+  };
+}
+
+async function readSkillCatalog() {
+  for (const column of SKILL_CATALOG_COLUMNS) {
+    const { data, error } = await supabaseAdmin.from('core_skills').select(column).limit(5000);
+    if (error) {
+      continue;
+    }
+    const skills = uniqueCanonicalInterests((data ?? []).map((row) => row?.[column]));
+    if (skills.length > 0) {
+      return {
+        found: true,
+        skills,
+        column,
+      };
+    }
+  }
+  return {
+    found: false,
+    skills: [],
+    column: null,
+  };
+}
+
+function buildSkillPoolFromCatalog(catalog, preferredTokens, fallbackStart, size) {
+  const preferred = [];
+  const seen = new Set();
+  for (const token of preferredTokens) {
+    const normalizedToken = normalizeInterest(token);
+    const matched = catalog.find((item) => normalizeInterest(item).includes(normalizedToken));
+    if (!matched) {
+      continue;
+    }
+    const key = normalizeInterest(matched);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    preferred.push(matched);
+  }
+
+  const rotatedFallback = rotateArray(catalog, fallbackStart, size * 2);
+  for (const item of rotatedFallback) {
+    if (preferred.length >= size) {
+      break;
+    }
+    const key = normalizeInterest(item);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    preferred.push(item);
+  }
+
+  return uniqueCanonicalInterests(preferred).slice(0, size);
+}
+
+function buildSkillPools(skillCatalog) {
+  return {
+    high: buildSkillPoolFromCatalog(
+      skillCatalog,
+      ['first aid', 'teaching', 'event', 'logistics', 'project', 'fundraising', 'speaking', 'it'],
+      0,
+      12
+    ),
+    medium: buildSkillPoolFromCatalog(
+      skillCatalog,
+      ['customer', 'data', 'event', 'communication', 'social', 'content', 'design', 'clean'],
+      4,
+      12
+    ),
+    low: buildSkillPoolFromCatalog(
+      skillCatalog,
+      ['clean', 'support', 'data', 'customer', 'event', 'media', 'driving'],
+      8,
+      10
+    ),
+  };
+}
+
 function nextDayWithSession(dayIndexOffset, session) {
   const base = new Date();
   const event = new Date(base);
@@ -278,7 +373,7 @@ function buildOrganizerSpecs(count) {
   });
 }
 
-function buildVolunteerSpecs(count) {
+function buildVolunteerSpecs(count, interestPools, skillPools) {
   const safeCount = safePositiveInt(count, 96);
   const groupSize = Math.max(1, Math.floor(safeCount / 3));
   return Array.from({ length: safeCount }, (_, index) => {
@@ -290,20 +385,26 @@ function buildVolunteerSpecs(count) {
     let availableChoices;
     let totalHours;
     if (group === 'high') {
-      skills = unique([...rotateArray(HIGH_SKILL_POOL, index, 5), ...rotateArray(MID_SKILL_POOL, index, 1)]);
-      interests = unique(rotateArray(HIGH_INTEREST_POOL, index, 3));
+      skills = unique([...rotateArray(skillPools.high, index, 5), ...rotateArray(skillPools.medium, index, 1)]).slice(
+        0,
+        6
+      );
+      interests = unique(rotateArray(interestPools.high, index, 3));
       availableChoices = pickAvailabilityPattern(index, group);
       totalHours = 64 + ((index * 9) % 72);
     } else if (group === 'medium') {
-      skills = unique([...rotateArray(MID_SKILL_POOL, index, 4), ...rotateArray(HIGH_SKILL_POOL, index, 1)]);
-      interests = unique(rotateArray(MID_INTEREST_POOL, index, 3));
+      skills = unique([...rotateArray(skillPools.medium, index, 4), ...rotateArray(skillPools.high, index, 1)]).slice(
+        0,
+        5
+      );
+      interests = unique(rotateArray(interestPools.medium, index, 3));
       availableChoices = pickAvailabilityPattern(index, group);
       totalHours = 20 + ((index * 5) % 40);
     } else {
-      skills = unique([...rotateArray(LOW_SKILL_POOL, index, 3), rotateArray(MID_SKILL_POOL, index, 1)[0]]).slice(0, 4);
-      interests = unique(rotateArray(LOW_INTEREST_POOL, index, 2));
+      skills = unique([...rotateArray(skillPools.low, index, 3), rotateArray(skillPools.medium, index, 1)[0]]).slice(0, 4);
+      interests = unique(rotateArray(interestPools.low, index, 2));
       availableChoices = pickAvailabilityPattern(index, group);
-      totalHours = 4 + ((index * 3) % 16);
+      totalHours = index % 5 === 0 ? 0 : 2 + ((index * 3) % 9);
     }
 
     return {
@@ -322,7 +423,7 @@ function buildVolunteerSpecs(count) {
   });
 }
 
-function buildActivitySpecs(count, organizers) {
+function buildActivitySpecs(count, organizers, skillPools) {
   const safeCount = safePositiveInt(count, 30);
   return Array.from({ length: safeCount }, (_, index) => {
     const template = ACTIVITY_TEMPLATE[index % ACTIVITY_TEMPLATE.length];
@@ -331,7 +432,8 @@ function buildActivitySpecs(count, organizers) {
     const slot = nextDayWithSession(index, template.session);
     const expandedSkills = unique([
       ...template.required_skills,
-      ...rotateArray(HIGH_SKILL_POOL, index * 2, 3),
+      ...rotateArray(skillPools.high, index * 2, 3),
+      ...rotateArray(skillPools.medium, index * 3, 2),
     ]);
     const targetSkillCount = 2 + (index % 3); // 2..4 required skills/activity
     const requiredSkills = expandedSkills.slice(0, Math.min(4, Math.max(2, targetSkillCount)));
@@ -349,7 +451,7 @@ function buildActivitySpecs(count, organizers) {
       },
       start_time: slot.start,
       end_time: slot.end,
-      capacity: 80,
+      capacity: 24 + ((index * 7) % 56),
       required_skills: requiredSkills,
       status: 'completed',
     };
@@ -746,14 +848,25 @@ async function planPairsAndStatuses(seedActivities, volunteers, targetSamples) {
     );
 
     const selectedVolunteerIds = new Set();
-    const highSignalPool = scored.filter((pair) => pair.skillRatio >= 0.35 && pair.blendedQuality >= 0.42);
-    const mediumSignalPool = scored.filter((pair) => pair.skillRatio >= 0.2 && pair.blendedQuality >= 0.3);
+    const highSignalPool = scored.filter(
+      (pair) =>
+        pair.skillRatio >= 0.4 &&
+        pair.interestRatio >= 0.15 &&
+        pair.availabilityRatio >= 0.1 &&
+        pair.blendedQuality >= 0.46
+    );
+    const mediumSignalPool = scored.filter(
+      (pair) =>
+        pair.skillRatio >= 0.25 &&
+        pair.interestRatio >= 0.1 &&
+        pair.blendedQuality >= 0.34
+    );
     const lowSignalPool = [...scored].reverse();
     const mismatchPool = scored
       .filter(
         (pair) =>
           pair.availabilityOnlyMismatch ||
-          (pair.skillRatio < 0.12 && pair.interestRatio < 0.15) ||
+          (pair.skillRatio < 0.18 && pair.interestRatio < 0.15) ||
           pair.blendedQuality < 0.24
       )
       .sort((a, b) => a.blendedQuality - b.blendedQuality);
@@ -1219,8 +1332,32 @@ async function seedClosedDataset() {
   const activityCount = safePositiveInt(ACTIVITY_COUNT, 30);
   const targetSamples = safePositiveInt(TARGET_LABELED_SAMPLES, 420);
 
+  const interestCatalogSource = await resolveInterestCatalogSource(supabaseAdmin, { preferDbWhenAvailable: true });
+  if (interestCatalogSource.fe_db_mismatch.has_mismatch) {
+    throw new Error(
+      `[seedRecommendationMlDemoData] FE/DB interest catalog mismatch detected. ` +
+        `only_in_fe=${interestCatalogSource.fe_db_mismatch.only_in_fe.join('|') || '(none)'} ` +
+        `only_in_db=${interestCatalogSource.fe_db_mismatch.only_in_db.join('|') || '(none)'}`
+    );
+  }
+  const interestPools = buildInterestPools(interestCatalogSource.selected_catalog);
+  if (interestPools.high.length < 3 || interestPools.medium.length < 3 || interestPools.low.length < 2) {
+    throw new Error(
+      `[seedRecommendationMlDemoData] interest catalog too small for seed generation (count=${interestCatalogSource.selected_count}).`
+    );
+  }
+
+  const skillCatalogSource = await readSkillCatalog();
+  if (!skillCatalogSource.found || skillCatalogSource.skills.length < 8) {
+    throw new Error('[seedRecommendationMlDemoData] unable to resolve skill catalog from core_skills.');
+  }
+  const skillPools = buildSkillPools(skillCatalogSource.skills);
+  if (skillPools.high.length < 4 || skillPools.medium.length < 4 || skillPools.low.length < 3) {
+    throw new Error('[seedRecommendationMlDemoData] skill catalog too small for seed generation.');
+  }
+
   const organizerSpecs = buildOrganizerSpecs(organizerCount);
-  const volunteerSpecs = buildVolunteerSpecs(volunteerCount);
+  const volunteerSpecs = buildVolunteerSpecs(volunteerCount, interestPools, skillPools);
   const userSpecs = [...organizerSpecs, ...volunteerSpecs];
 
   const authUsers = await ensureAuthUsers(userSpecs);
@@ -1243,9 +1380,22 @@ async function seedClosedDataset() {
     })
     .filter(Boolean);
 
+  const allSeedInterests = uniqueCanonicalInterests(
+    enrichedVolunteers.flatMap((item) => (Array.isArray(item?.profile?.interests) ? item.profile.interests : []))
+  );
+  const outOfCatalogSeedInterests = findOutOfCatalogInterests(
+    allSeedInterests,
+    interestCatalogSource.selected_catalog
+  );
+  if (outOfCatalogSeedInterests.length > 0) {
+    throw new Error(
+      `[seedRecommendationMlDemoData] seed interests outside selected catalog: ${outOfCatalogSeedInterests.join(', ')}`
+    );
+  }
+
   await upsertVolunteerProfiles(enrichedVolunteers);
 
-  const activitySpecs = buildActivitySpecs(activityCount, organizerUsers);
+  const activitySpecs = buildActivitySpecs(activityCount, organizerUsers, skillPools);
   const seedActivities = await ensureSeedActivities(activitySpecs);
   const seedActivitiesById = new Map(seedActivities.map((row) => [row.id, row]));
 
@@ -1270,6 +1420,19 @@ async function seedClosedDataset() {
   }, { checked_in: 0, approved: 0, rejected: 0, cancelled: 0 });
 
   console.log('[seedRecommendationMlDemoData] summary_begin');
+  console.log(
+    `[seedRecommendationMlDemoData] interest_source=${interestCatalogSource.selected_source} ` +
+      `interests_total=${interestCatalogSource.selected_count} sample_interests=${interestCatalogSource.selected_catalog
+        .slice(0, 8)
+        .join('|')}`
+  );
+  console.log(
+    `[seedRecommendationMlDemoData] skill_source=core_skills.${skillCatalogSource.column} ` +
+      `skills_total=${skillCatalogSource.skills.length} sample_skills=${skillCatalogSource.skills.slice(0, 8).join('|')}`
+  );
+  console.log(
+    `[seedRecommendationMlDemoData] out_of_catalog_interests_count=${outOfCatalogSeedInterests.length}`
+  );
   console.log(`[seedRecommendationMlDemoData] dry_run=${boolToLabel(DRY_RUN)} reset=${boolToLabel(RESET_SEED_DATA)}`);
   console.log(`[seedRecommendationMlDemoData] organizers_count=${organizerUsers.length}`);
   console.log(`[seedRecommendationMlDemoData] volunteers_count=${enrichedVolunteers.length}`);
