@@ -11,7 +11,7 @@ const SEED_EMAIL_DOMAIN =
 const SEED_PASSWORD = String(process.env.RECOMMENDATION_ML_SEED_PASSWORD ?? 'SeedPass!234').trim() || 'SeedPass!234';
 
 const DRY_RUN = ['1', 'true', 'yes', 'on'].includes(
-  String(process.env.RECOMMENDATION_ML_SEED_DRY_RUN ?? '')
+  String(process.env.RECOMMENDATION_ML_SEED_DRY_RUN ?? 'true')
     .trim()
     .toLowerCase()
 );
@@ -21,105 +21,166 @@ const RESET_SEED_DATA = ['1', 'true', 'yes', 'on'].includes(
     .toLowerCase()
 );
 
-const ORGANIZER_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_ORGANIZER_COUNT ?? 2);
-const VOLUNTEER_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_VOLUNTEER_COUNT ?? 36);
-const ACTIVITY_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_ACTIVITY_COUNT ?? 12);
-const TARGET_LABELED_SAMPLES = Number(process.env.RECOMMENDATION_ML_SEED_TARGET_SAMPLES ?? 180);
+const ORGANIZER_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_ORGANIZER_COUNT ?? 8);
+const VOLUNTEER_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_VOLUNTEER_COUNT ?? 96);
+const ACTIVITY_COUNT = Number(process.env.RECOMMENDATION_ML_SEED_ACTIVITY_COUNT ?? 30);
+const TARGET_LABELED_SAMPLES = Number(process.env.RECOMMENDATION_ML_SEED_TARGET_SAMPLES ?? 420);
 const SOURCE_SURFACE = String(process.env.RECOMMENDATION_ML_SEED_SOURCE_SURFACE ?? 'web-seed').trim() || 'web-seed';
-
-const STATUS_BUCKET_ORDER = ['checked_in', 'approved', 'rejected', 'cancelled'];
-const STATUS_THRESHOLD = [
-  { status: 'checked_in', maxPercentile: 0.2 },
-  { status: 'approved', maxPercentile: 0.55 },
-  { status: 'rejected', maxPercentile: 0.82 },
-  { status: 'cancelled', maxPercentile: 1 },
-];
 
 const ACTIVITY_TEMPLATE = [
   {
     slug: 'tutoring',
     title: 'Community Tutoring Drive',
-    required_skills: ['teaching', 'communication', 'mentoring'],
+    cause: 'education',
+    required_skills: ['Teaching', 'Public Speaking', 'Customer Service'],
     descriptionTokens: ['education', 'tutoring', 'youth'],
     session: 'aft',
   },
   {
     slug: 'health',
     title: 'Neighborhood Health Support',
-    required_skills: ['first aid', 'healthcare', 'communication'],
+    cause: 'health',
+    required_skills: ['First Aid', 'Customer Service', 'Data Entry'],
     descriptionTokens: ['health', 'medical', 'wellness'],
     session: 'mor',
   },
   {
     slug: 'environment',
     title: 'Green Cleanup Campaign',
-    required_skills: ['environment', 'logistics', 'coordination'],
+    cause: 'environment',
+    required_skills: ['Cleaning', 'Gardening/Landscaping', 'Logistics'],
     descriptionTokens: ['environment', 'eco', 'clean-up'],
     session: 'mor',
   },
   {
     slug: 'fundraising',
     title: 'Local Fundraising Activation',
-    required_skills: ['fundraising', 'communication', 'event planning'],
+    cause: 'community',
+    required_skills: ['Fundraising', 'Event Organization', 'Public Speaking'],
     descriptionTokens: ['fundraising', 'community', 'campaign'],
     session: 'eve',
   },
   {
     slug: 'operations',
     title: 'Volunteer Operations Hub',
-    required_skills: ['operations', 'coordination', 'logistics'],
+    cause: 'operations',
+    required_skills: ['Project Management', 'Logistics', 'Data Entry'],
     descriptionTokens: ['operations', 'support', 'coordination'],
     session: 'aft',
   },
   {
     slug: 'outreach',
     title: 'Family Outreach Day',
-    required_skills: ['communication', 'event planning', 'teaching'],
+    cause: 'community',
+    required_skills: ['Event Organization', 'Teaching', 'Customer Service'],
     descriptionTokens: ['outreach', 'family', 'engagement'],
     session: 'eve',
+  },
+  {
+    slug: 'senior-care',
+    title: 'Senior Care Companion Shift',
+    cause: 'health',
+    required_skills: ['First Aid', 'Customer Service', 'Public Speaking'],
+    descriptionTokens: ['senior', 'care', 'wellbeing'],
+    session: 'aft',
+  },
+  {
+    slug: 'food-relief',
+    title: 'Community Food Relief Distribution',
+    cause: 'community',
+    required_skills: ['Logistics', 'Cooking', 'Data Entry'],
+    descriptionTokens: ['food', 'relief', 'distribution'],
+    session: 'mor',
+  },
+  {
+    slug: 'digital-literacy',
+    title: 'Digital Literacy Workshop',
+    cause: 'education',
+    required_skills: ['Teaching', 'IT Support', 'Public Speaking'],
+    descriptionTokens: ['digital', 'learning', 'workshop'],
+    session: 'eve',
+  },
+  {
+    slug: 'event-support',
+    title: 'Community Event Support Team',
+    cause: 'community',
+    required_skills: ['Event Organization', 'Logistics', 'Customer Service'],
+    descriptionTokens: ['event', 'community', 'support'],
+    session: 'aft',
+  },
+  {
+    slug: 'youth-sports',
+    title: 'Youth Sports Mentoring',
+    cause: 'education',
+    required_skills: ['Teaching', 'Crowd Control', 'First Aid'],
+    descriptionTokens: ['youth', 'sports', 'mentoring'],
+    session: 'eve',
+  },
+  {
+    slug: 'urban-green',
+    title: 'Urban Garden Restoration',
+    cause: 'environment',
+    required_skills: ['Gardening/Landscaping', 'Cleaning', 'Project Management'],
+    descriptionTokens: ['garden', 'environment', 'restoration'],
+    session: 'mor',
   },
 ];
 
 const HIGH_SKILL_POOL = [
-  'teaching',
-  'communication',
-  'mentoring',
-  'first aid',
-  'healthcare',
-  'environment',
-  'fundraising',
-  'event planning',
-  'logistics',
-  'coordination',
-  'operations',
+  'First Aid',
+  'Teaching',
+  'Event Organization',
+  'Logistics',
+  'Project Management',
+  'Fundraising',
+  'Public Speaking',
+  'Customer Service',
+  'Gardening/Landscaping',
+  'Crowd Control',
+  'IT Support',
 ];
 
 const MID_SKILL_POOL = [
-  'communication',
-  'event planning',
-  'coordination',
-  'logistics',
-  'teaching',
-  'fundraising',
-  'teamwork',
-  'public speaking',
-  'documentation',
+  'Cleaning',
+  'Data Entry',
+  'Customer Service',
+  'Event Organization',
+  'Public Speaking',
+  'Teaching',
+  'Logistics',
+  'Photography/Videography',
+  'Graphic Design',
+  'Copywriting',
+  'Social Media Management',
 ];
 
 const LOW_SKILL_POOL = [
-  'photo editing',
-  'music',
-  'gaming',
-  'cooking',
-  'blogging',
-  'illustration',
-  'podcast',
-  'travel',
+  'Cooking',
+  'Photography/Videography',
+  'Graphic Design',
+  'Data Entry',
+  'Customer Service',
+  'Cleaning',
+  'Social Media Management',
+  'Copywriting',
+  'IT Support',
+  'Driving',
 ];
 
 const HIGH_INTEREST_POOL = ['education', 'health', 'environment', 'community', 'outreach', 'campaign'];
-const MID_INTEREST_POOL = ['community', 'events', 'networking', 'learning'];
-const LOW_INTEREST_POOL = ['gaming', 'fashion', 'entertainment'];
+const MID_INTEREST_POOL = ['community', 'events', 'learning', 'environment', 'health', 'youth'];
+const LOW_INTEREST_POOL = ['community', 'learning', 'events', 'environment'];
+
+const SLOT_PATTERNS = [
+  ['mon_mor', 'tue_mor', 'wed_mor', 'thu_aft', 'fri_aft', 'sat_mor'],
+  ['mon_eve', 'tue_eve', 'wed_eve', 'thu_eve', 'fri_eve', 'sat_eve'],
+  ['tue_aft', 'wed_aft', 'thu_aft', 'fri_mor', 'sat_aft', 'sun_aft'],
+  ['mon_mor', 'mon_aft', 'wed_eve', 'fri_aft', 'sun_mor', 'sun_eve'],
+  ['tue_mor', 'thu_mor', 'sat_mor', 'sat_aft', 'sun_mor', 'sun_aft'],
+  ['mon_eve', 'wed_aft', 'fri_eve', 'sat_eve', 'sun_eve'],
+  ['mon_aft', 'tue_eve', 'thu_eve', 'sat_aft', 'sun_aft'],
+  ['wed_mor', 'thu_mor', 'fri_mor', 'sat_mor', 'sun_mor'],
+];
 
 function safePositiveInt(value, fallback) {
   const parsed = Number(value);
@@ -148,10 +209,6 @@ function pairKey(activityId, volunteerId) {
   return `${activityId}::${volunteerId}`;
 }
 
-function toSlot(dayKey, sessionKey) {
-  return `${dayKey}_${sessionKey}`;
-}
-
 function rotateArray(values, startIndex, take) {
   if (!Array.isArray(values) || values.length === 0 || take <= 0) {
     return [];
@@ -167,10 +224,29 @@ function unique(values) {
   return Array.from(new Set(values.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0)));
 }
 
+function pickAvailabilityPattern(index, group) {
+  const basePattern = SLOT_PATTERNS[index % SLOT_PATTERNS.length] ?? [];
+  if (group === 'high') {
+    return unique([
+      ...basePattern,
+      ...rotateArray(SLOT_PATTERNS[(index + 2) % SLOT_PATTERNS.length] ?? [], 0, 2),
+      ...rotateArray(SLOT_PATTERNS[(index + 4) % SLOT_PATTERNS.length] ?? [], 0, 2),
+    ]).slice(0, 12);
+  }
+  if (group === 'medium') {
+    return unique([
+      ...basePattern,
+      ...rotateArray(SLOT_PATTERNS[(index + 3) % SLOT_PATTERNS.length] ?? [], 0, 2),
+    ]).slice(0, 9);
+  }
+  return unique(basePattern.slice(0, 4));
+}
+
 function nextDayWithSession(dayIndexOffset, session) {
   const base = new Date();
   const event = new Date(base);
-  event.setUTCDate(base.getUTCDate() + 2 + dayIndexOffset);
+  // Use historical timestamps so seeded training data does not pollute live published recommendation candidates.
+  event.setUTCDate(base.getUTCDate() - (45 - dayIndexOffset));
   if (session === 'mor') {
     event.setUTCHours(8, 30, 0, 0);
   } else if (session === 'aft') {
@@ -185,21 +261,12 @@ function nextDayWithSession(dayIndexOffset, session) {
   return { start, end };
 }
 
-function computeStatusByPercentile(percentile) {
-  for (const bucket of STATUS_THRESHOLD) {
-    if (percentile <= bucket.maxPercentile) {
-      return bucket.status;
-    }
-  }
-  return 'cancelled';
-}
-
 function needsCheckedInAt(status) {
   return normalizeStatus(status) === 'checked_in';
 }
 
 function buildOrganizerSpecs(count) {
-  const safeCount = safePositiveInt(count, 2);
+  const safeCount = safePositiveInt(count, 8);
   return Array.from({ length: safeCount }, (_, index) => {
     const ordinal = String(index + 1).padStart(2, '0');
     return {
@@ -212,7 +279,7 @@ function buildOrganizerSpecs(count) {
 }
 
 function buildVolunteerSpecs(count) {
-  const safeCount = safePositiveInt(count, 36);
+  const safeCount = safePositiveInt(count, 96);
   const groupSize = Math.max(1, Math.floor(safeCount / 3));
   return Array.from({ length: safeCount }, (_, index) => {
     const ordinal = String(index + 1).padStart(3, '0');
@@ -223,29 +290,20 @@ function buildVolunteerSpecs(count) {
     let availableChoices;
     let totalHours;
     if (group === 'high') {
-      skills = unique([...rotateArray(HIGH_SKILL_POOL, index, 4), ...rotateArray(HIGH_SKILL_POOL, index + 3, 2)]);
+      skills = unique([...rotateArray(HIGH_SKILL_POOL, index, 5), ...rotateArray(MID_SKILL_POOL, index, 1)]);
       interests = unique(rotateArray(HIGH_INTEREST_POOL, index, 3));
-      availableChoices = unique([
-        'mon_mor',
-        'mon_aft',
-        'tue_aft',
-        'wed_mor',
-        'thu_eve',
-        'fri_aft',
-        'sat_mor',
-        'sun_mor',
-      ]);
-      totalHours = 120 + ((index * 11) % 140);
+      availableChoices = pickAvailabilityPattern(index, group);
+      totalHours = 64 + ((index * 9) % 72);
     } else if (group === 'medium') {
-      skills = unique([...rotateArray(MID_SKILL_POOL, index, 3), ...rotateArray(HIGH_SKILL_POOL, index, 1)]);
-      interests = unique(rotateArray(MID_INTEREST_POOL, index, 2));
-      availableChoices = unique(['tue_eve', 'wed_aft', 'fri_eve', 'sat_aft', 'sun_aft']);
-      totalHours = 25 + ((index * 7) % 60);
+      skills = unique([...rotateArray(MID_SKILL_POOL, index, 4), ...rotateArray(HIGH_SKILL_POOL, index, 1)]);
+      interests = unique(rotateArray(MID_INTEREST_POOL, index, 3));
+      availableChoices = pickAvailabilityPattern(index, group);
+      totalHours = 20 + ((index * 5) % 40);
     } else {
-      skills = unique([...rotateArray(LOW_SKILL_POOL, index, 3), rotateArray(MID_SKILL_POOL, index, 1)[0]]);
+      skills = unique([...rotateArray(LOW_SKILL_POOL, index, 3), rotateArray(MID_SKILL_POOL, index, 1)[0]]).slice(0, 4);
       interests = unique(rotateArray(LOW_INTEREST_POOL, index, 2));
-      availableChoices = unique(['mon_eve', 'wed_eve', 'fri_eve']);
-      totalHours = (index * 2) % 12;
+      availableChoices = pickAvailabilityPattern(index, group);
+      totalHours = 4 + ((index * 3) % 16);
     }
 
     return {
@@ -265,7 +323,7 @@ function buildVolunteerSpecs(count) {
 }
 
 function buildActivitySpecs(count, organizers) {
-  const safeCount = safePositiveInt(count, 12);
+  const safeCount = safePositiveInt(count, 30);
   return Array.from({ length: safeCount }, (_, index) => {
     const template = ACTIVITY_TEMPLATE[index % ACTIVITY_TEMPLATE.length];
     const organizer = organizers[index % organizers.length];
@@ -284,7 +342,7 @@ function buildActivitySpecs(count, organizers) {
       organizer_id: organizer.id,
       description:
         `${SEED_PREFIX} demo activity (${SEED_NAMESPACE}). ` +
-        `Used for recommendation ML v1 seeding. Focus: ${descriptionTokens.join(', ')}.`,
+        `Used for recommendation ML v1 seeding. Cause=${template.cause}. Focus: ${descriptionTokens.join(', ')}.`,
       location: {
         address: `${SEED_PREFIX} Hub ${ordinal}`,
         city: 'Ho Chi Minh City',
@@ -293,7 +351,7 @@ function buildActivitySpecs(count, organizers) {
       end_time: slot.end,
       capacity: 80,
       required_skills: requiredSkills,
-      status: 'published',
+      status: 'completed',
     };
   });
 }
@@ -486,7 +544,7 @@ async function ensureSeedActivities(specs) {
   const upsertRows = specs.map((spec) => {
     const existingRow = existingByTitle.get(spec.title);
     return {
-      id: existingRow?.id ?? undefined,
+      ...(existingRow?.id ? { id: existingRow.id } : {}),
       title: spec.title,
       organizer_id: spec.organizer_id,
       description: spec.description,
@@ -536,22 +594,98 @@ async function ensureSeedActivities(specs) {
   });
 }
 
+function toRatio(value, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || !Number.isFinite(max) || max <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, numeric / max));
+}
+
+function pickFromPool(pool, targetCount, selectedVolunteerIds) {
+  const output = [];
+  for (const item of pool) {
+    if (output.length >= targetCount) {
+      break;
+    }
+    if (selectedVolunteerIds.has(item.volunteerId)) {
+      continue;
+    }
+    selectedVolunteerIds.add(item.volunteerId);
+    output.push(item);
+  }
+  return output;
+}
+
+function chooseFinalStatus(baseStatus, statusCounts, targetStatusCounts) {
+  if (statusCounts[baseStatus] < targetStatusCounts[baseStatus]) {
+    return baseStatus;
+  }
+  if (baseStatus === 'checked_in' || baseStatus === 'approved') {
+    const fallback = statusCounts.approved < targetStatusCounts.approved ? 'approved' : 'checked_in';
+    return statusCounts[fallback] < targetStatusCounts[fallback] ? fallback : baseStatus;
+  }
+  const fallback = statusCounts.rejected < targetStatusCounts.rejected ? 'rejected' : 'cancelled';
+  return statusCounts[fallback] < targetStatusCounts[fallback] ? fallback : baseStatus;
+}
+
+function trimPlannedRows(rows, targetCount, statusCounts, targetStatusCounts) {
+  if (rows.length <= targetCount) {
+    return rows;
+  }
+
+  const removableOrder = ['approved', 'checked_in', 'cancelled', 'rejected'];
+  const trimmed = [...rows];
+  while (trimmed.length > targetCount) {
+    let removed = false;
+    for (const status of removableOrder) {
+      const hasBuffer = statusCounts[status] > targetStatusCounts[status];
+      if (!hasBuffer) {
+        continue;
+      }
+      const idx = trimmed.findLastIndex((row) => row.status === status);
+      if (idx < 0) {
+        continue;
+      }
+      trimmed.splice(idx, 1);
+      statusCounts[status] -= 1;
+      removed = true;
+      break;
+    }
+    if (!removed) {
+      trimmed.pop();
+    }
+  }
+  return trimmed;
+}
+
 async function planPairsAndStatuses(seedActivities, volunteers, targetSamples) {
-  const safeTarget = safePositiveInt(targetSamples, 180);
+  const safeTarget = safePositiveInt(targetSamples, 420);
   const planned = [];
-  const requiredStatusCounts = {
+  const statusCounts = {
     checked_in: 0,
     approved: 0,
     rejected: 0,
     cancelled: 0,
   };
+  const targetStatusCounts = {
+    checked_in: Math.floor(safeTarget * 0.28),
+    approved: Math.floor(safeTarget * 0.27),
+    rejected: Math.floor(safeTarget * 0.25),
+    cancelled: safeTarget - Math.floor(safeTarget * 0.28) - Math.floor(safeTarget * 0.27) - Math.floor(safeTarget * 0.25),
+  };
 
-  const minPerStatus = Math.max(8, Math.floor(safeTarget * 0.18));
-  const perActivityLimit = Math.max(6, Math.ceil(safeTarget / Math.max(seedActivities.length, 1)));
+  const perActivityLimit = Math.max(10, Math.ceil(safeTarget / Math.max(seedActivities.length, 1)));
+  const positivePerActivity = Math.max(5, Math.floor(perActivityLimit * 0.55));
+  const checkedInPerActivity = Math.max(2, Math.floor(positivePerActivity * 0.55));
+  const approvedPerActivity = Math.max(1, positivePerActivity - checkedInPerActivity);
+  const rejectedPerActivity = Math.max(2, Math.floor((perActivityLimit - positivePerActivity) * 0.55));
+  const cancelledPerActivity = Math.max(1, perActivityLimit - positivePerActivity - rejectedPerActivity);
   let totalPairsConsidered = 0;
   let scorerFailCount = 0;
   let scoredPairsCount = 0;
   let zeroScorePairsCount = 0;
+  let availabilityOnlyNegativePairs = 0;
 
   for (const activity of seedActivities) {
     const scored = [];
@@ -566,54 +700,121 @@ async function planPairsAndStatuses(seedActivities, volunteers, targetSamples) {
         if (Number(result?.matchScore ?? 0) <= 0) {
           zeroScorePairsCount += 1;
         }
+
+        const scoreBreakdown = result?.score_breakdown ?? {};
+        const skillRatio = toRatio(scoreBreakdown.skill_score, 50);
+        const interestRatio = toRatio(scoreBreakdown.interest_score, 20);
+        const availabilityRatio = toRatio(scoreBreakdown.availability_score, 15);
+        const experienceRatio = toRatio(scoreBreakdown.experience_score, 10);
+        const historyRatio = toRatio(scoreBreakdown.history_score, 5);
+        const blendedQuality =
+          skillRatio * 0.5 +
+          interestRatio * 0.2 +
+          availabilityRatio * 0.18 +
+          experienceRatio * 0.08 +
+          historyRatio * 0.04;
+        const availabilityOnlyMismatch = availabilityRatio >= 0.45 && skillRatio < 0.15;
+
+        if (availabilityOnlyMismatch) {
+          availabilityOnlyNegativePairs += 1;
+        }
+
         scored.push({
           volunteerId: volunteer.id,
           matchScore: Number(result?.matchScore ?? 0),
           matchRatio: Number(result?.matchRatio ?? 0),
           group: volunteer.group,
+          skillRatio,
+          interestRatio,
+          availabilityRatio,
+          experienceRatio,
+          historyRatio,
+          blendedQuality,
+          availabilityOnlyMismatch,
         });
       } catch {
         scorerFailCount += 1;
-        // Skip scorer failure for this pair.
       }
     }
 
-    scored.sort((a, b) => b.matchScore - a.matchScore);
-    const selected = scored.slice(0, Math.min(perActivityLimit, scored.length));
-    const selectedCount = selected.length;
+    scored.sort(
+      (a, b) =>
+        b.blendedQuality - a.blendedQuality ||
+        b.skillRatio - a.skillRatio ||
+        b.interestRatio - a.interestRatio ||
+        b.matchScore - a.matchScore
+    );
 
-    for (let idx = 0; idx < selectedCount; idx += 1) {
-      const pair = selected[idx];
-      const percentile = selectedCount <= 1 ? 0 : idx / (selectedCount - 1);
-      let finalStatus = computeStatusByPercentile(percentile);
+    const selectedVolunteerIds = new Set();
+    const highSignalPool = scored.filter((pair) => pair.skillRatio >= 0.35 && pair.blendedQuality >= 0.42);
+    const mediumSignalPool = scored.filter((pair) => pair.skillRatio >= 0.2 && pair.blendedQuality >= 0.3);
+    const lowSignalPool = [...scored].reverse();
+    const mismatchPool = scored
+      .filter(
+        (pair) =>
+          pair.availabilityOnlyMismatch ||
+          (pair.skillRatio < 0.12 && pair.interestRatio < 0.15) ||
+          pair.blendedQuality < 0.24
+      )
+      .sort((a, b) => a.blendedQuality - b.blendedQuality);
 
-      const underFilled = STATUS_BUCKET_ORDER.find((status) => requiredStatusCounts[status] < minPerStatus);
-      if (underFilled) {
-        finalStatus = underFilled;
+    const checkedInRows = pickFromPool(
+      [...highSignalPool, ...mediumSignalPool, ...scored],
+      checkedInPerActivity,
+      selectedVolunteerIds
+    );
+    const approvedRows = pickFromPool(
+      [...mediumSignalPool, ...highSignalPool, ...scored],
+      approvedPerActivity,
+      selectedVolunteerIds
+    );
+    const rejectedRows = pickFromPool(
+      [...mismatchPool, ...lowSignalPool],
+      rejectedPerActivity,
+      selectedVolunteerIds
+    );
+    const cancelledRows = pickFromPool(
+      [...lowSignalPool, ...mismatchPool],
+      cancelledPerActivity,
+      selectedVolunteerIds
+    );
+
+    const activityPlan = [
+      ...checkedInRows.map((pair) => ({ pair, status: 'checked_in' })),
+      ...approvedRows.map((pair) => ({ pair, status: 'approved' })),
+      ...rejectedRows.map((pair) => ({ pair, status: 'rejected' })),
+      ...cancelledRows.map((pair) => ({ pair, status: 'cancelled' })),
+    ];
+
+    for (const item of activityPlan) {
+      if (planned.length >= safeTarget) {
+        break;
       }
-
-      requiredStatusCounts[finalStatus] += 1;
+      const finalStatus = chooseFinalStatus(item.status, statusCounts, targetStatusCounts);
+      statusCounts[finalStatus] += 1;
       planned.push({
         activityId: activity.id,
-        volunteerId: pair.volunteerId,
+        volunteerId: item.pair.volunteerId,
         status: finalStatus,
-        aiMatchScore: Number.isFinite(pair.matchRatio) ? pair.matchRatio : null,
-        matchScore100: Number.isFinite(pair.matchScore) ? pair.matchScore : null,
+        aiMatchScore: Number.isFinite(item.pair.matchRatio) ? item.pair.matchRatio : null,
+        matchScore100: Number.isFinite(item.pair.matchScore) ? item.pair.matchScore : null,
       });
     }
   }
 
-  planned.sort((a, b) => (b.matchScore100 ?? 0) - (a.matchScore100 ?? 0));
-  const sliced = planned.slice(0, safeTarget);
+  const trimmed = trimPlannedRows(planned, safeTarget, statusCounts, targetStatusCounts);
   return {
-    plannedRows: sliced,
+    plannedRows: trimmed,
     planningStats: {
       total_pairs_considered: totalPairsConsidered,
       scorer_fail_count: scorerFailCount,
       scored_pairs_count: scoredPairsCount,
       zero_score_pairs_count: zeroScorePairsCount,
+      availability_only_negative_pairs: availabilityOnlyNegativePairs,
       selected_pairs_before_cap: planned.length,
-      selected_pairs_after_cap: sliced.length,
+      selected_pairs_after_cap: trimmed.length,
+      status_counts: statusCounts,
+      status_targets: targetStatusCounts,
     },
   };
 }
@@ -967,19 +1168,29 @@ async function resetSeedData() {
   }
 
   if (seedActivityIds.length > 0) {
-    const { error: activitiesError } = await supabaseAdmin.from('activities').delete().in('id', seedActivityIds);
-    if (activitiesError) {
-      throw new Error(`Failed to delete seed activities: ${activitiesError.message}`);
+    const { error: servingByActivityError } = await supabaseAdmin
+      .from('rec_serving_item')
+      .delete()
+      .in('candidate_activity_id', seedActivityIds);
+    if (servingByActivityError) {
+      throw new Error(`Failed to delete seed rec_serving_item by candidate_activity_id: ${servingByActivityError.message}`);
     }
   }
 
   if (seedUserIds.length > 0) {
-    const { error: servingCleanupError } = await supabaseAdmin
+    const { error: servingByRequesterError } = await supabaseAdmin
       .from('rec_serving_item')
       .delete()
       .in('requester_user_id', seedUserIds);
-    if (servingCleanupError) {
-      throw new Error(`Failed to delete seed rec_serving_item by requester: ${servingCleanupError.message}`);
+    if (servingByRequesterError) {
+      throw new Error(`Failed to delete seed rec_serving_item by requester_user_id: ${servingByRequesterError.message}`);
+    }
+  }
+
+  if (seedActivityIds.length > 0) {
+    const { error: activitiesError } = await supabaseAdmin.from('activities').delete().in('id', seedActivityIds);
+    if (activitiesError) {
+      throw new Error(`Failed to delete seed activities: ${activitiesError.message}`);
     }
   }
 
@@ -1003,10 +1214,10 @@ async function resetSeedData() {
 }
 
 async function seedClosedDataset() {
-  const organizerCount = safePositiveInt(ORGANIZER_COUNT, 2);
-  const volunteerCount = safePositiveInt(VOLUNTEER_COUNT, 36);
-  const activityCount = safePositiveInt(ACTIVITY_COUNT, 12);
-  const targetSamples = safePositiveInt(TARGET_LABELED_SAMPLES, 180);
+  const organizerCount = safePositiveInt(ORGANIZER_COUNT, 8);
+  const volunteerCount = safePositiveInt(VOLUNTEER_COUNT, 96);
+  const activityCount = safePositiveInt(ACTIVITY_COUNT, 30);
+  const targetSamples = safePositiveInt(TARGET_LABELED_SAMPLES, 420);
 
   const organizerSpecs = buildOrganizerSpecs(organizerCount);
   const volunteerSpecs = buildVolunteerSpecs(volunteerCount);
