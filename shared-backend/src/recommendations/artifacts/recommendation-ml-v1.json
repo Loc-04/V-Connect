@@ -2,12 +2,12 @@
   "model_version": "ml-v1-logreg-2026-05-14",
   "provider": "internal",
   "label": "approved_or_checked_in",
-  "trained_at": "2026-05-14T13:20:28.176Z",
-  "sample_size": 52,
+  "trained_at": "2026-05-14T20:20:17.380Z",
+  "sample_size": 472,
   "training_config": {
     "max_samples": 4000,
     "min_train_samples": 60,
-    "dev_allow_low_sample": true,
+    "dev_allow_low_sample": false,
     "dev_min_train_samples": 10,
     "epochs": 800,
     "learning_rate": 0.15,
@@ -19,24 +19,24 @@
       "experience_ratio",
       "history_ratio"
     ],
-    "low_sample_mode_used": true
+    "low_sample_mode_used": false
   },
   "metrics": {
     "train": {
-      "accuracy": 0.9024,
-      "positiveRate": 0.7561
+      "accuracy": 1,
+      "positiveRate": 0.4987
     },
     "test": {
-      "accuracy": 1,
-      "positiveRate": 0.5455
+      "accuracy": 0.9263,
+      "positiveRate": 0.6526
     }
   },
-  "bias": -1.23768571,
+  "bias": -3.46083673,
   "weights": {
-    "skill_ratio": -1.37388481,
-    "interest_ratio": 0,
-    "availability_ratio": -2.63827169,
-    "experience_ratio": -0.07053307,
-    "history_ratio": 4.05654669
+    "skill_ratio": 2.7388,
+    "interest_ratio": 0.37682771,
+    "availability_ratio": 0.72678295,
+    "experience_ratio": 1.74805452,
+    "history_ratio": 3.53749161
   }
 }
