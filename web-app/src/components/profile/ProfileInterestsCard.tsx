@@ -1,7 +1,14 @@
-import { Heart, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Heart, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
+import {
+  filterSharedInterests,
+  getSharedInterestCatalog,
+  isKnownSharedInterest,
+  normalizeInterestSelection,
+  resolveCanonicalInterestLabel,
+} from '../../lib/interestCatalog';
 import { Button } from '../ui/Button';
 import { ProfileEmptyState, ProfileSectionCard } from './ProfileSectionCard';
 
@@ -10,23 +17,43 @@ interface ProfileInterestsCardProps {
   onPersist: (nextInterests: string[]) => Promise<void>;
 }
 
-function normalizeInterestName(value: string) {
-  return value.trim().replace(/\s+/g, ' ');
-}
+const legacyHint = 'This saved interest is not in the current catalog';
 
 export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsCardProps) {
-  const [items, setItems] = useState<string[]>(interests);
+  const interestCatalog = useMemo(() => getSharedInterestCatalog(), []);
+  const [items, setItems] = useState<string[]>(() => normalizeInterestSelection(interests, interestCatalog));
   const [isManaging, setIsManaging] = useState(false);
-  const [formMode, setFormMode] = useState<'idle' | 'add' | 'edit'>('idle');
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [draftName, setDraftName] = useState('');
+  const [formMode, setFormMode] = useState<'idle' | 'add'>('idle');
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [draftName, setDraftName] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    setItems(interests);
-  }, [interests]);
+    setItems(normalizeInterestSelection(interests, interestCatalog));
+  }, [interestCatalog, interests]);
+
+  const selectedInterests = useMemo(
+    () =>
+      items.map((item) => ({
+        label: item,
+        isLegacy: !isKnownSharedInterest(item, interestCatalog),
+      })),
+    [interestCatalog, items]
+  );
+  const hasLegacyInterests = selectedInterests.some((item) => item.isLegacy);
+
+  const visibleInterestOptions = useMemo(
+    () =>
+      filterSharedInterests(catalogQuery, interestCatalog)
+        .filter((interest) => !items.some((item) => item.toLowerCase() === interest.toLowerCase()))
+        .slice(0, 16),
+    [catalogQuery, interestCatalog, items]
+  );
+
+  const canonicalDraftName = resolveCanonicalInterestLabel(draftName, interestCatalog);
+  const isCatalogDraft = isKnownSharedInterest(canonicalDraftName, interestCatalog);
 
   const headerAction = useMemo(() => {
     if (isManaging) {
@@ -37,7 +64,7 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
             onClick={() => {
               setIsManaging(false);
               setFormMode('idle');
-              setEditingIndex(null);
+              setCatalogQuery('');
               setDraftName('');
               setError(null);
               setNotice(null);
@@ -51,7 +78,7 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
             onClick={() => {
               setIsManaging(true);
               setFormMode('add');
-              setEditingIndex(null);
+              setCatalogQuery('');
               setDraftName('');
               setError(null);
               setNotice(null);
@@ -77,7 +104,7 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
           onClick={() => {
             setIsManaging(true);
             setFormMode('add');
-            setEditingIndex(null);
+            setCatalogQuery('');
             setDraftName('');
             setError(null);
             setNotice(null);
@@ -93,18 +120,9 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
 
   const resetInlineEditor = () => {
     setFormMode('idle');
-    setEditingIndex(null);
+    setCatalogQuery('');
     setDraftName('');
     setError(null);
-  };
-
-  const handleStartEdit = (interest: string, index: number) => {
-    setIsManaging(true);
-    setFormMode('edit');
-    setEditingIndex(index);
-    setDraftName(interest);
-    setError(null);
-    setNotice(null);
   };
 
   const handleDelete = async (index: number) => {
@@ -132,12 +150,6 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
       if (nextItems.length === 0) {
         setIsManaging(false);
       }
-
-      if (editingIndex === index) {
-        resetInlineEditor();
-      } else if (editingIndex !== null && editingIndex > index) {
-        setEditingIndex(editingIndex - 1);
-      }
     } catch (persistError) {
       setError(persistError instanceof Error ? persistError.message : 'Failed to remove interest.');
     } finally {
@@ -148,29 +160,19 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedName = normalizeInterestName(draftName);
-
-    if (!normalizedName) {
-      setError('Interest name is required.');
+    if (!isCatalogDraft) {
+      setError('Choose an interest from the list');
       return;
     }
 
-    const duplicate = items.some(
-      (item, index) => index !== editingIndex && item.toLowerCase() === normalizedName.toLowerCase()
-    );
+    const duplicate = items.some((item) => item.toLowerCase() === canonicalDraftName.toLowerCase());
 
     if (duplicate) {
       setError('This interest already exists.');
       return;
     }
 
-    const nextItems = [...items];
-
-    if (formMode === 'edit' && editingIndex !== null) {
-      nextItems[editingIndex] = normalizedName;
-    } else {
-      nextItems.push(normalizedName);
-    }
+    const nextItems = normalizeInterestSelection([...items, canonicalDraftName], interestCatalog);
 
     setSubmitting(true);
     setError(null);
@@ -179,7 +181,7 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
     try {
       await onPersist(nextItems);
       setItems(nextItems);
-      setNotice(formMode === 'edit' ? 'Interest updated.' : 'Interest added.');
+      setNotice('Interest added.');
       resetInlineEditor();
       setIsManaging(true);
     } catch (persistError) {
@@ -201,22 +203,18 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
 
       {items.length > 0 ? (
         <>
+          <p className="vol-profile-section-description">
+            <strong>Selected interests</strong>
+          </p>
           <div className="vol-profile-interest-list">
-            {items.map((interest, index) => (
-              <span className="vol-profile-interest-chip" key={interest}>
-                <span>{interest}</span>
+            {selectedInterests.map((interest, index) => (
+              <span className="vol-profile-interest-chip" key={interest.label}>
+                <span>{interest.label}</span>
+                {interest.isLegacy ? <small className="vol-profile-interest-legacy-pill">Legacy</small> : null}
                 {isManaging && (
                   <span className="vol-profile-chip-controls">
                     <button
-                      aria-label={`Edit ${interest}`}
-                      className="vol-profile-chip-action-btn"
-                      onClick={() => handleStartEdit(interest, index)}
-                      type="button"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      aria-label={`Delete ${interest}`}
+                      aria-label={`Delete ${interest.label}`}
                       className="vol-profile-chip-action-btn vol-profile-chip-action-danger"
                       disabled={submitting}
                       onClick={() => {
@@ -231,6 +229,7 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
               </span>
             ))}
           </div>
+          {hasLegacyInterests ? <p className="vol-profile-form-helper">{legacyHint}</p> : null}
         </>
       ) : (
         <ProfileEmptyState
@@ -240,7 +239,7 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
               onClick={() => {
                 setIsManaging(true);
                 setFormMode('add');
-                setEditingIndex(null);
+                setCatalogQuery('');
                 setDraftName('');
                 setError(null);
                 setNotice(null);
@@ -255,24 +254,47 @@ export function ProfileInterestsCard({ interests, onPersist }: ProfileInterestsC
         />
       )}
 
-      {(formMode === 'add' || (formMode === 'edit' && editingIndex !== null)) && (
+      {formMode === 'add' && (
         <form className="vol-profile-inline-editor" onSubmit={handleSubmit}>
           <div className="vol-profile-inline-grid vol-profile-inline-grid-single">
-            <input
-              className="text-input"
-              onChange={(event) => setDraftName(event.target.value)}
-              placeholder="Interest name"
-              value={draftName}
-            />
+            <div className="vol-profile-skill-picker">
+              <input
+                className="text-input"
+                onChange={(event) => {
+                  setCatalogQuery(event.target.value);
+                  setDraftName('');
+                  setError(null);
+                }}
+                placeholder="Search interests..."
+                value={catalogQuery}
+              />
+              <div className="vol-profile-skill-options">
+                {visibleInterestOptions.map((interest) => (
+                  <button
+                    className={interest.toLowerCase() === canonicalDraftName.toLowerCase() ? 'is-selected' : ''}
+                    key={interest}
+                    onClick={() => {
+                      setDraftName(interest);
+                      setCatalogQuery(interest);
+                      setError(null);
+                    }}
+                    type="button"
+                  >
+                    {interest}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="vol-profile-form-helper">
-            {formMode === 'add'
-              ? 'Add one interest at a time to keep your profile organized.'
-              : 'Rename the selected interest and save the change.'}
+            {catalogQuery.trim().length > 0 && visibleInterestOptions.length === 0 ? 'No matching interests' : null}
+          </div>
+          <div className="vol-profile-form-helper">
+            {catalogQuery.trim().length > 0 && !isCatalogDraft ? 'Choose an interest from the list' : null}
           </div>
           <div className="vol-profile-inline-actions">
-            <Button disabled={submitting} type="submit">
-              {submitting ? 'Saving...' : formMode === 'add' ? 'Add interest' : 'Save interest'}
+            <Button disabled={submitting || !isCatalogDraft} type="submit">
+              {submitting ? 'Saving...' : 'Add interest'}
             </Button>
             <Button onClick={resetInlineEditor} type="button" variant="secondary">
               Cancel

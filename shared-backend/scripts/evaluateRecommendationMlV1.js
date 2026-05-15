@@ -7,6 +7,11 @@ import { supabaseAdmin } from '../src/database/supabase.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ARTIFACT_PATH = path.resolve(__dirname, '../src/recommendations/artifacts/recommendation-ml-v1.json');
+const EVALUATION_OUTPUT_PATH = path.resolve(
+  __dirname,
+  '../src/recommendations/artifacts/recommendation-ml-v1-evaluation.json'
+);
+const MAX_SEED_USERS = Math.max(0, Math.trunc(Number(process.env.RECOMMENDATION_ML_EVAL_SEED_USERS ?? 5)));
 
 function normalize(value) {
   return String(value ?? '')
@@ -52,11 +57,17 @@ function runSnapshotInMode({ userIds, mode }) {
           reason: row?.ai_decision?.decision_reason ?? row?.reason ?? null,
           display_reasons: Array.isArray(row?.display_reasons) ? row.display_reasons : [],
           matched_skills: Array.isArray(row?.feature_snapshot?.matched_skills) ? row.feature_snapshot.matched_skills : [],
+          matched_interests: Array.isArray(row?.feature_snapshot?.matched_interests) ? row.feature_snapshot.matched_interests : [],
           required_skills: Array.isArray(row?.feature_snapshot?.required_skills) ? row.feature_snapshot.required_skills : [],
           availability_match: Boolean(row?.feature_snapshot?.availability_match),
           history_count: Number(row?.feature_snapshot?.organizer_history_count ?? 0),
           model_kind: row?.model_kind ?? null,
           strategy: row?.prediction_snapshot?.strategy ?? null,
+          scoring_strategy: row?.prediction_snapshot?.scoring_strategy ?? null,
+          heuristic_score: row?.prediction_snapshot?.heuristic_score ?? null,
+          ml_score: row?.prediction_snapshot?.ml_score ?? null,
+          blended_score: row?.prediction_snapshot?.blended_score ?? null,
+          blend_weight: row?.prediction_snapshot?.blend_weight ?? null,
           probability: row?.prediction_snapshot?.probability ?? null,
         }));
 
@@ -77,11 +88,17 @@ function runSnapshotInMode({ userIds, mode }) {
             reason: row?.ai_decision?.decision_reason ?? null,
             display_reasons: Array.isArray(row?.display_reasons) ? row.display_reasons : [],
             matched_skills: Array.isArray(row?.feature_snapshot?.matched_skills) ? row.feature_snapshot.matched_skills : [],
+            matched_interests: Array.isArray(row?.feature_snapshot?.matched_interests) ? row.feature_snapshot.matched_interests : [],
             required_skills: Array.isArray(row?.feature_snapshot?.required_skills) ? row.feature_snapshot.required_skills : [],
             availability_match: Boolean(row?.feature_snapshot?.availability_match),
             history_count: Number(row?.feature_snapshot?.organizer_history_count ?? 0),
             model_kind: row?.model_kind ?? null,
             strategy: row?.prediction_snapshot?.strategy ?? null,
+            scoring_strategy: row?.prediction_snapshot?.scoring_strategy ?? null,
+            heuristic_score: row?.prediction_snapshot?.heuristic_score ?? null,
+            ml_score: row?.prediction_snapshot?.ml_score ?? null,
+            blended_score: row?.prediction_snapshot?.blended_score ?? null,
+            blend_weight: row?.prediction_snapshot?.blend_weight ?? null,
             probability: row?.prediction_snapshot?.probability ?? null,
           })),
           all_rows: rows,
@@ -102,13 +119,11 @@ function runSnapshotInMode({ userIds, mode }) {
     cwd: path.resolve(__dirname, '..'),
     env,
     encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
+    maxBuffer: 16 * 1024 * 1024,
   });
 
   if (child.status !== 0) {
-    throw new Error(
-      `Snapshot mode=${mode} failed: ${child.stderr || child.stdout || `exit ${child.status}`}`
-    );
+    throw new Error(`Snapshot mode=${mode} failed: ${child.stderr || child.stdout || `exit ${child.status}`}`);
   }
 
   const stdout = String(child.stdout ?? '').trim();
@@ -153,7 +168,7 @@ function summarizeScoreDistribution(rows) {
   const repeated = [...scoreFreq.entries()]
     .filter(([, count]) => count >= 5)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
+    .slice(0, 12)
     .map(([score, count]) => ({ score, count }));
 
   return {
@@ -185,36 +200,156 @@ function artifactSummary() {
     low_sample_mode_used: Boolean(parsed?.training_config?.low_sample_mode_used),
     metrics: parsed.metrics ?? null,
     weights: parsed.weights ?? null,
-    bias: parsed.bias ?? null,
+    weight_sanity: parsed.weight_sanity ?? null,
+    feature_stats: parsed.feature_stats ?? null,
   };
 }
 
-function verdictFromSignals({ artifact, baselineDiff, scoreDist }) {
-  if (!artifact.exists) return 'ML_NOT_SAFE_USE_HEURISTIC';
-  const weights = artifact.weights ?? {};
-  const skill = safeNumber(weights.skill_ratio, 0);
-  const interest = safeNumber(weights.interest_ratio, 0);
-  const availability = safeNumber(weights.availability_ratio, 0);
-  const history = safeNumber(weights.history_ratio, 0);
-  const lowSample = Boolean(artifact.low_sample_mode_used);
-  const sample = safeNumber(artifact.sample_size, 0);
+function pickTopActivity(snapshot) {
+  const rows = Array.isArray(snapshot?.activities) ? snapshot.activities : [];
+  return rows[0] ?? null;
+}
 
-  const criticalWeightIssue =
-    skill < -0.1 ||
-    interest === 0 ||
-    availability < -0.1 ||
-    history > Math.max(Math.abs(skill), Math.abs(availability), Math.abs(interest), 0.0001) * 1.8;
+function buildComparisonRows({ baselineUsers, mlById, heuristicById }) {
+  return baselineUsers.map((user) => {
+    const ml = mlById.get(user.id) ?? {};
+    const heuristic = heuristicById.get(user.id) ?? {};
+    const mlTop = pickTopActivity(ml);
+    const heuristicTop = pickTopActivity(heuristic);
 
-  const heavyCluster = scoreDist.repeated_scores.some((item) => item.count >= 20);
-  const hasRegression = baselineDiff.some((row) => row.regression_flag === true);
+    const mlTopMatchedSkills = Array.isArray(mlTop?.matched_skills) ? mlTop.matched_skills : [];
+    const heurTopMatchedSkills = Array.isArray(heuristicTop?.matched_skills) ? heuristicTop.matched_skills : [];
 
-  if (sample < 120 || lowSample || criticalWeightIssue || hasRegression) {
+    const scoreDiff = safeNumber(mlTop?.score, 0) - safeNumber(heuristicTop?.score, 0);
+    const possibleRegression =
+      Boolean(heuristicTop) &&
+      heurTopMatchedSkills.length > 0 &&
+      Boolean(mlTop) &&
+      mlTopMatchedSkills.length === 0 &&
+      scoreDiff > 10;
+
+    return {
+      user_id: user.id,
+      user_name: user.full_name,
+      user_type: user.user_type,
+      heuristic_top: heuristicTop
+        ? {
+            title: heuristicTop.title,
+            score: heuristicTop.score,
+            decision: heuristicTop.decision,
+            tier: heuristicTop.tier,
+            reasons: heuristicTop.display_reasons,
+            matched_skills: heurTopMatchedSkills,
+          }
+        : null,
+      ml_top: mlTop
+        ? {
+            title: mlTop.title,
+            score: mlTop.score,
+            decision: mlTop.decision,
+            tier: mlTop.tier,
+            reasons: mlTop.display_reasons,
+            matched_skills: mlTopMatchedSkills,
+            heuristic_score: mlTop.heuristic_score,
+            ml_score: mlTop.ml_score,
+            blended_score: mlTop.blended_score,
+            blend_weight: mlTop.blend_weight,
+            scoring_strategy: mlTop.scoring_strategy,
+          }
+        : null,
+      ml_better: scoreDiff > 0,
+      score_diff_ml_minus_heuristic: Number(scoreDiff.toFixed(3)),
+      regression_flag: possibleRegression,
+      model_kind_ml: ml?.model_kind ?? null,
+      model_kind_heuristic: heuristic?.model_kind ?? null,
+    };
+  });
+}
+
+function computeBaselineHealth(comparisonRows) {
+  let regressionCount = 0;
+  let mlBetterCount = 0;
+  for (const row of comparisonRows) {
+    if (row.regression_flag) {
+      regressionCount += 1;
+    }
+    if (row.ml_better) {
+      mlBetterCount += 1;
+    }
+  }
+  return {
+    regression_count: regressionCount,
+    ml_better_count: mlBetterCount,
+    baseline_count: comparisonRows.length,
+  };
+}
+
+function verdictFromSignals({ artifact, baselineHealth, scoreDist }) {
+  if (!artifact.exists) {
     return 'ML_NOT_SAFE_USE_HEURISTIC';
   }
-  if (sample < 300 || heavyCluster) {
+
+  const sample = safeNumber(artifact.sample_size, 0);
+  const lowSample = Boolean(artifact.low_sample_mode_used);
+  const testMetrics = artifact?.metrics?.test ?? null;
+  const missingCriticalMetrics =
+    !testMetrics ||
+    !Number.isFinite(safeNumber(testMetrics.accuracy, NaN)) ||
+    !Number.isFinite(safeNumber(testMetrics.precision, NaN)) ||
+    !Number.isFinite(safeNumber(testMetrics.recall, NaN)) ||
+    !Number.isFinite(safeNumber(testMetrics.f1, NaN));
+  const historyDominanceRatio = safeNumber(artifact?.weight_sanity?.history_dominance_ratio, NaN);
+  const strongHistoryDominance = Number.isFinite(historyDominanceRatio) && historyDominanceRatio > 2.5;
+  const totalScores = Math.max(
+    1,
+    safeNumber(scoreDist.ge75, 0) + safeNumber(scoreDist.b60_74, 0) + safeNumber(scoreDist.b35_59, 0) + safeNumber(scoreDist.lt35, 0)
+  );
+  const maxRepeatedCount = (scoreDist.repeated_scores ?? []).reduce(
+    (max, item) => Math.max(max, Number(item?.count ?? 0)),
+    0
+  );
+  const maxRepeatedRatio = maxRepeatedCount / totalScores;
+  const lowScoreRatio = safeNumber(scoreDist.lt35, 0) / totalScores;
+  const heavyRepeatedCluster = maxRepeatedRatio >= 0.22 && lowScoreRatio >= 0.65;
+
+  if (
+    sample < 100 ||
+    lowSample ||
+    missingCriticalMetrics ||
+    strongHistoryDominance ||
+    baselineHealth.regression_count > 0
+  ) {
+    return 'ML_NOT_SAFE_USE_HEURISTIC';
+  }
+
+  if (
+    sample < 300 ||
+    safeNumber(testMetrics.accuracy, 0) < 0.8 ||
+    safeNumber(testMetrics.f1, 0) < 0.78 ||
+    heavyRepeatedCluster
+  ) {
     return 'ML_TRAINED_BUT_RISKY';
   }
+
   return 'ML_READY_TO_USE';
+}
+
+function writeEvaluationArtifacts(result) {
+  fs.mkdirSync(path.dirname(EVALUATION_OUTPUT_PATH), { recursive: true });
+  fs.writeFileSync(EVALUATION_OUTPUT_PATH, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+
+  if (!fs.existsSync(ARTIFACT_PATH)) {
+    return;
+  }
+
+  const artifact = JSON.parse(fs.readFileSync(ARTIFACT_PATH, 'utf8'));
+  artifact.evaluation_summary = {
+    evaluated_at: new Date().toISOString(),
+    verdict: result.verdict,
+    baseline_health: result.baseline_health,
+    score_distribution: result.ml_score_distribution,
+  };
+  fs.writeFileSync(ARTIFACT_PATH, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
 }
 
 async function main() {
@@ -250,32 +385,34 @@ async function main() {
     };
   });
 
-  const truongLocCandidates = candidates
-    .filter((row) => normalize(row.full_name).includes('truong loc'))
-    .sort((a, b) => b.completeness - a.completeness || b.skills - a.skills || b.availability - a.availability);
-  const truongLoc = truongLocCandidates[0] ?? null;
+  const findBestByName = (nameNeedle) =>
+    candidates
+      .filter((row) => normalize(row.full_name).includes(normalize(nameNeedle)))
+      .sort((a, b) => b.completeness - a.completeness || b.skills - a.skills || b.availability - a.availability)[0] ?? null;
 
-  const fullProfile = candidates
-    .filter((row) => row.id !== truongLoc?.id)
-    .sort((a, b) => {
-      const left = b.completeness - a.completeness;
-      if (left !== 0) return left;
-      const right = b.skills + b.interests + b.availability - (a.skills + a.interests + a.availability);
-      if (right !== 0) return right;
-      return b.hours - a.hours;
-    })[0];
-
+  const truongLoc = findBestByName('Truong Loc');
+  const johnVolunteer = findBestByName('John Volunteer');
   const coldStart = candidates
-    .filter((row) => row.id !== truongLoc?.id && row.id !== fullProfile?.id)
-    .sort((a, b) => {
-      const left = a.completeness - b.completeness;
-      if (left !== 0) return left;
-      const right = a.skills + a.interests + a.availability - (b.skills + b.interests + b.availability);
-      if (right !== 0) return right;
-      return a.hours - b.hours;
-    })[0];
+    .filter((row) => row.id !== truongLoc?.id && row.id !== johnVolunteer?.id)
+    .sort((a, b) => a.completeness - b.completeness || a.skills - b.skills || a.interests - b.interests || a.availability - b.availability)[0] ?? null;
 
-  const baselineUsers = [truongLoc, fullProfile, coldStart].filter(Boolean);
+  const seedUsers = candidates
+    .filter((row) => normalize(row.full_name).startsWith('ml seed volunteer'))
+    .filter((row) => row.id !== truongLoc?.id && row.id !== johnVolunteer?.id && row.id !== coldStart?.id)
+    .slice(0, MAX_SEED_USERS)
+    .map((row) => ({ ...row, user_type: 'seed' }));
+
+  const baselineUsers = [
+    truongLoc ? { ...truongLoc, user_type: 'truong_loc' } : null,
+    johnVolunteer ? { ...johnVolunteer, user_type: 'john_volunteer' } : null,
+    coldStart ? { ...coldStart, user_type: 'cold_start' } : null,
+    ...seedUsers,
+  ].filter(Boolean);
+
+  if (baselineUsers.length === 0) {
+    throw new Error('No volunteer users found for evaluation baseline.');
+  }
+
   const baselineIds = baselineUsers.map((row) => row.id);
 
   const mlSnapshots = runSnapshotInMode({ userIds: baselineIds, mode: 'ml' });
@@ -283,46 +420,8 @@ async function main() {
   const mlById = new Map(mlSnapshots.map((row) => [row.user_id, row]));
   const heuristicById = new Map(heuristicSnapshots.map((row) => [row.user_id, row]));
 
-  const compareRows = baselineUsers.map((user) => {
-    const ml = mlById.get(user.id) ?? {};
-    const heuristic = heuristicById.get(user.id) ?? {};
-    const mlTop = Array.isArray(ml.activities) ? ml.activities[0] ?? null : null;
-    const heuristicTop = Array.isArray(heuristic.activities) ? heuristic.activities[0] ?? null : null;
-    const mlTopMatchedSkills = Array.isArray(mlTop?.matched_skills) ? mlTop.matched_skills : [];
-    const heurTopMatchedSkills = Array.isArray(heuristicTop?.matched_skills) ? heuristicTop.matched_skills : [];
-
-    const regression =
-      Boolean(heuristicTop) &&
-      heurTopMatchedSkills.length > 0 &&
-      Boolean(mlTop) &&
-      mlTopMatchedSkills.length === 0 &&
-      safeNumber(mlTop?.score, 0) > safeNumber(heuristicTop?.score, 0);
-
-    return {
-      user_id: user.id,
-      user_name: user.full_name,
-      heuristic_top: heuristicTop
-        ? {
-            title: heuristicTop.title,
-            score: heuristicTop.score,
-            decision: heuristicTop.decision,
-            matched_skills: heurTopMatchedSkills,
-          }
-        : null,
-      ml_top: mlTop
-        ? {
-            title: mlTop.title,
-            score: mlTop.score,
-            decision: mlTop.decision,
-            matched_skills: mlTopMatchedSkills,
-            reason: mlTop.reason,
-          }
-        : null,
-      heuristic_model_kind: heuristic?.model_kind ?? null,
-      ml_model_kind: ml?.model_kind ?? null,
-      regression_flag: regression,
-    };
-  });
+  const comparisonRows = buildComparisonRows({ baselineUsers, mlById, heuristicById });
+  const baselineHealth = computeBaselineHealth(comparisonRows);
 
   const allVolunteerMlSnapshots = runSnapshotInMode({ userIds: volunteerIds, mode: 'ml' });
   const allMlRows = allVolunteerMlSnapshots.flatMap((item) => (Array.isArray(item.all_rows) ? item.all_rows : []));
@@ -330,23 +429,23 @@ async function main() {
 
   const verdict = verdictFromSignals({
     artifact,
-    baselineDiff: compareRows,
+    baselineHealth,
     scoreDist,
   });
 
-  console.log(
-    JSON.stringify(
-      {
-        verdict,
-        artifact,
-        baseline_users: baselineUsers,
-        ml_vs_heuristic_baseline: compareRows,
-        ml_score_distribution: scoreDist,
-      },
-      null,
-      2
-    )
-  );
+  const result = {
+    evaluated_at: new Date().toISOString(),
+    verdict,
+    artifact,
+    baseline_users: baselineUsers,
+    baseline_health: baselineHealth,
+    ml_vs_heuristic_baseline: comparisonRows,
+    ml_score_distribution: scoreDist,
+    output_file: EVALUATION_OUTPUT_PATH,
+  };
+
+  writeEvaluationArtifacts(result);
+  console.log(JSON.stringify(result, null, 2));
 }
 
 main().catch((error) => {

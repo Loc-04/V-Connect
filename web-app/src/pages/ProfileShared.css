@@ -605,6 +605,17 @@
   gap: 0.42rem;
 }
 
+.vol-profile-interest-legacy-pill {
+  border: 1px solid #d6dde8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 0.12rem 0.42rem;
+  line-height: 1.2;
+}
+
 .vol-profile-interest-add {
   border-style: dashed;
   background: #ffffff;

@@ -1,10 +1,16 @@
 import { supabaseAdmin } from '../src/database/supabase.js';
 import { getActivityById } from '../src/activities/activities.service.js';
+import {
+  findOutOfCatalogInterests,
+  resolveInterestCatalogSource,
+  uniqueCanonicalInterests,
+} from './lib/interestCatalogSource.js';
 
 const POSITIVE_STATUSES = new Set(['approved', 'checked_in']);
 const NEGATIVE_STATUSES = new Set(['rejected', 'cancelled']);
 const MAX_SAMPLES = Number(process.env.RECOMMENDATION_ML_MAX_SAMPLES ?? 4000);
 const FETCH_LIMIT = Math.max(1, Math.trunc(MAX_SAMPLES * 2));
+const SEED_PREFIX = String(process.env.RECOMMENDATION_ML_SEED_PREFIX ?? 'ML Seed').trim() || 'ML Seed';
 
 function normalize(value) {
   return String(value ?? '')
@@ -54,6 +60,9 @@ function computeVerdict(summary) {
 
   const distributionSkewed = positiveRatio > 0.7 || negativeRatio > 0.7;
   const distributionTooImbalanced = positiveRatio < 0.35 || negativeRatio < 0.35;
+  const interestCatalogMismatch = Boolean(summary.interest_catalog?.fe_db_mismatch?.has_mismatch);
+  const profileOutOfCatalogInterests = Number(summary.volunteer_profiles.out_of_catalog_interests_count ?? 0);
+  const seedOutOfCatalogInterests = Number(summary.seed_profiles.out_of_catalog_interests_count ?? 0);
 
   if (
     effectiveSamples < 100 ||
@@ -61,7 +70,9 @@ function computeVerdict(summary) {
     distributionTooImbalanced ||
     effectiveSkill2To4Rate < 0.25 ||
     interestsEmptyRate > 0.75 ||
-    availabilityEmptyRate > 0.75
+    availabilityEmptyRate > 0.75 ||
+    interestCatalogMismatch ||
+    seedOutOfCatalogInterests > 0
   ) {
     return 'NOT_READY_TO_TRAIN';
   }
@@ -71,7 +82,8 @@ function computeVerdict(summary) {
     effectiveSkill2To4Rate < 0.5 ||
     interestsEmptyRate > 0.5 ||
     availabilityEmptyRate > 0.4 ||
-    missingActivityRate > 0.2
+    missingActivityRate > 0.2 ||
+    profileOutOfCatalogInterests > 0
   ) {
     return 'TRAINABLE_BUT_RISKY';
   }
@@ -93,6 +105,7 @@ async function readCoreSkillSet() {
 }
 
 async function main() {
+  const interestCatalog = await resolveInterestCatalogSource(supabaseAdmin, { preferDbWhenAvailable: true });
   const { data: rows, error: rowsError } = await supabaseAdmin
     .from('activity_participations')
     .select('id, activity_id, volunteer_id, status, created_at')
@@ -179,6 +192,7 @@ async function main() {
   let emptyAvailableChoices = 0;
   let fullWeekAvailability = 0;
   let totalHoursZeroOrInvalid = 0;
+  const profileOutOfCatalogMap = new Map();
 
   for (const volunteerId of effectiveVolunteerIds) {
     const profile = profileById.get(volunteerId);
@@ -201,7 +215,51 @@ async function main() {
     if (availableChoices.length === 0) emptyAvailableChoices += 1;
     if (availableChoices.length >= 21) fullWeekAvailability += 1;
     if (!Number.isFinite(totalHours) || totalHours <= 0) totalHoursZeroOrInvalid += 1;
+
+    const outOfCatalog = findOutOfCatalogInterests(interests, interestCatalog.selected_catalog);
+    if (outOfCatalog.length > 0) {
+      profileOutOfCatalogMap.set(volunteerId, outOfCatalog);
+    }
   }
+
+  const allOutOfCatalogProfileInterests = uniqueCanonicalInterests(
+    Array.from(profileOutOfCatalogMap.values()).flatMap((values) => values)
+  );
+
+  const { data: seedUsersData, error: seedUsersError } = await supabaseAdmin
+    .from('users')
+    .select('id, full_name')
+    .eq('role', 'volunteer')
+    .ilike('full_name', `${SEED_PREFIX} Volunteer %`)
+    .is('deleted_at', null)
+    .limit(5000);
+  if (seedUsersError) {
+    throw new Error(seedUsersError.message);
+  }
+  const seedUserIds = (seedUsersData ?? []).map((row) => row.id).filter(Boolean);
+  const seedUserNameById = new Map((seedUsersData ?? []).map((row) => [row.id, String(row?.full_name ?? '').trim()]));
+  const { data: seedProfileRows, error: seedProfilesError } = seedUserIds.length
+    ? await supabaseAdmin.from('volunteer_profiles').select('user_id, interests').in('user_id', seedUserIds)
+    : { data: [], error: null };
+  if (seedProfilesError) {
+    throw new Error(seedProfilesError.message);
+  }
+
+  const seedOutOfCatalogMap = new Map();
+  for (const row of seedProfileRows ?? []) {
+    const interests = Array.isArray(row?.interests) ? row.interests : [];
+    const outOfCatalog = findOutOfCatalogInterests(interests, interestCatalog.selected_catalog);
+    if (outOfCatalog.length > 0) {
+      const userId = String(row?.user_id ?? '').trim();
+      seedOutOfCatalogMap.set(userId, {
+        full_name: seedUserNameById.get(userId) ?? '',
+        interests: outOfCatalog,
+      });
+    }
+  }
+  const allOutOfCatalogSeedInterests = uniqueCanonicalInterests(
+    Array.from(seedOutOfCatalogMap.values()).flatMap((entry) => entry.interests)
+  );
 
   const { data: activeActivities, error: activeActivitiesError } = await supabaseAdmin
     .from('activities')
@@ -314,6 +372,39 @@ async function main() {
       empty_available_choices: emptyAvailableChoices,
       full_week_available_choices: fullWeekAvailability,
       total_hours_zero_or_invalid: totalHoursZeroOrInvalid,
+      out_of_catalog_profiles_count: profileOutOfCatalogMap.size,
+      out_of_catalog_interests_count: allOutOfCatalogProfileInterests.length,
+      out_of_catalog_interests_preview: allOutOfCatalogProfileInterests.slice(0, 20),
+    },
+    seed_profiles: {
+      seed_prefix: SEED_PREFIX,
+      scanned_seed_volunteers: seedUserIds.length,
+      out_of_catalog_profiles_count: seedOutOfCatalogMap.size,
+      out_of_catalog_interests_count: allOutOfCatalogSeedInterests.length,
+      out_of_catalog_interests_preview: allOutOfCatalogSeedInterests.slice(0, 20),
+      out_of_catalog_profile_preview: Array.from(seedOutOfCatalogMap.values()).slice(0, 8),
+    },
+    interest_catalog: {
+      selected_source: interestCatalog.selected_source,
+      selected_count: interestCatalog.selected_count,
+      sample_interests: interestCatalog.selected_catalog.slice(0, 12),
+      fe_catalog: {
+        found: interestCatalog.fe_catalog.found,
+        count: interestCatalog.fe_catalog.interests.length,
+        path: interestCatalog.fe_catalog.path,
+      },
+      db_catalog: {
+        found: interestCatalog.db_catalog.found,
+        count: interestCatalog.db_catalog.interests.length,
+        column: interestCatalog.db_catalog.column,
+      },
+      fe_db_mismatch: {
+        has_mismatch: interestCatalog.fe_db_mismatch.has_mismatch,
+        only_in_fe_count: interestCatalog.fe_db_mismatch.only_in_fe.length,
+        only_in_db_count: interestCatalog.fe_db_mismatch.only_in_db.length,
+        only_in_fe_preview: interestCatalog.fe_db_mismatch.only_in_fe.slice(0, 20),
+        only_in_db_preview: interestCatalog.fe_db_mismatch.only_in_db.slice(0, 20),
+      },
     },
     activities: {
       active_published_count: (activeActivities ?? []).length,
