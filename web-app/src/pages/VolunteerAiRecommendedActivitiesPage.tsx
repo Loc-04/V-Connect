@@ -108,10 +108,6 @@ function matchTierWeight(tier: MatchTier): number {
   return 1;
 }
 
-function isStrongOrGoodMatch(tier: MatchTier): boolean {
-  return tier === 'strong_match' || tier === 'good_match';
-}
-
 function formatMatchScore(score: number, usePrecise: boolean): string {
   const bounded = Math.max(0, Math.min(100, score));
   if (!usePrecise && Math.abs(bounded - Math.round(bounded)) < 0.05) {
@@ -289,7 +285,14 @@ function formatFriendlyReasons(item: RecommendationViewModel): string[] {
 }
 
 function getFriendlyRecommendationCopy(item: RecommendationViewModel): string {
-  const isPotential = item.decision === 'consider' || item.matchTier === 'potential_match' || item.matchTier === 'low_match';
+  const isConsiderDecision = item.decision === 'consider';
+  const hasHighMatchScore =
+    item.matchScore >= 70 || item.matchTier === 'strong_match' || item.matchTier === 'good_match';
+  if (isConsiderDecision && hasHighMatchScore) {
+    return 'High match score, but recommended as consider based on policy signals.';
+  }
+
+  const isPotential = isConsiderDecision || item.matchTier === 'potential_match' || item.matchTier === 'low_match';
   const skillHighlights = item.matchedSkills.map((skill) => toTitleCase(skill)).slice(0, 2);
   const hasSkillEvidence = skillHighlights.length > 0 || Number(item.scoreBreakdown?.skill_score ?? 0) > 0;
   const hasInterestEvidence = item.hasInterestSignal;
@@ -460,19 +463,19 @@ function hasSkillSignal(item: RecommendationViewModel) {
 }
 
 function getRecommendationSubtitle({
-  strongCount,
-  hasPotentialOnly,
+  recommendedCount,
+  considerCount,
   hasAnyMatch,
 }: {
-  strongCount: number;
-  hasPotentialOnly: boolean;
+  recommendedCount: number;
+  considerCount: number;
   hasAnyMatch: boolean;
 }): string {
-  if (strongCount > 0) {
-    return `${strongCount} strong match${strongCount === 1 ? '' : 'es'} found based on your profile.`;
+  if (recommendedCount > 0) {
+    return `${recommendedCount} recommended activit${recommendedCount === 1 ? 'y' : 'ies'} based on your profile and policy signals.`;
   }
-  if (hasPotentialOnly) {
-    return 'We found a few possible matches to explore.';
+  if (considerCount > 0) {
+    return 'No top recommendations yet. You still have suitable options to consider.';
   }
   if (!hasAnyMatch) {
     return 'Set up your profile to get personalized recommendations.';
@@ -532,12 +535,14 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
         const rows = Array.isArray(payload.activities) ? payload.activities : [];
         const mapped = rows.map((row) => toViewModel(row));
+        const preferredSelectedId =
+          mapped.find((item) => item.decision === 'recommend')?.activityId ?? mapped[0]?.activityId ?? '';
         setRecommendations(mapped);
         setSelectedActivityId((current) => {
           if (current && mapped.some((item) => item.activityId === current)) {
             return current;
           }
-          return mapped[0]?.activityId ?? '';
+          return preferredSelectedId;
         });
       } catch (loadError) {
         if (cancelled) {
@@ -585,32 +590,32 @@ export function VolunteerAiRecommendedActivitiesPage() {
     return sorted;
   }, [recommendations, matchFilter, sortMode]);
 
-  const strongRecommendedItems = useMemo(
-    () => filteredRecommendations.filter((item) => isStrongOrGoodMatch(item.matchTier)),
+  const recommendedItems = useMemo(
+    () => filteredRecommendations.filter((item) => item.decision === 'recommend'),
     [filteredRecommendations]
   );
-  const lowConfidenceItems = useMemo(() => {
+  const considerItems = useMemo(() => {
     return filteredRecommendations
-      .filter((item) => !isStrongOrGoodMatch(item.matchTier))
+      .filter((item) => item.decision !== 'recommend')
       .slice(0, 8);
   }, [filteredRecommendations]);
-  const hasStrongRecommendations = strongRecommendedItems.length > 0;
-  const hasLowConfidenceMatches = !hasStrongRecommendations && lowConfidenceItems.length > 0;
-  const hasStarterRecommendations = lowConfidenceItems.some((item) => item.decisionReason === 'cold_start_skill_match');
-  const hasPotentialScoreBand = lowConfidenceItems.some((item) => item.matchScore >= 30);
+  const hasRecommendedItems = recommendedItems.length > 0;
+  const hasConsiderOnlyItems = !hasRecommendedItems && considerItems.length > 0;
+  const hasStarterRecommendations = considerItems.some((item) => item.decisionReason === 'cold_start_skill_match');
+  const hasPotentialScoreBand = considerItems.some((item) => item.matchScore >= 30);
   const pageSubtitle = useMemo(
     () =>
       getRecommendationSubtitle({
-        strongCount: strongRecommendedItems.length,
-        hasPotentialOnly: hasLowConfidenceMatches,
+        recommendedCount: recommendedItems.length,
+        considerCount: considerItems.length,
         hasAnyMatch: filteredRecommendations.length > 0,
       }),
-    [filteredRecommendations.length, hasLowConfidenceMatches, strongRecommendedItems.length]
+    [considerItems.length, filteredRecommendations.length, recommendedItems.length]
   );
   const emptyStateCopy = useMemo(() => getEmptyStateCopy(hasStarterRecommendations), [hasStarterRecommendations]);
   const selectableRecommendations = filteredRecommendations;
   const selectedRecommendation = useMemo(() => {
-    const candidateList = selectableRecommendations;
+    const candidateList = hasRecommendedItems ? recommendedItems : selectableRecommendations;
     if (candidateList.length === 0) {
       return null;
     }
@@ -619,31 +624,31 @@ export function VolunteerAiRecommendedActivitiesPage() {
       candidateList.find((item) => item.activityId === selectedActivityId) ??
       candidateList[0]
     );
-  }, [selectableRecommendations, selectedActivityId]);
+  }, [hasRecommendedItems, recommendedItems, selectableRecommendations, selectedActivityId]);
 
   const secondaryRecommendation = useMemo(() => {
     if (!selectedRecommendation) {
       return null;
     }
-    const strongAlternative = strongRecommendedItems.find(
+    const recommendedAlternative = recommendedItems.find(
       (item) => item.activityId !== selectedRecommendation.activityId
     );
-    if (strongAlternative) {
-      return strongAlternative;
+    if (recommendedAlternative) {
+      return recommendedAlternative;
     }
     return (
       filteredRecommendations.find((item) => item.activityId !== selectedRecommendation.activityId) ?? null
     );
-  }, [filteredRecommendations, selectedRecommendation, strongRecommendedItems]);
+  }, [filteredRecommendations, recommendedItems, selectedRecommendation]);
   const considerOptions = useMemo(() => {
-    return filteredRecommendations
+    return considerItems
       .filter(
         (item) =>
           item.activityId !== selectedRecommendation?.activityId &&
           item.activityId !== secondaryRecommendation?.activityId
       )
       .slice(0, 6);
-  }, [filteredRecommendations, secondaryRecommendation?.activityId, selectedRecommendation?.activityId]);
+  }, [considerItems, secondaryRecommendation?.activityId, selectedRecommendation?.activityId]);
   const shouldShowPreciseScores = useMemo(
     () => shouldUsePreciseScoreDisplay(filteredRecommendations),
     [filteredRecommendations]
@@ -727,7 +732,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                 onChange={(event) => setMatchFilter(event.target.value as MatchFilter)}
                 value={matchFilter}
               >
-                <option value="all">Recommended items</option>
+                <option value="all">All recommendation results</option>
                 <option value="high">High match only</option>
                 <option value="weekend">Weekend fit</option>
                 <option value="skill-based">Skill-based</option>
@@ -744,10 +749,10 @@ export function VolunteerAiRecommendedActivitiesPage() {
             </div>
 
             <p className="ai-reco-state-note">
-              {hasStrongRecommendations
-                ? `Showing ${strongRecommendedItems.length} strong recommendation${strongRecommendedItems.length === 1 ? '' : 's'}`
-                : hasLowConfidenceMatches
-                  ? `Showing ${lowConfidenceItems.length} activities worth exploring`
+              {hasRecommendedItems
+                ? `Showing ${recommendedItems.length} recommended activit${recommendedItems.length === 1 ? 'y' : 'ies'}`
+                : hasConsiderOnlyItems
+                  ? `Showing ${considerItems.length} suitable option${considerItems.length === 1 ? '' : 's'} to consider`
                   : 'No confident matches yet'}
             </p>
           </div>
@@ -758,7 +763,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
             <LoaderCircle className="ai-reco-loading-icon" />
             <p>Loading your recommendations...</p>
           </Card>
-        ) : hasStrongRecommendations ? (
+        ) : hasRecommendedItems ? (
           <div className="ai-reco-main-grid">
             {selectedRecommendation ? (
               <Card as="article" className="ai-reco-featured-card">
@@ -854,7 +859,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
             ) : (
               <Card className="ai-reco-missing-selected">
                 <p className="muted">
-                  No confident matches yet. Add more skills, interests, or availability to improve your recommendations.
+                  No recommended activities yet. Add more skills, interests, or availability to improve recommendation quality.
                 </p>
                 <Button onClick={() => navigate('/browse')} type="button" variant="secondary">
                   Browse all opportunities
@@ -897,15 +902,15 @@ export function VolunteerAiRecommendedActivitiesPage() {
               )}
             </Card>
           </div>
-        ) : hasLowConfidenceMatches ? (
+        ) : hasConsiderOnlyItems ? (
           <div className="ai-reco-low-confidence-layout">
             <Card as="section" className="ai-reco-low-hero">
               <div>
-                <h2>{hasStarterRecommendations ? 'Add a little more detail to improve matches' : 'No confident matches yet'}</h2>
+                <h2>{hasStarterRecommendations ? 'Add a little more detail to improve matches' : 'No top recommendations yet'}</h2>
                 <p>
                   {hasStarterRecommendations
                     ? 'Your skills are saved, but interests and availability help us rank activities more accurately.'
-                    : 'We could not find a strong match from your current profile. Add more skills, interests, or availability to improve your recommendations.'}
+                    : 'We could not find a top recommendation from your current profile. Add more skills, interests, or availability to improve your recommendations.'}
                 </p>
               </div>
               <div className="ai-reco-low-hero-actions">
@@ -920,7 +925,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
 
             <Card as="section" className="ai-reco-partial-section">
               <div className="ai-reco-partial-head">
-                <h3>{hasPotentialScoreBand ? 'Potential matches' : 'Explore options'}</h3>
+                <h3>{hasPotentialScoreBand ? 'Consider options' : 'Other suitable options'}</h3>
                 <p>
                   {hasPotentialScoreBand
                     ? hasStarterRecommendations
@@ -930,7 +935,7 @@ export function VolunteerAiRecommendedActivitiesPage() {
                 </p>
               </div>
               <div className="ai-reco-partial-grid">
-                {lowConfidenceItems.map((item) => (
+                {considerItems.map((item) => (
                   <article className="ai-reco-partial-card" key={item.activityId}>
                     <div className="ai-reco-partial-top">
                       <Badge tone="accent">{formatMatchScore(item.matchScore, shouldShowPreciseScores)} match</Badge>
@@ -985,11 +990,11 @@ export function VolunteerAiRecommendedActivitiesPage() {
           </Card>
         )}
 
-        {!loading && hasStrongRecommendations && considerOptions.length > 0 && (
+        {!loading && hasRecommendedItems && considerOptions.length > 0 && (
           <Card as="section" className="ai-reco-next-card">
             <div className="ai-reco-partial-head">
-              <h3>Other options to explore</h3>
-              <p>These are not top recommendations, but they may still be worth checking.</p>
+              <h3>Other suitable options</h3>
+              <p>High match score can still be marked as consider when policy signals are not strong enough for recommend.</p>
             </div>
             <div className="ai-reco-partial-grid">
               {considerOptions.map((item) => (
