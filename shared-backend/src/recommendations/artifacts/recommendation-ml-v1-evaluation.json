@@ -1,5 +1,5 @@
 {
-  "evaluated_at": "2026-05-16T06:45:06.630Z",
+  "evaluated_at": "2026-05-16T12:10:20.816Z",
   "verdict": "ML_READY_TO_USE",
   "artifact": {
     "exists": true,
@@ -273,7 +273,7 @@
       "full_name": "John Volunteer",
       "skills": 4,
       "interests": 3,
-      "availability": 12,
+      "availability": 14,
       "hours": 24,
       "completeness": 4,
       "user_type": "john_volunteer"
@@ -391,13 +391,13 @@
       "user_type": "john_volunteer",
       "heuristic_top": {
         "title": "Chiến dịch Tình nguyện 88376",
-        "score": 71,
+        "score": 67,
         "decision": "recommend",
         "tier": "good_match",
         "reasons": [
           "skill alignment",
-          "availability fit",
-          "prior organizer history"
+          "prior organizer history",
+          "availability fit"
         ],
         "matched_skills": [
           "first aid"
@@ -405,7 +405,7 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 88376",
-        "score": 82.3,
+        "score": 79.8,
         "decision": "recommend",
         "tier": "strong_match",
         "reasons": [
@@ -416,14 +416,14 @@
         "matched_skills": [
           "first aid"
         ],
-        "heuristic_score": 71,
-        "ml_score": 99.2,
-        "blended_score": 82.3,
+        "heuristic_score": 67,
+        "ml_score": 98.9,
+        "blended_score": 79.8,
         "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 11.3,
+      "score_diff_ml_minus_heuristic": 12.8,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -642,19 +642,19 @@
   "ml_score_distribution": {
     "min": 5.4,
     "max": 85,
-    "average": 35.304,
+    "average": 34.954,
     "ge75": 146,
-    "b60_74": 534,
-    "b35_59": 323,
-    "lt35": 1397,
+    "b60_74": 538,
+    "b35_59": 322,
+    "lt35": 1439,
     "repeated_scores": [
       {
         "score": 10.6,
-        "count": 365
+        "count": 393
       },
       {
         "score": 10.4,
-        "count": 178
+        "count": 186
       },
       {
         "score": 69.7,
@@ -686,11 +686,11 @@
       },
       {
         "score": 71.7,
-        "count": 48
+        "count": 49
       },
       {
         "score": 8.2,
-        "count": 46
+        "count": 48
       },
       {
         "score": 68.4,
@@ -710,15 +710,15 @@
       "score_distribution": {
         "min": 3.4,
         "max": 81.3,
-        "average": 29.174,
-        "ge75": 32,
-        "b60_74": 642,
+        "average": 28.86,
+        "ge75": 31,
+        "b60_74": 647,
         "b35_59": 93,
-        "lt35": 1633,
+        "lt35": 1674,
         "repeated_scores": [
           {
             "score": 6.6,
-            "count": 365
+            "count": 393
           },
           {
             "score": 6.8,
@@ -762,7 +762,7 @@
           },
           {
             "score": 5.1,
-            "count": 42
+            "count": 44
           }
         ]
       },
@@ -814,13 +814,13 @@
           "user_type": "john_volunteer",
           "heuristic_top": {
             "title": "Chiến dịch Tình nguyện 88376",
-            "score": 71,
+            "score": 67,
             "decision": "recommend",
             "tier": "good_match",
             "reasons": [
               "skill alignment",
-              "availability fit",
-              "prior organizer history"
+              "prior organizer history",
+              "availability fit"
             ],
             "matched_skills": [
               "first aid"
@@ -828,7 +828,7 @@
           },
           "ml_top": {
             "title": "Chiến dịch Tình nguyện 88376",
-            "score": 78,
+            "score": 75,
             "decision": "recommend",
             "tier": "strong_match",
             "reasons": [
@@ -839,14 +839,14 @@
             "matched_skills": [
               "first aid"
             ],
-            "heuristic_score": 71,
-            "ml_score": 99.2,
-            "blended_score": 78,
+            "heuristic_score": 67,
+            "ml_score": 98.9,
+            "blended_score": 75,
             "blend_weight": 0.25,
             "scoring_strategy": "hybrid_heuristic_ml_blend"
           },
           "ml_better": true,
-          "score_diff_ml_minus_heuristic": 7,
+          "score_diff_ml_minus_heuristic": 8,
           "regression_flag": false,
           "model_kind_ml": "ml_logistic_regression_v1",
           "model_kind_heuristic": "heuristic"
@@ -1074,19 +1074,19 @@
       "score_distribution": {
         "min": 5.4,
         "max": 85,
-        "average": 35.304,
+        "average": 34.954,
         "ge75": 146,
-        "b60_74": 534,
-        "b35_59": 323,
-        "lt35": 1397,
+        "b60_74": 538,
+        "b35_59": 322,
+        "lt35": 1439,
         "repeated_scores": [
           {
             "score": 10.6,
-            "count": 365
+            "count": 393
           },
           {
             "score": 10.4,
-            "count": 178
+            "count": 186
           },
           {
             "score": 69.7,
@@ -1118,11 +1118,11 @@
           },
           {
             "score": 71.7,
-            "count": 48
+            "count": 49
           },
           {
             "score": 8.2,
-            "count": 46
+            "count": 48
           },
           {
             "score": 68.4,
@@ -1178,13 +1178,13 @@
           "user_type": "john_volunteer",
           "heuristic_top": {
             "title": "Chiến dịch Tình nguyện 88376",
-            "score": 71,
+            "score": 67,
             "decision": "recommend",
             "tier": "good_match",
             "reasons": [
               "skill alignment",
-              "availability fit",
-              "prior organizer history"
+              "prior organizer history",
+              "availability fit"
             ],
             "matched_skills": [
               "first aid"
@@ -1192,7 +1192,7 @@
           },
           "ml_top": {
             "title": "Chiến dịch Tình nguyện 88376",
-            "score": 82.3,
+            "score": 79.8,
             "decision": "recommend",
             "tier": "strong_match",
             "reasons": [
@@ -1203,14 +1203,14 @@
             "matched_skills": [
               "first aid"
             ],
-            "heuristic_score": 71,
-            "ml_score": 99.2,
-            "blended_score": 82.3,
+            "heuristic_score": 67,
+            "ml_score": 98.9,
+            "blended_score": 79.8,
             "blend_weight": 0.4,
             "scoring_strategy": "hybrid_heuristic_ml_blend"
           },
           "ml_better": true,
-          "score_diff_ml_minus_heuristic": 11.3,
+          "score_diff_ml_minus_heuristic": 12.8,
           "regression_flag": false,
           "model_kind_ml": "ml_logistic_regression_v1",
           "model_kind_heuristic": "heuristic"
@@ -1438,15 +1438,15 @@
       "score_distribution": {
         "min": 8.2,
         "max": 90,
-        "average": 43.442,
-        "ge75": 679,
+        "average": 43.041,
+        "ge75": 683,
         "b60_74": 94,
-        "b35_59": 449,
-        "lt35": 1178,
+        "b35_59": 450,
+        "lt35": 1218,
         "repeated_scores": [
           {
             "score": 15.8,
-            "count": 374
+            "count": 402
           },
           {
             "score": 15,
@@ -1490,7 +1490,7 @@
           },
           {
             "score": 12.3,
-            "count": 42
+            "count": 44
           }
         ]
       },
@@ -1542,13 +1542,13 @@
           "user_type": "john_volunteer",
           "heuristic_top": {
             "title": "Chiến dịch Tình nguyện 88376",
-            "score": 71,
+            "score": 67,
             "decision": "recommend",
             "tier": "good_match",
             "reasons": [
               "skill alignment",
-              "availability fit",
-              "prior organizer history"
+              "prior organizer history",
+              "availability fit"
             ],
             "matched_skills": [
               "first aid"
@@ -1556,7 +1556,7 @@
           },
           "ml_top": {
             "title": "Chiến dịch Tình nguyện 88376",
-            "score": 87.9,
+            "score": 86.1,
             "decision": "recommend",
             "tier": "strong_match",
             "reasons": [
@@ -1567,14 +1567,14 @@
             "matched_skills": [
               "first aid"
             ],
-            "heuristic_score": 71,
-            "ml_score": 99.2,
-            "blended_score": 87.9,
+            "heuristic_score": 67,
+            "ml_score": 98.9,
+            "blended_score": 86.1,
             "blend_weight": 0.6,
             "scoring_strategy": "hybrid_heuristic_ml_blend"
           },
           "ml_better": true,
-          "score_diff_ml_minus_heuristic": 16.9,
+          "score_diff_ml_minus_heuristic": 19.1,
           "regression_flag": false,
           "model_kind_ml": "ml_logistic_regression_v1",
           "model_kind_heuristic": "heuristic"
