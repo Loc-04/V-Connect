@@ -5,6 +5,7 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://d472-2001-
 interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
+  requiresAuth?: boolean;
 }
 
 async function getAccessToken(): Promise<string> {
@@ -15,16 +16,21 @@ async function getAccessToken(): Promise<string> {
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { method = 'GET', body } = options;
-  const accessToken = await getAccessToken();
+  const { method = 'GET', body, requiresAuth = true } = options;
+  const accessToken = requiresAuth ? await getAccessToken() : null;
   const url = `${API_BASE_URL}${path}`;
+
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   const response = await fetch(url, {
     method,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    },
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
