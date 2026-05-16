@@ -1,8 +1,8 @@
 {
-  "model_version": "ml-v1-logreg-2026-05-15",
+  "model_version": "ml-v1-logreg-2026-05-16",
   "provider": "internal",
   "label": "approved_or_checked_in",
-  "trained_at": "2026-05-15T04:20:07.478Z",
+  "trained_at": "2026-05-16T06:38:01.366Z",
   "sample_size": 952,
   "dataset_summary": {
     "sample_size": 952,
@@ -67,7 +67,7 @@
   },
   "training_config": {
     "max_samples": 4000,
-    "min_train_samples": 60,
+    "min_train_samples": 100,
     "dev_allow_low_sample": false,
     "dev_min_train_samples": 10,
     "epochs": 800,
@@ -167,10 +167,9 @@
       "only_in_fe_count": 0,
       "only_in_db_count": 0
     },
-    "profile_out_of_catalog_profiles_count": 33,
-    "profile_out_of_catalog_interests_count": 5,
+    "profile_out_of_catalog_profiles_count": 32,
+    "profile_out_of_catalog_interests_count": 4,
     "profile_out_of_catalog_interests_preview": [
-      "youth",
       "Football",
       "Swimming",
       "ga ga",
@@ -228,8 +227,8 @@
         "max": 0.65
       },
       "availability_ratio": {
-        "mean": 0.093,
-        "std": 0.2243,
+        "mean": 0.0938,
+        "std": 0.2263,
         "zero_rate": 0.8424,
         "min": 0,
         "max": 1
@@ -256,8 +255,8 @@
         "max": 1
       },
       "availability_coverage_ratio": {
-        "mean": 0.3005,
-        "std": 0.138,
+        "mean": 0.2997,
+        "std": 0.135,
         "zero_rate": 0.0368,
         "min": 0,
         "max": 1
@@ -293,8 +292,8 @@
         "max": 0.65
       },
       "availability_ratio": {
-        "mean": 0.1687,
-        "std": 0.2787,
+        "mean": 0.1694,
+        "std": 0.28,
         "zero_rate": 0.7123,
         "min": 0,
         "max": 1
@@ -321,8 +320,8 @@
         "max": 1
       },
       "availability_coverage_ratio": {
-        "mean": 0.3854,
-        "std": 0.1198,
+        "mean": 0.3846,
+        "std": 0.1171,
         "zero_rate": 0.0456,
         "min": 0,
         "max": 1
@@ -358,8 +357,8 @@
         "max": 0.5
       },
       "availability_ratio": {
-        "mean": 0.0079,
-        "std": 0.0764,
+        "mean": 0.0088,
+        "std": 0.0834,
         "zero_rate": 0.9888,
         "min": 0,
         "max": 1
@@ -386,11 +385,11 @@
         "max": 1
       },
       "availability_coverage_ratio": {
-        "mean": 0.205,
-        "std": 0.0844,
+        "mean": 0.2042,
+        "std": 0.0781,
         "zero_rate": 0.0268,
         "min": 0,
-        "max": 0.905
+        "max": 0.714
       },
       "required_skill_density_ratio": {
         "mean": 0.7305,
@@ -413,20 +412,20 @@
     "has_negative_skill_weight": false,
     "has_zero_interest_weight": false
   },
-  "bias": -0.85881087,
+  "bias": -0.8616093,
   "weights": {
-    "skill_ratio": 3.99622957,
-    "interest_ratio": 1.04436502,
-    "availability_ratio": 1.26805501,
-    "experience_ratio": 3.74427306,
-    "history_ratio": -0.09389436,
-    "profile_completeness_ratio": -0.65622572,
-    "availability_coverage_ratio": 0.92583925,
-    "required_skill_density_ratio": -0.65794793,
-    "duration_fit_ratio": -0.89680567
+    "skill_ratio": 3.99655154,
+    "interest_ratio": 1.04427018,
+    "availability_ratio": 1.24865797,
+    "experience_ratio": 3.74386371,
+    "history_ratio": -0.09383008,
+    "profile_completeness_ratio": -0.65723816,
+    "availability_coverage_ratio": 0.94218383,
+    "required_skill_density_ratio": -0.65811042,
+    "duration_fit_ratio": -0.89596711
   },
   "evaluation_summary": {
-    "evaluated_at": "2026-05-16T05:26:16.271Z",
+    "evaluated_at": "2026-05-16T06:45:06.632Z",
     "verdict": "ML_READY_TO_USE",
     "baseline_health": {
       "regression_count": 0,
@@ -434,61 +433,61 @@
       "baseline_count": 8
     },
     "score_distribution": {
-      "min": 4.5,
-      "max": 81.3,
-      "average": 29.662,
-      "ge75": 32,
-      "b60_74": 638,
-      "b35_59": 56,
-      "lt35": 1514,
+      "min": 5.4,
+      "max": 85,
+      "average": 35.304,
+      "ge75": 146,
+      "b60_74": 534,
+      "b35_59": 323,
+      "lt35": 1397,
       "repeated_scores": [
         {
-          "score": 6.6,
+          "score": 10.6,
           "count": 365
         },
         {
-          "score": 6.8,
-          "count": 182
+          "score": 10.4,
+          "count": 178
         },
         {
-          "score": 5.2,
+          "score": 69.7,
           "count": 89
         },
         {
-          "score": 63,
-          "count": 89
-        },
-        {
-          "score": 64.1,
+          "score": 70.7,
           "count": 84
         },
         {
-          "score": 4.5,
-          "count": 81
-        },
-        {
-          "score": 30.5,
+          "score": 42.9,
           "count": 74
         },
         {
-          "score": 70,
+          "score": 7.3,
+          "count": 73
+        },
+        {
+          "score": 8.3,
+          "count": 71
+        },
+        {
+          "score": 75.9,
           "count": 69
         },
         {
-          "score": 16.3,
+          "score": 23.7,
           "count": 59
         },
         {
-          "score": 65,
+          "score": 71.7,
           "count": 48
         },
         {
-          "score": 60.6,
+          "score": 8.2,
           "count": 46
         },
         {
-          "score": 61.9,
-          "count": 41
+          "score": 68.4,
+          "count": 45
         }
       ]
     }

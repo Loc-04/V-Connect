@@ -1,10 +1,10 @@
 {
-  "evaluated_at": "2026-05-16T05:26:16.268Z",
+  "evaluated_at": "2026-05-16T06:45:06.630Z",
   "verdict": "ML_READY_TO_USE",
   "artifact": {
     "exists": true,
-    "model_version": "ml-v1-logreg-2026-05-15",
-    "trained_at": "2026-05-15T04:20:07.478Z",
+    "model_version": "ml-v1-logreg-2026-05-16",
+    "trained_at": "2026-05-16T06:38:01.366Z",
     "sample_size": 952,
     "train_size": 761,
     "test_size": 191,
@@ -44,15 +44,15 @@
       }
     },
     "weights": {
-      "skill_ratio": 3.99622957,
-      "interest_ratio": 1.04436502,
-      "availability_ratio": 1.26805501,
-      "experience_ratio": 3.74427306,
-      "history_ratio": -0.09389436,
-      "profile_completeness_ratio": -0.65622572,
-      "availability_coverage_ratio": 0.92583925,
-      "required_skill_density_ratio": -0.65794793,
-      "duration_fit_ratio": -0.89680567
+      "skill_ratio": 3.99655154,
+      "interest_ratio": 1.04427018,
+      "availability_ratio": 1.24865797,
+      "experience_ratio": 3.74386371,
+      "history_ratio": -0.09383008,
+      "profile_completeness_ratio": -0.65723816,
+      "availability_coverage_ratio": 0.94218383,
+      "required_skill_density_ratio": -0.65811042,
+      "duration_fit_ratio": -0.89596711
     },
     "weight_sanity": {
       "history_dominance_ratio": 0.0235,
@@ -76,8 +76,8 @@
           "max": 0.65
         },
         "availability_ratio": {
-          "mean": 0.093,
-          "std": 0.2243,
+          "mean": 0.0938,
+          "std": 0.2263,
           "zero_rate": 0.8424,
           "min": 0,
           "max": 1
@@ -104,8 +104,8 @@
           "max": 1
         },
         "availability_coverage_ratio": {
-          "mean": 0.3005,
-          "std": 0.138,
+          "mean": 0.2997,
+          "std": 0.135,
           "zero_rate": 0.0368,
           "min": 0,
           "max": 1
@@ -141,8 +141,8 @@
           "max": 0.65
         },
         "availability_ratio": {
-          "mean": 0.1687,
-          "std": 0.2787,
+          "mean": 0.1694,
+          "std": 0.28,
           "zero_rate": 0.7123,
           "min": 0,
           "max": 1
@@ -169,8 +169,8 @@
           "max": 1
         },
         "availability_coverage_ratio": {
-          "mean": 0.3854,
-          "std": 0.1198,
+          "mean": 0.3846,
+          "std": 0.1171,
           "zero_rate": 0.0456,
           "min": 0,
           "max": 1
@@ -206,8 +206,8 @@
           "max": 0.5
         },
         "availability_ratio": {
-          "mean": 0.0079,
-          "std": 0.0764,
+          "mean": 0.0088,
+          "std": 0.0834,
           "zero_rate": 0.9888,
           "min": 0,
           "max": 1
@@ -234,11 +234,11 @@
           "max": 1
         },
         "availability_coverage_ratio": {
-          "mean": 0.205,
-          "std": 0.0844,
+          "mean": 0.2042,
+          "std": 0.0781,
           "zero_rate": 0.0268,
           "min": 0,
-          "max": 0.905
+          "max": 0.714
         },
         "required_skill_density_ratio": {
           "mean": 0.7305,
@@ -271,8 +271,8 @@
     {
       "id": "e5bd8e6c-cabc-4455-8977-45d832ebcc76",
       "full_name": "John Volunteer",
-      "skills": 3,
-      "interests": 2,
+      "skills": 4,
+      "interests": 3,
       "availability": 12,
       "hours": 24,
       "completeness": 4,
@@ -364,7 +364,7 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 88376",
-        "score": 67.2,
+        "score": 73.3,
         "decision": "recommend",
         "tier": "good_match",
         "reasons": [
@@ -375,12 +375,12 @@
         ],
         "heuristic_score": 57,
         "ml_score": 97.8,
-        "blended_score": 67.2,
-        "blend_weight": 0.25,
+        "blended_score": 73.3,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 10.2,
+      "score_diff_ml_minus_heuristic": 16.3,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -405,7 +405,7 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 88376",
-        "score": 78,
+        "score": 82.3,
         "decision": "recommend",
         "tier": "strong_match",
         "reasons": [
@@ -418,12 +418,12 @@
         ],
         "heuristic_score": 71,
         "ml_score": 99.2,
-        "blended_score": 78,
-        "blend_weight": 0.25,
+        "blended_score": 82.3,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 7,
+      "score_diff_ml_minus_heuristic": 11.3,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -460,7 +460,7 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 24db8",
-        "score": 81.3,
+        "score": 85,
         "decision": "recommend",
         "tier": "strong_match",
         "reasons": [
@@ -473,12 +473,12 @@
         ],
         "heuristic_score": 75,
         "ml_score": 100,
-        "blended_score": 81.3,
-        "blend_weight": 0.25,
+        "blended_score": 85,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 6.3,
+      "score_diff_ml_minus_heuristic": 10,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -502,9 +502,9 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 0ec67",
-        "score": 70,
+        "score": 75.9,
         "decision": "recommend",
-        "tier": "good_match",
+        "tier": "strong_match",
         "reasons": [
           "skill alignment",
           "relevant volunteer experience"
@@ -514,12 +514,12 @@
         ],
         "heuristic_score": 60,
         "ml_score": 99.8,
-        "blended_score": 70,
-        "blend_weight": 0.25,
+        "blended_score": 75.9,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 10,
+      "score_diff_ml_minus_heuristic": 15.9,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -543,9 +543,9 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 0ec67",
-        "score": 70,
+        "score": 75.9,
         "decision": "recommend",
-        "tier": "good_match",
+        "tier": "strong_match",
         "reasons": [
           "skill alignment",
           "relevant volunteer experience"
@@ -555,12 +555,12 @@
         ],
         "heuristic_score": 60,
         "ml_score": 99.8,
-        "blended_score": 70,
-        "blend_weight": 0.25,
+        "blended_score": 75.9,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 10,
+      "score_diff_ml_minus_heuristic": 15.9,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -571,23 +571,26 @@
       "user_type": "seed",
       "heuristic_top": null,
       "ml_top": {
-        "title": "Chiến dịch Tình nguyện 24db8",
-        "score": 43.2,
+        "title": "123",
+        "score": 58.4,
         "decision": "consider",
-        "tier": "potential_match",
+        "tier": "good_match",
         "reasons": [
           "relevant volunteer experience",
+          "skill alignment",
           "availability fit"
         ],
-        "matched_skills": [],
-        "heuristic_score": 25,
-        "ml_score": 97.7,
-        "blended_score": 43.2,
-        "blend_weight": 0.25,
+        "matched_skills": [
+          "cleaning"
+        ],
+        "heuristic_score": 32,
+        "ml_score": 98,
+        "blended_score": 58.4,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 43.2,
+      "score_diff_ml_minus_heuristic": 58.4,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
@@ -612,9 +615,9 @@
       },
       "ml_top": {
         "title": "Chiến dịch Tình nguyện 1f959",
-        "score": 72.9,
+        "score": 78.2,
         "decision": "recommend",
-        "tier": "good_match",
+        "tier": "strong_match",
         "reasons": [
           "skill alignment",
           "relevant volunteer experience",
@@ -625,73 +628,73 @@
         ],
         "heuristic_score": 64,
         "ml_score": 99.6,
-        "blended_score": 72.9,
-        "blend_weight": 0.25,
+        "blended_score": 78.2,
+        "blend_weight": 0.4,
         "scoring_strategy": "hybrid_heuristic_ml_blend"
       },
       "ml_better": true,
-      "score_diff_ml_minus_heuristic": 8.9,
+      "score_diff_ml_minus_heuristic": 14.2,
       "regression_flag": false,
       "model_kind_ml": "ml_logistic_regression_v1",
       "model_kind_heuristic": "heuristic"
     }
   ],
   "ml_score_distribution": {
-    "min": 4.5,
-    "max": 81.3,
-    "average": 29.662,
-    "ge75": 32,
-    "b60_74": 638,
-    "b35_59": 56,
-    "lt35": 1514,
+    "min": 5.4,
+    "max": 85,
+    "average": 35.304,
+    "ge75": 146,
+    "b60_74": 534,
+    "b35_59": 323,
+    "lt35": 1397,
     "repeated_scores": [
       {
-        "score": 6.6,
+        "score": 10.6,
         "count": 365
       },
       {
-        "score": 6.8,
-        "count": 182
+        "score": 10.4,
+        "count": 178
       },
       {
-        "score": 5.2,
+        "score": 69.7,
         "count": 89
       },
       {
-        "score": 63,
-        "count": 89
-      },
-      {
-        "score": 64.1,
+        "score": 70.7,
         "count": 84
       },
       {
-        "score": 4.5,
-        "count": 81
-      },
-      {
-        "score": 30.5,
+        "score": 42.9,
         "count": 74
       },
       {
-        "score": 70,
+        "score": 7.3,
+        "count": 73
+      },
+      {
+        "score": 8.3,
+        "count": 71
+      },
+      {
+        "score": 75.9,
         "count": 69
       },
       {
-        "score": 16.3,
+        "score": 23.7,
         "count": 59
       },
       {
-        "score": 65,
+        "score": 71.7,
         "count": 48
       },
       {
-        "score": 60.6,
+        "score": 8.2,
         "count": 46
       },
       {
-        "score": 61.9,
-        "count": 41
+        "score": 68.4,
+        "count": 45
       }
     ]
   },
@@ -705,13 +708,13 @@
       "ml_better_count": 7,
       "baseline_count": 8,
       "score_distribution": {
-        "min": 4.5,
+        "min": 3.4,
         "max": 81.3,
-        "average": 29.662,
+        "average": 29.174,
         "ge75": 32,
-        "b60_74": 638,
-        "b35_59": 56,
-        "lt35": 1514,
+        "b60_74": 642,
+        "b35_59": 93,
+        "lt35": 1633,
         "repeated_scores": [
           {
             "score": 6.6,
@@ -720,10 +723,6 @@
           {
             "score": 6.8,
             "count": 182
-          },
-          {
-            "score": 5.2,
-            "count": 89
           },
           {
             "score": 63,
@@ -738,8 +737,12 @@
             "count": 81
           },
           {
-            "score": 30.5,
+            "score": 30.6,
             "count": 74
+          },
+          {
+            "score": 5.2,
+            "count": 71
           },
           {
             "score": 70,
@@ -758,8 +761,8 @@
             "count": 46
           },
           {
-            "score": 61.9,
-            "count": 41
+            "score": 5.1,
+            "count": 42
           }
         ]
       },
@@ -991,23 +994,26 @@
           "user_type": "seed",
           "heuristic_top": null,
           "ml_top": {
-            "title": "Chiến dịch Tình nguyện 24db8",
-            "score": 43.2,
+            "title": "123",
+            "score": 48.5,
             "decision": "consider",
             "tier": "potential_match",
             "reasons": [
               "relevant volunteer experience",
+              "skill alignment",
               "availability fit"
             ],
-            "matched_skills": [],
-            "heuristic_score": 25,
-            "ml_score": 97.7,
-            "blended_score": 43.2,
+            "matched_skills": [
+              "cleaning"
+            ],
+            "heuristic_score": 32,
+            "ml_score": 98,
+            "blended_score": 48.5,
             "blend_weight": 0.25,
             "scoring_strategy": "hybrid_heuristic_ml_blend"
           },
           "ml_better": true,
-          "score_diff_ml_minus_heuristic": 43.2,
+          "score_diff_ml_minus_heuristic": 48.5,
           "regression_flag": false,
           "model_kind_ml": "ml_logistic_regression_v1",
           "model_kind_heuristic": "heuristic"
@@ -1066,13 +1072,13 @@
       "ml_better_count": 7,
       "baseline_count": 8,
       "score_distribution": {
-        "min": 7.2,
+        "min": 5.4,
         "max": 85,
-        "average": 35.83,
-        "ge75": 144,
-        "b60_74": 526,
-        "b35_59": 276,
-        "lt35": 1294,
+        "average": 35.304,
+        "ge75": 146,
+        "b60_74": 534,
+        "b35_59": 323,
+        "lt35": 1397,
         "repeated_scores": [
           {
             "score": 10.6,
@@ -1087,11 +1093,11 @@
             "count": 89
           },
           {
-            "score": 70.8,
-            "count": 85
+            "score": 70.7,
+            "count": 84
           },
           {
-            "score": 42.8,
+            "score": 42.9,
             "count": 74
           },
           {
@@ -1115,12 +1121,12 @@
             "count": 48
           },
           {
-            "score": 68.4,
-            "count": 45
+            "score": 8.2,
+            "count": 46
           },
           {
-            "score": 27.5,
-            "count": 40
+            "score": 68.4,
+            "count": 45
           }
         ]
       },
@@ -1352,23 +1358,26 @@
           "user_type": "seed",
           "heuristic_top": null,
           "ml_top": {
-            "title": "Chiến dịch Tình nguyện 24db8",
-            "score": 54.1,
+            "title": "123",
+            "score": 58.4,
             "decision": "consider",
             "tier": "good_match",
             "reasons": [
               "relevant volunteer experience",
+              "skill alignment",
               "availability fit"
             ],
-            "matched_skills": [],
-            "heuristic_score": 25,
-            "ml_score": 97.7,
-            "blended_score": 54.1,
+            "matched_skills": [
+              "cleaning"
+            ],
+            "heuristic_score": 32,
+            "ml_score": 98,
+            "blended_score": 58.4,
             "blend_weight": 0.4,
             "scoring_strategy": "hybrid_heuristic_ml_blend"
           },
           "ml_better": true,
-          "score_diff_ml_minus_heuristic": 54.1,
+          "score_diff_ml_minus_heuristic": 58.4,
           "regression_flag": false,
           "model_kind_ml": "ml_logistic_regression_v1",
           "model_kind_heuristic": "heuristic"
@@ -1427,17 +1436,17 @@
       "ml_better_count": 7,
       "baseline_count": 8,
       "score_distribution": {
-        "min": 10.8,
+        "min": 8.2,
         "max": 90,
-        "average": 44,
-        "ge75": 670,
-        "b60_74": 65,
-        "b35_59": 413,
-        "lt35": 1092,
+        "average": 43.442,
+        "ge75": 679,
+        "b60_74": 94,
+        "b35_59": 449,
+        "lt35": 1178,
         "repeated_scores": [
           {
             "score": 15.8,
-            "count": 365
+            "count": 374
           },
           {
             "score": 15,
@@ -1480,8 +1489,8 @@
             "count": 46
           },
           {
-            "score": 77.2,
-            "count": 41
+            "score": 12.3,
+            "count": 42
           }
         ]
       },
@@ -1713,23 +1722,26 @@
           "user_type": "seed",
           "heuristic_top": null,
           "ml_top": {
-            "title": "Chiến dịch Tình nguyện 24db8",
-            "score": 68.6,
-            "decision": "consider",
+            "title": "123",
+            "score": 71.6,
+            "decision": "recommend",
             "tier": "good_match",
             "reasons": [
               "relevant volunteer experience",
+              "skill alignment",
               "availability fit"
             ],
-            "matched_skills": [],
-            "heuristic_score": 25,
-            "ml_score": 97.7,
-            "blended_score": 68.6,
+            "matched_skills": [
+              "cleaning"
+            ],
+            "heuristic_score": 32,
+            "ml_score": 98,
+            "blended_score": 71.6,
             "blend_weight": 0.6,
             "scoring_strategy": "hybrid_heuristic_ml_blend"
           },
           "ml_better": true,
-          "score_diff_ml_minus_heuristic": 68.6,
+          "score_diff_ml_minus_heuristic": 71.6,
           "regression_flag": false,
           "model_kind_ml": "ml_logistic_regression_v1",
           "model_kind_heuristic": "heuristic"
