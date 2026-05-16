@@ -1,4 +1,4 @@
-import { supabase } from '@/src/data/clients';
+import { apiRequest, supabase } from '@/src/data/clients';
 import type { AuthChangeEvent, AuthError, Session, Subscription } from '@supabase/supabase-js';
 import type { UserRole } from '../types';
 
@@ -15,6 +15,11 @@ interface SignUpMetadata {
 
 interface UserRoleRow {
   role: string | null;
+}
+
+interface RegisterApiResponse {
+  success: boolean;
+  requiresEmailConfirmation?: boolean;
 }
 
 function extractMetadataRole(value: unknown): Exclude<UserRole, 'admin'> | null {
@@ -134,46 +139,58 @@ export async function signUpWithEmail(
   password: string,
   metadata?: SignUpMetadata,
 ): Promise<AuthResult<Session>> {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: metadata
-        ? {
-            full_name: metadata.fullName,
-            role: metadata.role,
-            phone: metadata.phone,
-          }
-        : undefined,
-    },
-  });
-  if (error) return { data: null, error: mapError(error) };
+  const normalizedEmail = email.trim().toLowerCase();
+  const fullName = metadata?.fullName?.trim() ?? '';
+  const role = metadata?.role;
+  const phone = metadata?.phone?.trim() ?? '';
 
-  if (!data.user) {
+  if (!fullName || !role || !phone) {
+    return { data: null, error: 'All registration fields are required.' };
+  }
+
+  let registerResponse: RegisterApiResponse;
+  try {
+    registerResponse = await apiRequest<RegisterApiResponse>('/auth/register', {
+      method: 'POST',
+      requiresAuth: false,
+      body: {
+        email: normalizedEmail,
+        password,
+        confirmPassword: password,
+        fullName,
+        phone,
+        role,
+      },
+    });
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Could not create account. Please try again.',
+    };
+  }
+
+  if (!registerResponse.success) {
     return { data: null, error: 'Could not create account. Please try again.' };
   }
 
-  if (data.session && metadata?.fullName && metadata.role) {
-    const profileResult = await upsertUserRecord({
-      id: data.user.id,
-      fullName: metadata.fullName,
-      role: metadata.role,
-      phone: metadata.phone,
-    });
-    if (profileResult.error) {
-      return { data: null, error: profileResult.error };
-    }
-  }
-
-  // Supabase returns a user with an empty session when email confirmation is required.
-  if (data.user && !data.session) {
-    const identities = (data.user as { identities?: unknown[] }).identities;
-    const isLikelyDuplicateEmail = Array.isArray(identities) && identities.length === 0;
-    if (isLikelyDuplicateEmail) {
-      return { data: null, error: 'An account with this email already exists.' };
-    }
+  if (registerResponse.requiresEmailConfirmation) {
     return { data: null, error: null };
   }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password,
+  });
+  if (error || !data.session) {
+    const mappedMessage = mapError(error);
+    return {
+      data: null,
+      error: mappedMessage
+        ? `Account created, but automatic sign-in failed: ${mappedMessage}`
+        : 'Account created, but automatic sign-in failed.',
+    };
+  }
+
   return { data: data.session, error: null };
 }
 
