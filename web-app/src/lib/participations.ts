@@ -172,8 +172,22 @@ export async function respondToAssignedParticipation(
   };
 }
 
-export async function checkInParticipation(participationId: string, accessToken: string): Promise<ParticipationRecord> {
-  return checkInParticipationWithCode(participationId, accessToken);
+export async function checkInParticipation(
+  participationId: string,
+  checkInCode: string,
+  accessToken: string
+): Promise<ParticipationRecord> {
+  const normalizedParticipationId = participationId.trim();
+  if (!normalizedParticipationId) {
+    throw new Error('participationId is required.');
+  }
+
+  const normalizedCheckInCode = checkInCode.trim();
+  if (!normalizedCheckInCode) {
+    throw new Error('checkInCode is required.');
+  }
+
+  return checkInParticipationWithCode(normalizedParticipationId, accessToken, normalizedCheckInCode);
 }
 
 export async function checkInParticipationWithCode(

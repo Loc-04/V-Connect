@@ -425,7 +425,7 @@
     "duration_fit_ratio": -0.89596711
   },
   "evaluation_summary": {
-    "evaluated_at": "2026-05-16T06:45:06.632Z",
+    "evaluated_at": "2026-05-16T12:10:20.823Z",
     "verdict": "ML_READY_TO_USE",
     "baseline_health": {
       "regression_count": 0,
@@ -435,19 +435,19 @@
     "score_distribution": {
       "min": 5.4,
       "max": 85,
-      "average": 35.304,
+      "average": 34.954,
       "ge75": 146,
-      "b60_74": 534,
-      "b35_59": 323,
-      "lt35": 1397,
+      "b60_74": 538,
+      "b35_59": 322,
+      "lt35": 1439,
       "repeated_scores": [
         {
           "score": 10.6,
-          "count": 365
+          "count": 393
         },
         {
           "score": 10.4,
-          "count": 178
+          "count": 186
         },
         {
           "score": 69.7,
@@ -479,11 +479,11 @@
         },
         {
           "score": 71.7,
-          "count": 48
+          "count": 49
         },
         {
           "score": 8.2,
-          "count": 46
+          "count": 48
         },
         {
           "score": 68.4,
