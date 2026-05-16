@@ -5,9 +5,7 @@ import { Colors } from '@/src/shared/constants/theme';
 import { useColorScheme } from '@/src/shared/hooks/use-color-scheme';
 import { HapticTab } from '@/src/shared/ui/haptic-tab';
 
-const homeIcon = require('@/assets/home_icon.png');
 const activitiesIcon = require('@/assets/activity_icon.png');
-const messagesIcon = require('@/assets/msg_icon.png');
 const profileIcon = require('@/assets/pro5_icon.png');
 
 function renderTabIcon(source: number, color: string) {
@@ -36,24 +34,10 @@ export default function OrganizerTabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="home"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => renderTabIcon(homeIcon, color),
-        }}
-      />
-      <Tabs.Screen
         name="activities"
         options={{
           title: 'Activities',
           tabBarIcon: ({ color }) => renderTabIcon(activitiesIcon, color),
-        }}
-      />
-      <Tabs.Screen
-        name="messages"
-        options={{
-          title: 'Messages',
-          tabBarIcon: ({ color }) => renderTabIcon(messagesIcon, color),
         }}
       />
       <Tabs.Screen

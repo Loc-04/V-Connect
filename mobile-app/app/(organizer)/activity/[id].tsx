@@ -523,7 +523,7 @@ export default function EditActivityScreen() {
               <MaterialIcons name={provinceOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color="#6b7280" />
             </Pressable>
             {provinceOpen && (
-              <View style={styles.dropdownList}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled={true}>
                 <Pressable
                   style={styles.dropdownOption}
                   onPress={() => { setProvinceCode(null); setProvinceOpen(false); }}
@@ -542,7 +542,7 @@ export default function EditActivityScreen() {
                     {p.code === provinceCode && <MaterialIcons name="check" size={16} color="#0f8a8a" />}
                   </Pressable>
                 ))}
-              </View>
+              </ScrollView>
             )}
           </View>
           <View style={styles.halfField}>
@@ -558,7 +558,7 @@ export default function EditActivityScreen() {
               <MaterialIcons name={wardOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color="#6b7280" />
             </Pressable>
             {wardOpen && (
-              <View style={styles.dropdownList}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled={true}>
                 <Pressable
                   style={styles.dropdownOption}
                   onPress={() => { setWardCode(null); setWardOpen(false); }}
@@ -577,7 +577,7 @@ export default function EditActivityScreen() {
                     {w.code === wardCode && <MaterialIcons name="check" size={16} color="#0f8a8a" />}
                   </Pressable>
                 ))}
-              </View>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -660,7 +660,7 @@ export default function EditActivityScreen() {
           <MaterialIcons name={skillsOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color="#6b7280" />
         </Pressable>
         {skillsOpen && (
-          <View style={styles.dropdownList}>
+          <ScrollView style={styles.dropdownList} nestedScrollEnabled={true}>
             {skillOptions.map((opt) => {
               const checked = selectedSkills.includes(opt.skillName);
               return (
@@ -675,7 +675,7 @@ export default function EditActivityScreen() {
             {skillOptions.length === 0 && (
               <ThemedText style={styles.dropdownEmpty}>No skills available</ThemedText>
             )}
-          </View>
+          </ScrollView>
         )}
 
         <FieldLabel label="Status" />

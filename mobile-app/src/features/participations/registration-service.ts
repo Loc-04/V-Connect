@@ -8,8 +8,9 @@ export interface RegisterForActivityResult {
   message?: string;
 }
 
-export async function registerForActivity(activityId: string): Promise<RegisterForActivityResult> {
-  return apiRequest<RegisterForActivityResult>(`/activities/${activityId}/register`, { method: 'POST' });
+export async function registerForActivity(activityId: string, recommendationItemId?: string | null): Promise<RegisterForActivityResult> {
+  const body = recommendationItemId ? { recommendation_item_id: recommendationItemId } : undefined;
+  return apiRequest<RegisterForActivityResult>(`/activities/${activityId}/register`, { method: 'POST', body });
 }
 
 export async function cancelActivityRegistration(activityId: string): Promise<{ registration?: unknown; message?: string }> {
