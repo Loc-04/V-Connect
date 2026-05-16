@@ -12,6 +12,7 @@ const EVALUATION_OUTPUT_PATH = path.resolve(
   '../src/recommendations/artifacts/recommendation-ml-v1-evaluation.json'
 );
 const MAX_SEED_USERS = Math.max(0, Math.trunc(Number(process.env.RECOMMENDATION_ML_EVAL_SEED_USERS ?? 5)));
+const DEFAULT_BLEND_SCENARIOS = [0.25, 0.4, 0.6];
 
 function normalize(value) {
   return String(value ?? '')
@@ -22,6 +23,20 @@ function normalize(value) {
 function safeNumber(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+function parseBlendWeights(rawValue) {
+  const text = String(rawValue ?? '')
+    .trim()
+    .toLowerCase();
+  const source = text || DEFAULT_BLEND_SCENARIOS.join(',');
+  const parsed = source
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter(Number.isFinite)
+    .map((value) => Math.max(0, Math.min(1, Number(value.toFixed(3)))));
+  const uniqueSorted = [...new Set(parsed)].sort((a, b) => a - b);
+  return uniqueSorted.length > 0 ? uniqueSorted : DEFAULT_BLEND_SCENARIOS;
 }
 
 function profileCompleteness(profile) {
@@ -38,7 +53,7 @@ function profileCompleteness(profile) {
   };
 }
 
-function runSnapshotInMode({ userIds, mode }) {
+function runSnapshotInMode({ userIds, mode, blendWeight = null, scoringMode = null }) {
   const evalScript = `
     import { getRecommendationsForUser } from './src/recommendations/recommendations.service.js';
     const norm = (value) => String(value ?? '').trim().toLowerCase();
@@ -114,6 +129,12 @@ function runSnapshotInMode({ userIds, mode }) {
     ...process.env,
     RECOMMENDATION_ML_FORCE_HEURISTIC: mode === 'heuristic' ? 'true' : 'false',
   };
+  if (blendWeight != null) {
+    env.RECOMMENDATION_ML_BLEND_WEIGHT = String(blendWeight);
+  }
+  if (scoringMode) {
+    env.RECOMMENDATION_SCORING_MODE = String(scoringMode);
+  }
 
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', evalScript], {
     cwd: path.resolve(__dirname, '..'),
@@ -284,6 +305,81 @@ function computeBaselineHealth(comparisonRows) {
   };
 }
 
+function summarizeBlendScenario({
+  blendWeight,
+  scoringMode,
+  artifact,
+  baselineUsers,
+  heuristicById,
+  baselineIds,
+  volunteerIds,
+}) {
+  const mlSnapshots = runSnapshotInMode({
+    userIds: baselineIds,
+    mode: 'ml',
+    blendWeight,
+    scoringMode,
+  });
+  const mlById = new Map(mlSnapshots.map((row) => [row.user_id, row]));
+  const comparisonRows = buildComparisonRows({ baselineUsers, mlById, heuristicById });
+  const baselineHealth = computeBaselineHealth(comparisonRows);
+
+  const allVolunteerMlSnapshots = runSnapshotInMode({
+    userIds: volunteerIds,
+    mode: 'ml',
+    blendWeight,
+    scoringMode,
+  });
+  const allMlRows = allVolunteerMlSnapshots.flatMap((item) => (Array.isArray(item.all_rows) ? item.all_rows : []));
+  const scoreDist = summarizeScoreDistribution(allMlRows);
+  const verdict = verdictFromSignals({
+    artifact,
+    baselineHealth,
+    scoreDist,
+  });
+
+  return {
+    blend_weight: blendWeight,
+    scoring_mode: scoringMode,
+    accuracy: safeNumber(artifact?.metrics?.test?.accuracy, 0),
+    f1: safeNumber(artifact?.metrics?.test?.f1, 0),
+    regression_count: baselineHealth.regression_count,
+    ml_better_count: baselineHealth.ml_better_count,
+    baseline_count: baselineHealth.baseline_count,
+    score_distribution: scoreDist,
+    verdict,
+    baseline_comparison: comparisonRows,
+  };
+}
+
+function pickBestBlendScenario(scenarios) {
+  const eligible = (Array.isArray(scenarios) ? scenarios : []).filter(
+    (scenario) =>
+      String(scenario?.verdict ?? '') === 'ML_READY_TO_USE' &&
+      safeNumber(scenario?.regression_count, 0) === 0
+  );
+  if (eligible.length === 0) {
+    return null;
+  }
+
+  const sorted = eligible
+    .slice()
+    .sort((left, right) => {
+      const leftBlend = safeNumber(left?.blend_weight, 0);
+      const rightBlend = safeNumber(right?.blend_weight, 0);
+      if (rightBlend !== leftBlend) {
+        return rightBlend - leftBlend;
+      }
+      const leftBetter = safeNumber(left?.ml_better_count, 0);
+      const rightBetter = safeNumber(right?.ml_better_count, 0);
+      if (rightBetter !== leftBetter) {
+        return rightBetter - leftBetter;
+      }
+      return safeNumber(right?.f1, 0) - safeNumber(left?.f1, 0);
+    });
+  return sorted[0] ?? null;
+}
+
 function verdictFromSignals({ artifact, baselineHealth, scoreDist }) {
   if (!artifact.exists) {
     return 'ML_NOT_SAFE_USE_HEURISTIC';
@@ -414,8 +510,17 @@ async function main() {
   }
 
   const baselineIds = baselineUsers.map((row) => row.id);
+  const blendScenarios = parseBlendWeights(process.env.RECOMMENDATION_ML_EVAL_BLEND_WEIGHTS);
+  const scoringMode = String(process.env.RECOMMENDATION_SCORING_MODE ?? 'hybrid_blend')
+    .trim()
+    .toLowerCase();
 
-  const mlSnapshots = runSnapshotInMode({ userIds: baselineIds, mode: 'ml' });
+  const mlSnapshots = runSnapshotInMode({
+    userIds: baselineIds,
+    mode: 'ml',
+    blendWeight: safeNumber(process.env.RECOMMENDATION_ML_BLEND_WEIGHT ?? 0.25, 0.25),
+    scoringMode,
+  });
   const heuristicSnapshots = runSnapshotInMode({ userIds: baselineIds, mode: 'heuristic' });
   const mlById = new Map(mlSnapshots.map((row) => [row.user_id, row]));
   const heuristicById = new Map(heuristicSnapshots.map((row) => [row.user_id, row]));
@@ -423,7 +528,12 @@ async function main() {
   const comparisonRows = buildComparisonRows({ baselineUsers, mlById, heuristicById });
   const baselineHealth = computeBaselineHealth(comparisonRows);
 
-  const allVolunteerMlSnapshots = runSnapshotInMode({ userIds: volunteerIds, mode: 'ml' });
+  const allVolunteerMlSnapshots = runSnapshotInMode({
+    userIds: volunteerIds,
+    mode: 'ml',
+    blendWeight: safeNumber(process.env.RECOMMENDATION_ML_BLEND_WEIGHT ?? 0.25, 0.25),
+    scoringMode,
+  });
   const allMlRows = allVolunteerMlSnapshots.flatMap((item) => (Array.isArray(item.all_rows) ? item.all_rows : []));
   const scoreDist = summarizeScoreDistribution(allMlRows);
 
@@ -433,6 +543,19 @@ async function main() {
     scoreDist,
   });
 
+  const blend_experiments = blendScenarios.map((weight) =>
+    summarizeBlendScenario({
+      blendWeight: weight,
+      scoringMode,
+      artifact,
+      baselineUsers,
+      heuristicById,
+      baselineIds,
+      volunteerIds,
+    })
+  );
+  const recommendedBlend = pickBestBlendScenario(blend_experiments);
+
   const result = {
     evaluated_at: new Date().toISOString(),
     verdict,
@@ -441,6 +564,14 @@ async function main() {
     baseline_health: baselineHealth,
     ml_vs_heuristic_baseline: comparisonRows,
     ml_score_distribution: scoreDist,
+    blend_experiments,
+    blend_recommendation: recommendedBlend
+      ? {
+          blend_weight: recommendedBlend.blend_weight,
+          scoring_mode: recommendedBlend.scoring_mode,
+          rationale: 'highest safe ML influence among READY scenarios with zero baseline regression',
+        }
+      : null,
     output_file: EVALUATION_OUTPUT_PATH,
   };
 

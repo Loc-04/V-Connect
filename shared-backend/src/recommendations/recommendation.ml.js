@@ -21,6 +21,7 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_MODEL_PATH = path.resolve(__dirname, 'artifacts', 'recommendation-ml-v1.json');
 const MODEL_PATH = String(process.env.RECOMMENDATION_ML_MODEL_PATH ?? '').trim() || DEFAULT_MODEL_PATH;
 const MIN_RUNTIME_SAMPLE_SIZE = 100;
+const SCORING_MODE = normalizeScoringMode(process.env.RECOMMENDATION_SCORING_MODE ?? 'hybrid_blend');
 const RUNTIME_MIN_SAMPLES = Math.max(
   1,
   Math.trunc(
@@ -31,6 +32,16 @@ const RUNTIME_MIN_SAMPLES = Math.max(
   )
 );
 const BLEND_WEIGHT = clamp(safeNumber(process.env.RECOMMENDATION_ML_BLEND_WEIGHT ?? 0.25, 0.25), 0, 1);
+const RERANK_ML_WEIGHT = clamp(safeNumber(process.env.RECOMMENDATION_ML_RERANK_ML_WEIGHT ?? 0.85, 0.85), 0.5, 1);
+const RUNTIME_PROD_MIN_SAMPLES = Math.max(
+  MIN_RUNTIME_SAMPLE_SIZE,
+  Math.trunc(safeNumber(process.env.RECOMMENDATION_ML_RUNTIME_PROD_MIN_SAMPLES ?? 500, 500))
+);
+const ENFORCE_PROD_MIN_SAMPLES = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.RECOMMENDATION_ML_ENFORCE_PROD_MIN_SAMPLES ?? '')
+    .trim()
+    .toLowerCase()
+);
 const REQUIRE_EVALUATION_PASS = ['1', 'true', 'yes', 'on'].includes(
   String(process.env.RECOMMENDATION_ML_REQUIRE_EVALUATION_PASS ?? '')
     .trim()
@@ -56,6 +67,19 @@ function safeNumber(value, fallback = 0) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeScoringMode(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'heuristic_only') {
+    return 'heuristic_only';
+  }
+  if (normalized === 'ml_rerank') {
+    return 'ml_rerank';
+  }
+  return 'hybrid_blend';
 }
 
 function sigmoid(z) {
@@ -165,6 +189,9 @@ function getModelRejectionReason(model) {
   if (sampleSize > 0 && sampleSize < RUNTIME_MIN_SAMPLES) {
     return `artifact_sample_size_below_threshold(${sampleSize}<${RUNTIME_MIN_SAMPLES})`;
   }
+  if (ENFORCE_PROD_MIN_SAMPLES && sampleSize < RUNTIME_PROD_MIN_SAMPLES) {
+    return `artifact_sample_size_below_production_threshold(${sampleSize}<${RUNTIME_PROD_MIN_SAMPLES})`;
+  }
 
   const configMinSamples = safeNumber(model?.training_config?.min_train_samples, NaN);
   if (Number.isFinite(configMinSamples) && configMinSamples < RUNTIME_MIN_SAMPLES) {
@@ -217,12 +244,16 @@ function getModelRejectionReason(model) {
 }
 
 function tryLoadModel() {
-  if (FORCE_HEURISTIC) {
+  if (FORCE_HEURISTIC || SCORING_MODE === 'heuristic_only') {
     if (!cachedModelReady) {
-      console.warn('[recommendation.ml] RECOMMENDATION_ML_FORCE_HEURISTIC=true, skip ML model load');
+      console.warn(
+        `[recommendation.ml] ML model load skipped: ${
+          FORCE_HEURISTIC ? 'RECOMMENDATION_ML_FORCE_HEURISTIC=true' : 'RECOMMENDATION_SCORING_MODE=heuristic_only'
+        }`
+      );
       cachedModelReady = true;
       cachedModel = null;
-      cachedModelUnavailableReason = 'force_heuristic_env';
+      cachedModelUnavailableReason = FORCE_HEURISTIC ? 'force_heuristic_env' : 'heuristic_only_mode';
     }
     return null;
   }
@@ -354,15 +385,18 @@ function scoreWithMlModel(heuristicResult = {}) {
       model_kind: 'heuristic',
       prediction_snapshot: {
         strategy: FORCE_HEURISTIC ? 'heuristic_forced' : 'heuristic_fallback',
-        scoring_strategy: FORCE_HEURISTIC ? 'heuristic_forced' : 'heuristic_fallback',
+        scoring_strategy: FORCE_HEURISTIC ? 'heuristic_forced' : SCORING_MODE === 'heuristic_only' ? 'heuristic_only' : 'heuristic_fallback',
         fallback_reason: FORCE_HEURISTIC
           ? 'force_heuristic_env'
+          : SCORING_MODE === 'heuristic_only'
+            ? 'heuristic_only_mode'
           : cachedModelUnavailableReason || 'model_unavailable_or_invalid',
         heuristic_score: heuristicScore,
         ml_score: null,
         blended_score: heuristicScore,
         blend_weight: BLEND_WEIGHT,
         final_score: heuristicScore,
+        scoring_mode: SCORING_MODE,
       },
       feature_snapshot: {
         ...(heuristicResult?.feature_snapshot && typeof heuristicResult.feature_snapshot === 'object'
@@ -381,11 +415,9 @@ function scoreWithMlModel(heuristicResult = {}) {
 
   const probability = sigmoid(logit);
   const mlScore = clamp(Number((probability * 100).toFixed(1)), 0, 100);
-  const blendedScore = clamp(
-    Number((heuristicScore * (1 - BLEND_WEIGHT) + mlScore * BLEND_WEIGHT).toFixed(1)),
-    0,
-    100
-  );
+  const appliedMlWeight = SCORING_MODE === 'ml_rerank' ? RERANK_ML_WEIGHT : BLEND_WEIGHT;
+  const scoringStrategy = SCORING_MODE === 'ml_rerank' ? 'ml_rerank_with_heuristic_guard' : 'hybrid_heuristic_ml_blend';
+  const blendedScore = clamp(Number((heuristicScore * (1 - appliedMlWeight) + mlScore * appliedMlWeight).toFixed(1)), 0, 100);
 
   const termContributions = FEATURE_KEYS.map((featureKey) => ({
     feature: featureKey,
@@ -440,16 +472,17 @@ function scoreWithMlModel(heuristicResult = {}) {
       ...features,
     },
     prediction_snapshot: {
-      strategy: 'hybrid_heuristic_ml_blend',
-      scoring_strategy: 'hybrid_heuristic_ml_blend',
+      strategy: scoringStrategy,
+      scoring_strategy: scoringStrategy,
       label: model.label,
       probability,
       logit,
       heuristic_score: heuristicScore,
       ml_score: mlScore,
       blended_score: blendedScore,
-      blend_weight: BLEND_WEIGHT,
+      blend_weight: appliedMlWeight,
       final_score: blendedScore,
+      scoring_mode: SCORING_MODE,
       weights: model.weights,
       bias: model.bias,
     },
