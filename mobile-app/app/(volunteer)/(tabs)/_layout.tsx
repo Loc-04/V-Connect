@@ -51,7 +51,7 @@ export default function VolunteerTabLayout() {
       <Tabs.Screen
         name="activity"
         options={{
-          title: 'Schedule',
+          title: 'Availability',
           tabBarIcon: ({ color }) => renderTabIcon(activityIcon, color),
         }}
       />

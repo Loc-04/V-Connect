@@ -27,6 +27,10 @@ const TOTAL_AVAILABILITY_SLOTS = 21;
 const INTERNAL_RECOMMENDATION_CONTROLLER_VERSION = 'internal-recommendation-controller-v1';
 const INTERNAL_RECOMMENDATION_DECISION_POLICY = 'ml_score_plus_profile_fit_policy_v1';
 const ACTIVE_PARTICIPATION_STATUSES = new Set(['assigned', 'pending', 'approved', 'checked_in']);
+const HISTORY_COUNT_FOR_FULL_SIGNAL = Math.max(
+  2,
+  Math.trunc(Number(process.env.RECOMMENDATION_HISTORY_FULL_SIGNAL_COUNT ?? 4))
+);
 const RECOMMENDATION_DEBUG = ['1', 'true', 'yes', 'on'].includes(
   String(process.env.RECOMMENDATION_DEBUG ?? '')
     .trim()
@@ -132,7 +136,7 @@ function getMatchTier(scoreLike) {
   if (score >= 50) {
     return MATCH_TIER_GOOD;
   }
-  if (score >= 35) {
+  if (score >= 30) {
     return MATCH_TIER_POTENTIAL;
   }
   return MATCH_TIER_LOW;
@@ -419,6 +423,45 @@ function roundTwo(value) {
   return Number(numeric.toFixed(2));
 }
 
+function parseTimestampMs(value) {
+  if (!value) {
+    return null;
+  }
+  const millis = new Date(value).getTime();
+  if (!Number.isFinite(millis) || millis <= 0) {
+    return null;
+  }
+  return millis;
+}
+
+function resolveHistoryCutoffIso({ participationCreatedAt, activityStartTime }) {
+  const participationMs = parseTimestampMs(participationCreatedAt);
+  const activityStartMs = parseTimestampMs(activityStartTime);
+  if (participationMs && activityStartMs) {
+    return new Date(Math.min(participationMs, activityStartMs)).toISOString();
+  }
+  if (activityStartMs) {
+    return new Date(activityStartMs).toISOString();
+  }
+  if (participationMs) {
+    return new Date(participationMs).toISOString();
+  }
+  return null;
+}
+
+function computeHistorySignalRatio(historyCount) {
+  const normalizedCount = Math.max(0, Number(historyCount ?? 0));
+  if (normalizedCount <= 0) {
+    return 0;
+  }
+  const denominator = Math.log1p(HISTORY_COUNT_FOR_FULL_SIGNAL);
+  if (!Number.isFinite(denominator) || denominator <= 0) {
+    return 0;
+  }
+  const ratio = Math.log1p(normalizedCount) / denominator;
+  return Math.max(0, Math.min(1, ratio));
+}
+
 function buildDecisionReasons({ scoreBreakdown, displayReasons }) {
   const reasons = Array.isArray(displayReasons)
     ? displayReasons.map((reason) => String(reason ?? '').trim()).filter((reason) => reason.length > 0)
@@ -536,6 +579,7 @@ function decideRecommendation({
   eligibility,
   displayReasons,
   featureSnapshot,
+  predictionSnapshot,
 }) {
   if (!eligibility.eligible) {
     const reasons = buildDecisionReasons({ scoreBreakdown, displayReasons });
@@ -579,6 +623,24 @@ function decideRecommendation({
   const hasSkillSignal = skillRatio >= 0.2;
   const hasStrongSkillSignal = skillRatio >= 0.4;
   const hasTrustedAvailabilitySignal = hasAvailabilitySignal && !hasBroadAvailability && availabilityRatio >= 0.35;
+  const matchedSkillCount = Array.isArray(featureSnapshot?.matched_skills) ? featureSnapshot.matched_skills.length : 0;
+  const matchedInterestCount = Array.isArray(featureSnapshot?.matched_interests) ? featureSnapshot.matched_interests.length : 0;
+  const onlyHistorySignal =
+    Number(scoreBreakdown?.history_score ?? 0) > 0 &&
+    Number(scoreBreakdown?.skill_score ?? 0) === 0 &&
+    Number(scoreBreakdown?.interest_score ?? 0) === 0 &&
+    Number(scoreBreakdown?.availability_score ?? 0) === 0 &&
+    Number(scoreBreakdown?.experience_score ?? 0) === 0;
+  const mlScoreSnapshot = Number(predictionSnapshot?.ml_score ?? Number.NaN);
+  const weakCoreEvidence =
+    matchedSkillCount === 0 &&
+    matchedInterestCount === 0 &&
+    !hasTrustedAvailabilitySignal &&
+    Number(scoreBreakdown?.experience_score ?? 0) <= 0;
+  const mlHighScoreWithoutCoreEvidence =
+    Number.isFinite(mlScoreSnapshot) &&
+    mlScoreSnapshot >= 75 &&
+    (onlyHistorySignal || weakCoreEvidence);
   const trustedSignalCount =
     Number(hasSkillSignal) +
     Number(hasInterestSignal) +
@@ -644,14 +706,8 @@ function decideRecommendation({
       'Recommended based on your skills. Add availability and interests to improve future matches.';
   }
 
-  const effectiveTier =
-    decision === 'recommend'
-      ? matchScore >= 75
-        ? MATCH_TIER_STRONG
-        : MATCH_TIER_GOOD
-      : decision === 'consider'
-        ? MATCH_TIER_POTENTIAL
-        : MATCH_TIER_LOW;
+  // Keep user-facing tier tied to score quality, independent from action policy.
+  const effectiveTier = getMatchTier(matchScore);
   if (decisionReason !== 'cold_start_skill_match') {
     explanation = buildDecisionExplanation({
       decision,
@@ -660,6 +716,18 @@ function decideRecommendation({
       hasAvailabilitySignal,
       hasBroadAvailability,
     });
+  }
+
+  if (mlHighScoreWithoutCoreEvidence && decision === 'recommend') {
+    decision = 'consider';
+    recommendationGroup = 'consider_later';
+    ctaLabel = 'Explore option';
+    priorityLabel = 'Potential fit';
+    decisionReason = onlyHistorySignal
+      ? 'ml_overconfidence_guard_only_history_signal'
+      : 'ml_overconfidence_guard_weak_core_evidence';
+    explanation =
+      'This activity is kept as a potential fit because the ML score is high but core skill/interest evidence is still limited.';
   }
 
   return {
@@ -688,6 +756,7 @@ function buildCandidateActivityRow({ activity, score, organizerName }) {
     eligibility: activity.eligibility,
     displayReasons: structured.display_reasons,
     featureSnapshot: structured.feature_snapshot,
+    predictionSnapshot: structured.prediction_snapshot,
   });
 
   const decisionSnapshot = {
@@ -728,7 +797,13 @@ function buildCandidateActivityRow({ activity, score, organizerName }) {
   };
 }
 
-function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHistory = false, organizerHistoryCount = 0 }) {
+function scoreActivityForVolunteerProfile({
+  activity,
+  profile,
+  hasOrganizerHistory = false,
+  organizerHistoryCount = 0,
+  historyCutoffAt = null,
+}) {
   const requiredSkills = normalizeStringSet(activity?.required_skills);
   const volunteerSkills = normalizeStringSet(profile?.skills);
   const interests = normalizeStringSet(profile?.interests);
@@ -747,6 +822,9 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
   const normalizedAvailableChoices = getAvailableChoices(profile?.available_choices);
   const availabilityCoverage =
     TOTAL_AVAILABILITY_SLOTS > 0 ? normalizedAvailableChoices.length / TOTAL_AVAILABILITY_SLOTS : 0;
+  const durationHoursRaw = computeDurationHours(activity?.start_time, activity?.end_time);
+  const durationHours = Number.isFinite(Number(durationHoursRaw)) ? Number(durationHoursRaw) : 0;
+  const durationFitRatio = durationHours <= 0 ? 0 : Math.max(0, Math.min(1, 1 - Math.abs(durationHours - 3) / 5));
   const availabilityIsBroad = availabilityCoverage >= 0.85;
   let availabilityWeight = 1;
   if (availabilityCoverage >= 0.95) {
@@ -771,10 +849,18 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
       ? Math.round((matchedInterests.length / interests.size) * INTEREST_SCORE_MAX)
       : 0;
   const totalHours = Number(profile?.total_hours ?? 0);
+  const profileCompletenessRatio =
+    (Number(volunteerSkills.size > 0) +
+      Number(interests.size > 0) +
+      Number(normalizedAvailableChoices.length > 0) +
+      Number(totalHours > 0)) /
+    4;
+  const requiredSkillDensityRatio = Math.max(0, Math.min(1, requiredSkills.size / 4));
   const experienceScore = Math.max(0, Math.min(EXPERIENCE_SCORE_MAX, Math.round(totalHours / 10)));
   const effectiveOrganizerHistoryCount = Math.max(0, Math.trunc(Number(organizerHistoryCount ?? 0)));
   const hasOrganizerHistorySignal = hasOrganizerHistory || effectiveOrganizerHistoryCount > 0;
-  const organizerHistoryScore = hasOrganizerHistorySignal ? HISTORY_SCORE_MAX : 0;
+  const historyRatioCapped = hasOrganizerHistorySignal ? computeHistorySignalRatio(effectiveOrganizerHistoryCount) : 0;
+  const organizerHistoryScore = Math.round(HISTORY_SCORE_MAX * historyRatioCapped);
 
   const reasons = [];
   const reasonCodes = [];
@@ -806,8 +892,12 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     reasonCodes.push('experience_signal');
   }
 
-  if (hasOrganizerHistorySignal) {
-    reasons.push('Prior participation with this organizer');
+    if (hasOrganizerHistorySignal) {
+    reasons.push(
+      effectiveOrganizerHistoryCount > 0
+        ? `Prior participation with this organizer (${effectiveOrganizerHistoryCount})`
+        : 'Prior participation with this organizer'
+    );
     reasonCodes.push('organizer_history_signal');
   }
 
@@ -821,6 +911,11 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
     availability_score: adjustedAvailabilityScore,
     experience_score: experienceScore,
     history_score: organizerHistoryScore,
+    profile_completeness_ratio: Number(profileCompletenessRatio.toFixed(3)),
+    availability_coverage_ratio: Number(availabilityCoverage.toFixed(3)),
+    required_skill_density_ratio: Number(requiredSkillDensityRatio.toFixed(3)),
+    duration_fit_ratio: Number(durationFitRatio.toFixed(3)),
+    duration_hours: Number(durationHours.toFixed(2)),
     availability_raw_score: availabilityMatch.score,
     availability_weight: Number(availabilityWeight.toFixed(2)),
     final_score: matchScore,
@@ -892,8 +987,14 @@ function scoreActivityForVolunteerProfile({ activity, profile, hasOrganizerHisto
       availability_raw_score: scoreBreakdown.availability_raw_score,
       availability_weight: scoreBreakdown.availability_weight,
       availability_is_broad: availabilityIsBroad,
+      profile_completeness_ratio: Number(profileCompletenessRatio.toFixed(3)),
+      required_skill_density_ratio: Number(requiredSkillDensityRatio.toFixed(3)),
+      duration_fit_ratio: Number(durationFitRatio.toFixed(3)),
+      duration_hours: Number(durationHours.toFixed(2)),
       experience_score: scoreBreakdown.experience_score,
       history_score: scoreBreakdown.history_score,
+      history_ratio_capped: Number(historyRatioCapped.toFixed(3)),
+      history_cutoff_at: historyCutoffAt ?? null,
       volunteer_skills: Array.from(volunteerSkills),
       required_skills: Array.from(requiredSkills),
       matched_skills: matchedSkills,
@@ -928,10 +1029,12 @@ async function getOrganizerNamesByIds(organizerIds) {
   return new Map((data ?? []).map((row) => [row.id, row.full_name]));
 }
 
-async function getVolunteerHistoryContext(volunteerId) {
+async function getVolunteerHistoryContext(volunteerId, options = {}) {
+  const historyCutoffMs = parseTimestampMs(options?.historyCutoffAt ?? null);
+  const excludedActivityId = String(options?.excludeActivityId ?? '').trim();
   const { data, error } = await supabaseAdmin
     .from('activity_participations')
-    .select('activity_id, status')
+    .select('activity_id, status, created_at')
     .eq('volunteer_id', volunteerId)
     .limit(500);
 
@@ -946,11 +1049,22 @@ async function getVolunteerHistoryContext(volunteerId) {
   const successStatusByActivityId = new Map();
   for (const row of data ?? []) {
     const normalizedStatus = String(row.status ?? '').trim().toLowerCase();
+    const rowCreatedAtMs = parseTimestampMs(row.created_at);
+    const outsideHistoryWindow =
+      Number.isFinite(historyCutoffMs) &&
+      Number.isFinite(rowCreatedAtMs) &&
+      rowCreatedAtMs >= historyCutoffMs;
     if (row.activity_id) {
       registeredActivityIds.add(row.activity_id);
     }
     if (row.activity_id && ACTIVE_PARTICIPATION_STATUSES.has(normalizedStatus)) {
       activeRegisteredActivityIds.add(row.activity_id);
+    }
+    if (outsideHistoryWindow) {
+      continue;
+    }
+    if (excludedActivityId && String(row.activity_id).trim() === excludedActivityId) {
+      continue;
     }
     if (row.activity_id && normalizedStatus === 'checked_in') {
       checkedInActivityIds.add(row.activity_id);
@@ -977,6 +1091,7 @@ async function getVolunteerHistoryContext(volunteerId) {
   }
 
   const now = Date.now();
+  const effectiveCutoffMs = Number.isFinite(historyCutoffMs) ? historyCutoffMs : now;
   const { data: activities, error: activitiesError } = await supabaseAdmin
     .from('activities')
     .select('id, organizer_id, status, end_time, deleted_at')
@@ -999,9 +1114,9 @@ async function getVolunteerHistoryContext(volunteerId) {
     const hasApproved = statusSet.has('approved');
     const activityStatus = String(row?.status ?? '').trim().toLowerCase();
     const endTimeMs = new Date(row?.end_time ?? 0).getTime();
-    const endedInPast = Number.isFinite(endTimeMs) && endTimeMs > 0 && endTimeMs < now;
-    const canCountApprovedHistory = hasApproved && (activityStatus === 'completed' || endedInPast);
-    const qualifiesForHistory = hasCheckedIn || canCountApprovedHistory;
+    const endedBeforeCutoff = Number.isFinite(endTimeMs) && endTimeMs > 0 && endTimeMs < effectiveCutoffMs;
+    const hasAnySuccessStatus = hasCheckedIn || hasApproved;
+    const qualifiesForHistory = hasAnySuccessStatus && (activityStatus === 'completed' || endedBeforeCutoff);
     if (!qualifiesForHistory) {
       continue;
     }
@@ -1112,8 +1227,24 @@ async function getRegisteredVolunteerIdsByActivityIds(activityIds) {
   return registeredByActivityId;
 }
 
-async function calculateActivityMatchForVolunteer({ activity, volunteerId }) {
-  const [{ profile }, history] = await Promise.all([getVolunteerProfileBundle(volunteerId), getVolunteerHistoryContext(volunteerId)]);
+async function calculateActivityMatchForVolunteer({
+  activity,
+  volunteerId,
+  historyCutoffAt = null,
+  excludeActivityId = null,
+}) {
+  const effectiveHistoryCutoffAt =
+    resolveHistoryCutoffIso({
+      participationCreatedAt: historyCutoffAt,
+      activityStartTime: null,
+    }) ?? new Date().toISOString();
+  const [{ profile }, history] = await Promise.all([
+    getVolunteerProfileBundle(volunteerId),
+    getVolunteerHistoryContext(volunteerId, {
+      historyCutoffAt: effectiveHistoryCutoffAt,
+      excludeActivityId,
+    }),
+  ]);
 
   const organizerId = String(activity?.organizer_id ?? '').trim();
   const organizerHistoryCount =
@@ -1123,6 +1254,7 @@ async function calculateActivityMatchForVolunteer({ activity, volunteerId }) {
     profile,
     hasOrganizerHistory: organizerHistoryCount > 0,
     organizerHistoryCount,
+    historyCutoffAt: effectiveHistoryCutoffAt,
   });
 }
 
@@ -1159,6 +1291,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
     );
   }
 
+  const runtimeHistoryCutoffAt = new Date().toISOString();
   const candidateRows = allActivities.map((activity) => {
     const activeVolunteerSet = registeredByActivityId.get(activity.id) ?? new Set();
     const eligibility = evaluateActivityEligibility({
@@ -1172,6 +1305,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       profile,
       hasOrganizerHistory: history.organizerHistoryIds.has(activity.organizer_id),
       organizerHistoryCount: Number(history?.organizerHistoryCounts?.get?.(activity.organizer_id) ?? 0),
+      historyCutoffAt: runtimeHistoryCutoffAt,
     });
 
     return buildCandidateActivityRow({
@@ -1236,6 +1370,13 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
   };
 
   candidateRows.sort((left, right) => {
+    // Ranking must use the same score shown to users as match percentage.
+    // Decision is only a tie-breaker.
+    const scoreGap = Number(right.matchScore ?? 0) - Number(left.matchScore ?? 0);
+    if (scoreGap !== 0) {
+      return scoreGap;
+    }
+
     const leftDecision = String(left?.ai_decision?.decision ?? 'not_recommended');
     const rightDecision = String(right?.ai_decision?.decision ?? 'not_recommended');
     const leftOrder = decisionOrder[leftDecision] ?? 99;
@@ -1243,11 +1384,13 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
     if (leftOrder !== rightOrder) {
       return leftOrder - rightOrder;
     }
-    const scoreGap = Number(right.matchScore ?? 0) - Number(left.matchScore ?? 0);
-    if (scoreGap !== 0) {
-      return scoreGap;
+
+    const startTimeGap = String(left.startTime ?? '').localeCompare(String(right.startTime ?? ''));
+    if (startTimeGap !== 0) {
+      return startTimeGap;
     }
-    return String(left.startTime ?? '').localeCompare(String(right.startTime ?? ''));
+
+    return String(left.activityId ?? '').localeCompare(String(right.activityId ?? ''));
   });
 
   const selectedRows = candidateRows.filter((row) =>
@@ -1265,8 +1408,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       },
     }));
 
-  const primaryIndex = includedRows.findIndex((row) => row.ai_decision?.decision === 'recommend');
-  const fallbackPrimaryIndex = primaryIndex === -1 ? 0 : primaryIndex;
+  const fallbackPrimaryIndex = 0;
   if (includedRows[fallbackPrimaryIndex]) {
     includedRows[fallbackPrimaryIndex] = {
       ...includedRows[fallbackPrimaryIndex],
@@ -1297,6 +1439,11 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
     RECOMMENDATION_PROVIDER;
   const recommendedCount = selectedRows.filter((row) => row?.ai_decision?.decision === 'recommend').length;
   const fallbackUsed = modelKind !== 'ml_logistic_regression_v1';
+  const scoringStrategy = String(
+    includedRows[0]?.prediction_snapshot?.scoring_strategy ??
+      candidateRows[0]?.prediction_snapshot?.scoring_strategy ??
+      (fallbackUsed ? 'heuristic_fallback' : 'hybrid_heuristic_ml_blend')
+  ).trim();
 
   return {
     userId,
@@ -1307,6 +1454,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       model_version: modelVersion,
       provider,
       fallback_used: fallbackUsed,
+      scoring_strategy: scoringStrategy,
       candidate_count: candidateRows.length,
       recommended_count: recommendedCount,
       excluded_count: excludedRows.length,
@@ -1333,6 +1481,7 @@ async function getVolunteerRecommendationsForActivity(activityId, limit = 10) {
 
   const registeredVolunteerIds = registeredByActivityId.get(activityId) ?? new Set();
 
+  const runtimeHistoryCutoffAt = new Date().toISOString();
   const volunteers = candidates
     .filter((candidate) => !registeredVolunteerIds.has(candidate.user.id))
     .map((candidate) => {
@@ -1340,6 +1489,7 @@ async function getVolunteerRecommendationsForActivity(activityId, limit = 10) {
         activity,
         profile: candidate.profile,
         hasOrganizerHistory: false,
+        historyCutoffAt: runtimeHistoryCutoffAt,
       });
 
       return {
@@ -1407,6 +1557,7 @@ async function getOrganizerRecommendationsForUser(userId, limit = 10) {
 
   const bestByVolunteerId = new Map();
 
+  const runtimeHistoryCutoffAt = new Date().toISOString();
   for (const candidate of candidates) {
     for (const activity of activities) {
       const registeredVolunteerIds = registeredByActivityId.get(activity.id) ?? new Set();
@@ -1418,6 +1569,7 @@ async function getOrganizerRecommendationsForUser(userId, limit = 10) {
         activity,
         profile: candidate.profile,
         hasOrganizerHistory: false,
+        historyCutoffAt: runtimeHistoryCutoffAt,
       });
 
       const previousBest = bestByVolunteerId.get(candidate.user.id);

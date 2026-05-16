@@ -2,7 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const FEATURE_KEYS = ['skill_ratio', 'interest_ratio', 'availability_ratio', 'experience_ratio', 'history_ratio'];
+const FEATURE_KEYS = [
+  'skill_ratio',
+  'interest_ratio',
+  'availability_ratio',
+  'experience_ratio',
+  'history_ratio',
+  'profile_completeness_ratio',
+  'availability_coverage_ratio',
+  'required_skill_density_ratio',
+  'duration_fit_ratio',
+];
 const DEFAULT_MODEL_VERSION = 'heuristic-v2-lite-2026-04';
 const DEFAULT_MODEL_PROVIDER = 'internal';
 
@@ -10,6 +20,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_MODEL_PATH = path.resolve(__dirname, 'artifacts', 'recommendation-ml-v1.json');
 const MODEL_PATH = String(process.env.RECOMMENDATION_ML_MODEL_PATH ?? '').trim() || DEFAULT_MODEL_PATH;
+const MIN_RUNTIME_SAMPLE_SIZE = 100;
+const SCORING_MODE = normalizeScoringMode(process.env.RECOMMENDATION_SCORING_MODE ?? 'hybrid_blend');
 const RUNTIME_MIN_SAMPLES = Math.max(
   1,
   Math.trunc(
@@ -18,6 +30,22 @@ const RUNTIME_MIN_SAMPLES = Math.max(
       60
     )
   )
+);
+const BLEND_WEIGHT = clamp(safeNumber(process.env.RECOMMENDATION_ML_BLEND_WEIGHT ?? 0.25, 0.25), 0, 1);
+const RERANK_ML_WEIGHT = clamp(safeNumber(process.env.RECOMMENDATION_ML_RERANK_ML_WEIGHT ?? 0.85, 0.85), 0.5, 1);
+const RUNTIME_PROD_MIN_SAMPLES = Math.max(
+  MIN_RUNTIME_SAMPLE_SIZE,
+  Math.trunc(safeNumber(process.env.RECOMMENDATION_ML_RUNTIME_PROD_MIN_SAMPLES ?? 500, 500))
+);
+const ENFORCE_PROD_MIN_SAMPLES = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.RECOMMENDATION_ML_ENFORCE_PROD_MIN_SAMPLES ?? '')
+    .trim()
+    .toLowerCase()
+);
+const REQUIRE_EVALUATION_PASS = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.RECOMMENDATION_ML_REQUIRE_EVALUATION_PASS ?? '')
+    .trim()
+    .toLowerCase()
 );
 const FORCE_HEURISTIC = ['1', 'true', 'yes', 'on'].includes(
   String(process.env.RECOMMENDATION_ML_FORCE_HEURISTIC ?? '')
@@ -39,6 +67,19 @@ function safeNumber(value, fallback = 0) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeScoringMode(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'heuristic_only') {
+    return 'heuristic_only';
+  }
+  if (normalized === 'ml_rerank') {
+    return 'ml_rerank';
+  }
+  return 'hybrid_blend';
 }
 
 function sigmoid(z) {
@@ -93,9 +134,44 @@ function sanitizeModel(rawModel) {
     weights,
     bias,
     sample_size: safeNumber(rawModel.sample_size, 0),
+    metrics: rawModel.metrics && typeof rawModel.metrics === 'object' ? rawModel.metrics : null,
+    feature_stats:
+      rawModel.feature_stats && typeof rawModel.feature_stats === 'object' ? rawModel.feature_stats : null,
+    weight_sanity:
+      rawModel.weight_sanity && typeof rawModel.weight_sanity === 'object' ? rawModel.weight_sanity : null,
+    evaluation_summary:
+      rawModel.evaluation_summary && typeof rawModel.evaluation_summary === 'object' ? rawModel.evaluation_summary : null,
     training_config:
       rawModel.training_config && typeof rawModel.training_config === 'object' ? rawModel.training_config : null,
   };
+}
+
+function hasRequiredMetrics(metrics) {
+  const test = metrics?.test;
+  if (!test || typeof test !== 'object') {
+    return false;
+  }
+  const accuracy = safeNumber(test.accuracy, NaN);
+  const precision = safeNumber(test.precision, NaN);
+  const recall = safeNumber(test.recall, NaN);
+  const f1 = safeNumber(test.f1, NaN);
+  const confusion = test.confusion_matrix;
+  return (
+    Number.isFinite(accuracy) &&
+    Number.isFinite(precision) &&
+    Number.isFinite(recall) &&
+    Number.isFinite(f1) &&
+    confusion &&
+    typeof confusion === 'object'
+  );
+}
+
+function getInterestSignalMean(featureStats) {
+  const direct = safeNumber(featureStats?.interest_ratio?.overall?.mean, NaN);
+  if (Number.isFinite(direct)) {
+    return direct;
+  }
+  return safeNumber(featureStats?.overall?.interest_ratio?.mean, 0);
 }
 
 function getModelRejectionReason(model) {
@@ -107,8 +183,14 @@ function getModelRejectionReason(model) {
   if (sampleSize <= 0) {
     return 'artifact_missing_sample_size';
   }
+  if (sampleSize < MIN_RUNTIME_SAMPLE_SIZE) {
+    return `artifact_sample_size_below_hard_min(${sampleSize}<${MIN_RUNTIME_SAMPLE_SIZE})`;
+  }
   if (sampleSize > 0 && sampleSize < RUNTIME_MIN_SAMPLES) {
     return `artifact_sample_size_below_threshold(${sampleSize}<${RUNTIME_MIN_SAMPLES})`;
+  }
+  if (ENFORCE_PROD_MIN_SAMPLES && sampleSize < RUNTIME_PROD_MIN_SAMPLES) {
+    return `artifact_sample_size_below_production_threshold(${sampleSize}<${RUNTIME_PROD_MIN_SAMPLES})`;
   }
 
   const configMinSamples = safeNumber(model?.training_config?.min_train_samples, NaN);
@@ -117,20 +199,61 @@ function getModelRejectionReason(model) {
   }
 
   const lowSampleModeUsed = Boolean(model?.training_config?.low_sample_mode_used);
-  if (lowSampleModeUsed && RUNTIME_MIN_SAMPLES >= 60) {
+  if (lowSampleModeUsed) {
     return 'artifact_trained_in_low_sample_mode';
+  }
+
+  if (!hasRequiredMetrics(model?.metrics)) {
+    return 'artifact_metrics_incomplete';
+  }
+
+  const skillWeight = safeNumber(model?.weights?.skill_ratio, 0);
+  const interestWeight = safeNumber(model?.weights?.interest_ratio, 0);
+  const availabilityWeight = safeNumber(model?.weights?.availability_ratio, 0);
+  const historyWeight = safeNumber(model?.weights?.history_ratio, 0);
+  if (skillWeight < -0.1) {
+    return `artifact_negative_skill_weight(${skillWeight.toFixed(4)})`;
+  }
+
+  const strongestCoreWeight = Math.max(
+    1e-6,
+    Math.abs(skillWeight),
+    Math.abs(interestWeight),
+    Math.abs(availabilityWeight)
+  );
+  if (Math.abs(historyWeight) > strongestCoreWeight * 2.5) {
+    return `artifact_history_weight_dominates(${Math.abs(historyWeight).toFixed(4)}>${(strongestCoreWeight * 2.5).toFixed(
+      4
+    )})`;
+  }
+
+  const interestSignalMean = getInterestSignalMean(model?.feature_stats);
+  if (interestWeight === 0 && interestSignalMean > 0) {
+    return `artifact_zero_interest_weight_with_interest_signal(${interestSignalMean.toFixed(4)})`;
+  }
+
+  const evaluationVerdict = String(model?.evaluation_summary?.verdict ?? '').trim();
+  if (evaluationVerdict && evaluationVerdict !== 'ML_READY_TO_USE') {
+    return `artifact_evaluation_verdict_${evaluationVerdict}`;
+  }
+  if (REQUIRE_EVALUATION_PASS && evaluationVerdict !== 'ML_READY_TO_USE') {
+    return evaluationVerdict ? `artifact_evaluation_verdict_${evaluationVerdict}` : 'artifact_missing_evaluation_verdict';
   }
 
   return null;
 }
 
 function tryLoadModel() {
-  if (FORCE_HEURISTIC) {
+  if (FORCE_HEURISTIC || SCORING_MODE === 'heuristic_only') {
     if (!cachedModelReady) {
-      console.warn('[recommendation.ml] RECOMMENDATION_ML_FORCE_HEURISTIC=true, skip ML model load');
+      console.warn(
+        `[recommendation.ml] ML model load skipped: ${
+          FORCE_HEURISTIC ? 'RECOMMENDATION_ML_FORCE_HEURISTIC=true' : 'RECOMMENDATION_SCORING_MODE=heuristic_only'
+        }`
+      );
       cachedModelReady = true;
       cachedModel = null;
-      cachedModelUnavailableReason = 'force_heuristic_env';
+      cachedModelUnavailableReason = FORCE_HEURISTIC ? 'force_heuristic_env' : 'heuristic_only_mode';
     }
     return null;
   }
@@ -173,13 +296,31 @@ function resetModelCacheForTests() {
   cachedModelUnavailableReason = 'not_loaded';
 }
 
-function buildMlFeatures(scoreBreakdown = {}) {
+function buildMlFeatures(heuristicResult = {}) {
+  const scoreBreakdown = heuristicResult?.score_breakdown ?? {};
+  const featureSnapshot = heuristicResult?.feature_snapshot ?? {};
   return {
     skill_ratio: normalizeRatio(safeNumber(scoreBreakdown.skill_score, 0), 50),
     interest_ratio: normalizeRatio(safeNumber(scoreBreakdown.interest_score, 0), 20),
     availability_ratio: normalizeRatio(safeNumber(scoreBreakdown.availability_score, 0), 15),
     experience_ratio: normalizeRatio(safeNumber(scoreBreakdown.experience_score, 0), 10),
     history_ratio: normalizeRatio(safeNumber(scoreBreakdown.history_score, 0), 5),
+    profile_completeness_ratio: normalizeRatio(
+      safeNumber(scoreBreakdown.profile_completeness_ratio, safeNumber(featureSnapshot.profile_completeness_ratio, 0)),
+      1
+    ),
+    availability_coverage_ratio: normalizeRatio(
+      safeNumber(scoreBreakdown.availability_coverage_ratio, safeNumber(featureSnapshot.availability_coverage_ratio, 0)),
+      1
+    ),
+    required_skill_density_ratio: normalizeRatio(
+      safeNumber(scoreBreakdown.required_skill_density_ratio, safeNumber(featureSnapshot.required_skill_density_ratio, 0)),
+      1
+    ),
+    duration_fit_ratio: normalizeRatio(
+      safeNumber(scoreBreakdown.duration_fit_ratio, safeNumber(featureSnapshot.duration_fit_ratio, 0)),
+      1
+    ),
   };
 }
 
@@ -244,30 +385,39 @@ function scoreWithMlModel(heuristicResult = {}) {
       model_kind: 'heuristic',
       prediction_snapshot: {
         strategy: FORCE_HEURISTIC ? 'heuristic_forced' : 'heuristic_fallback',
+        scoring_strategy: FORCE_HEURISTIC ? 'heuristic_forced' : SCORING_MODE === 'heuristic_only' ? 'heuristic_only' : 'heuristic_fallback',
         fallback_reason: FORCE_HEURISTIC
           ? 'force_heuristic_env'
+          : SCORING_MODE === 'heuristic_only'
+            ? 'heuristic_only_mode'
           : cachedModelUnavailableReason || 'model_unavailable_or_invalid',
         heuristic_score: heuristicScore,
         ml_score: null,
+        blended_score: heuristicScore,
+        blend_weight: BLEND_WEIGHT,
         final_score: heuristicScore,
+        scoring_mode: SCORING_MODE,
       },
       feature_snapshot: {
         ...(heuristicResult?.feature_snapshot && typeof heuristicResult.feature_snapshot === 'object'
           ? heuristicResult.feature_snapshot
           : {}),
-        ...buildMlFeatures(heuristicResult?.score_breakdown),
+        ...buildMlFeatures(heuristicResult),
       },
     };
   }
 
-  const features = buildMlFeatures(heuristicResult?.score_breakdown);
+  const features = buildMlFeatures(heuristicResult);
   let logit = model.bias;
   for (const featureKey of FEATURE_KEYS) {
     logit += safeNumber(model.weights[featureKey], 0) * safeNumber(features[featureKey], 0);
   }
 
   const probability = sigmoid(logit);
-  const matchScore = clamp(Number((probability * 100).toFixed(1)), 0, 100);
+  const mlScore = clamp(Number((probability * 100).toFixed(1)), 0, 100);
+  const appliedMlWeight = SCORING_MODE === 'ml_rerank' ? RERANK_ML_WEIGHT : BLEND_WEIGHT;
+  const scoringStrategy = SCORING_MODE === 'ml_rerank' ? 'ml_rerank_with_heuristic_guard' : 'hybrid_heuristic_ml_blend';
+  const blendedScore = clamp(Number((heuristicScore * (1 - appliedMlWeight) + mlScore * appliedMlWeight).toFixed(1)), 0, 100);
 
   const termContributions = FEATURE_KEYS.map((featureKey) => ({
     feature: featureKey,
@@ -303,13 +453,13 @@ function scoreWithMlModel(heuristicResult = {}) {
 
   return {
     ...heuristicResult,
-    matchScore,
-    matchRatio: Number((matchScore / 100).toFixed(3)),
+    matchScore: blendedScore,
+    matchRatio: Number((blendedScore / 100).toFixed(3)),
     reason_codes: reasonCodes,
     feature_contributions: featureContributions,
     score_breakdown: {
       ...(heuristicResult?.score_breakdown ?? {}),
-      final_score: matchScore,
+      final_score: blendedScore,
     },
     model_version: model.model_version,
     provider: model.provider || DEFAULT_MODEL_PROVIDER,
@@ -322,13 +472,17 @@ function scoreWithMlModel(heuristicResult = {}) {
       ...features,
     },
     prediction_snapshot: {
-      strategy: 'ml_logistic_regression',
+      strategy: scoringStrategy,
+      scoring_strategy: scoringStrategy,
       label: model.label,
       probability,
       logit,
       heuristic_score: heuristicScore,
-      ml_score: matchScore,
-      final_score: matchScore,
+      ml_score: mlScore,
+      blended_score: blendedScore,
+      blend_weight: appliedMlWeight,
+      final_score: blendedScore,
+      scoring_mode: SCORING_MODE,
       weights: model.weights,
       bias: model.bias,
     },

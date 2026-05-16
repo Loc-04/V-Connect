@@ -154,13 +154,18 @@ router.post('/auth/register', registerRateLimiter, async (req, res) => {
 
     const { data: userProfile, error: userProfileError } = await supabaseAdmin
       .from('users')
-      .insert({
-        id: userId,
-        role: payload.role,
-        full_name: payload.fullName,
-        phone: payload.phone,
-        status: 'active',
-      })
+      .upsert(
+        {
+          id: userId,
+          role: payload.role,
+          full_name: payload.fullName,
+          phone: payload.phone,
+          status: 'active',
+          deleted_at: null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      )
       .select('id, role, full_name, phone, avatar_url, status, created_at, updated_at, deleted_at')
       .single();
 
