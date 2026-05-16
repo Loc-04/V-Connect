@@ -16,7 +16,7 @@ export const ROUTES = {
     ORGANIZER_PROFILE: '/(volunteer)/organizer',
   },
   ORGANIZER: {
-    HOME: '/(organizer)/(tabs)/home',
+    HOME: '/(organizer)/(tabs)/activities',
     ACTIVITIES: '/(organizer)/(tabs)/activities',
     PROFILE: '/(organizer)/(tabs)/profile',
     REGISTER_MANAGEMENT: '/(organizer)/register-management',

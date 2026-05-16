@@ -50,6 +50,7 @@ interface ActivityRow {
   locationLine: string;
   organizerName: string;
   imageUrl: string;
+  recommendationItemId: string | null;
 }
 
 type DatePresetKey = 'all' | 'today' | 'week' | 'month';
@@ -122,6 +123,7 @@ function mapRecommendation(
       coverFromPublished,
       item.cover_image_url,
     ),
+    recommendationItemId: item.recommendation_item_id ?? null,
   };
 }
 
@@ -141,6 +143,7 @@ function mapPublishedActivity(
     locationLine: formatLocationLine(activity.location),
     organizerName,
     imageUrl: resolveExploreCoverUrl(activity.id, activity.cover_image_url),
+    recommendationItemId: null,
   };
 }
 
@@ -403,8 +406,12 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [isFiltering, loadFiltered, loadDefault, loadMyActivities]);
 
-  const openDetail = useCallback((id: string) => {
-    router.push(`/(volunteer)/activity/${id}`);
+  const openDetail = useCallback((id: string, recommendationItemId: string | null) => {
+    if (recommendationItemId) {
+      router.push(`/(volunteer)/activity/${id}?recommendationItemId=${recommendationItemId}`);
+    } else {
+      router.push(`/(volunteer)/activity/${id}`);
+    }
   }, []);
 
   const toggleSkill = useCallback((skill: string) => {
@@ -659,7 +666,7 @@ export default function HomeScreen() {
             locationLine={item.locationLine}
             organizerName={item.organizerName}
             imageUrl={item.imageUrl}
-            onPress={() => openDetail(item.id)}
+            onPress={() => openDetail(item.id, item.recommendationItemId)}
           />
         )}
       />

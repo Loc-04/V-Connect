@@ -201,8 +201,8 @@ export default function OrganizerActivitiesScreen() {
         </View>
 
         <View style={styles.filterControl}>
-
           <View style={styles.pickerWrap}>
+            <MaterialIcons name="filter-list" size={16} color="#6b7280" />
             <Picker
               mode="dropdown"
               selectedValue={statusFilter}
@@ -218,8 +218,8 @@ export default function OrganizerActivitiesScreen() {
         </View>
 
         <View style={styles.filterControl}>
-
           <View style={styles.pickerWrap}>
+            <MaterialIcons name="calendar-today" size={14} color="#6b7280" />
             <Picker
               mode="dropdown"
               selectedValue={monthFilter}
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchControl: {
-    width: '50%',
+    width: '38%',
   },
   searchInputWrap: {
     flexDirection: 'row',
@@ -333,12 +333,16 @@ const styles = StyleSheet.create({
     color: '#4b5563',
   },
   pickerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 10,
     backgroundColor: '#f9fafb',
+    paddingLeft: 8,
   },
   picker: {
+    flex: 1,
     height: 50,
     fontSize: 12,
     color: '#1f2937',

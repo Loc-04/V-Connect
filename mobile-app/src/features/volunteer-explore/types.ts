@@ -16,6 +16,16 @@ export interface VolunteerRecommendationActivity {
   status: string;
   /** Set when API returns it; otherwise merged from published activities in Explore. */
   cover_image_url?: string | null;
+  recommendation_item_id?: string | null;
+  match_tier?: string | null;
+  ai_decision?: {
+    decision?: string;
+    summary?: string;
+    display_explanation?: string;
+  } | null;
+  reason_codes?: string[];
+  score_breakdown?: Record<string, unknown> | null;
+  model_kind?: string | null;
 }
 
 export interface VolunteerRecommendationsResponse {

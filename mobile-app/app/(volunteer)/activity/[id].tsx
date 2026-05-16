@@ -68,8 +68,9 @@ function canRegisterRole(role: UserRole | null): boolean {
 }
 
 export default function VolunteerActivityDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, recommendationItemId } = useLocalSearchParams<{ id: string; recommendationItemId?: string }>();
   const activityId = typeof id === 'string' ? id : '';
+  const routeRecItemId = typeof recommendationItemId === 'string' ? recommendationItemId : null;
   const insets = useSafeAreaInsets();
   const { user, role } = useAuth();
 
@@ -81,6 +82,7 @@ export default function VolunteerActivityDetailScreen() {
   const [organizerNameFromRec, setOrganizerNameFromRec] = useState<string | null>(null);
   const [matchScore, setMatchScore] = useState<number | null>(null);
   const [matchExplanation, setMatchExplanation] = useState<string | null>(null);
+  const [recItemIdState, setRecItemIdState] = useState<string | null>(routeRecItemId);
   const [participation, setParticipation] = useState<ParticipationRow | null>(null);
   const [priorParticipation, setPriorParticipation] = useState<ParticipationRow | null>(null);
   const [conflictCandidates, setConflictCandidates] = useState<ActiveParticipationForConflict[]>([]);
@@ -136,6 +138,7 @@ export default function VolunteerActivityDetailScreen() {
             setOrganizerNameFromRec(hit.organizerName);
             setMatchScore(hit.matchScore);
             setMatchExplanation(hit.explanation);
+            setRecItemIdState(prev => prev || hit.recommendation_item_id || null);
           } else {
             setOrganizerNameFromRec(null);
             setMatchScore(null);
@@ -223,7 +226,7 @@ export default function VolunteerActivityDetailScreen() {
     }
     setRegistering(true);
     try {
-      const result = await registerForActivity(activityId);
+      const result = await registerForActivity(activityId, recItemIdState);
       const msg = result.message ?? (result.created ? 'Registration submitted.' : 'You are already registered.');
       Alert.alert('Registration', msg);
       await loadParticipation();
