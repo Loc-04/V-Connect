@@ -426,7 +426,7 @@
     "duration_fit_ratio": -0.89680567
   },
   "evaluation_summary": {
-    "evaluated_at": "2026-05-15T04:21:58.312Z",
+    "evaluated_at": "2026-05-16T05:26:16.271Z",
     "verdict": "ML_READY_TO_USE",
     "baseline_health": {
       "regression_count": 0,
@@ -436,59 +436,59 @@
     "score_distribution": {
       "min": 4.5,
       "max": 81.3,
-      "average": 29.552,
+      "average": 29.662,
       "ge75": 32,
-      "b60_74": 685,
+      "b60_74": 638,
       "b35_59": 56,
-      "lt35": 1627,
+      "lt35": 1514,
       "repeated_scores": [
         {
           "score": 6.6,
-          "count": 390
+          "count": 365
         },
         {
           "score": 6.8,
-          "count": 199
+          "count": 182
         },
         {
           "score": 5.2,
-          "count": 97
-        },
-        {
-          "score": 63,
-          "count": 96
-        },
-        {
-          "score": 64.1,
-          "count": 92
-        },
-        {
-          "score": 4.5,
           "count": 89
         },
         {
-          "score": 30.5,
-          "count": 82
+          "score": 63,
+          "count": 89
         },
         {
-          "score": 70,
+          "score": 64.1,
+          "count": 84
+        },
+        {
+          "score": 4.5,
+          "count": 81
+        },
+        {
+          "score": 30.5,
           "count": 74
         },
         {
+          "score": 70,
+          "count": 69
+        },
+        {
           "score": 16.3,
-          "count": 66
+          "count": 59
         },
         {
           "score": 65,
-          "count": 53
-        },
-        {
-          "score": 60.6,
           "count": 48
         },
         {
-          "score": 19.1,
-          "count": 44
+          "score": 60.6,
+          "count": 46
+        },
+        {
+          "score": 61.9,
+          "count": 41
         }
       ]
     }

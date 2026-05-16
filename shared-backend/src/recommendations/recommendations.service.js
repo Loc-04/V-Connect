@@ -632,12 +632,15 @@ function decideRecommendation({
     Number(scoreBreakdown?.availability_score ?? 0) === 0 &&
     Number(scoreBreakdown?.experience_score ?? 0) === 0;
   const mlScoreSnapshot = Number(predictionSnapshot?.ml_score ?? Number.NaN);
+  const weakCoreEvidence =
+    matchedSkillCount === 0 &&
+    matchedInterestCount === 0 &&
+    !hasTrustedAvailabilitySignal &&
+    Number(scoreBreakdown?.experience_score ?? 0) <= 0;
   const mlHighScoreWithoutCoreEvidence =
     Number.isFinite(mlScoreSnapshot) &&
     mlScoreSnapshot >= 75 &&
-    matchedSkillCount === 0 &&
-    matchedInterestCount === 0 &&
-    onlyHistorySignal;
+    (onlyHistorySignal || weakCoreEvidence);
   const trustedSignalCount =
     Number(hasSkillSignal) +
     Number(hasInterestSignal) +
@@ -720,7 +723,9 @@ function decideRecommendation({
     recommendationGroup = 'consider_later';
     ctaLabel = 'Explore option';
     priorityLabel = 'Potential fit';
-    decisionReason = 'ml_overconfidence_guard_only_history_signal';
+    decisionReason = onlyHistorySignal
+      ? 'ml_overconfidence_guard_only_history_signal'
+      : 'ml_overconfidence_guard_weak_core_evidence';
     explanation =
       'This activity is kept as a potential fit because the ML score is high but core skill/interest evidence is still limited.';
   }
@@ -1434,6 +1439,11 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
     RECOMMENDATION_PROVIDER;
   const recommendedCount = selectedRows.filter((row) => row?.ai_decision?.decision === 'recommend').length;
   const fallbackUsed = modelKind !== 'ml_logistic_regression_v1';
+  const scoringStrategy = String(
+    includedRows[0]?.prediction_snapshot?.scoring_strategy ??
+      candidateRows[0]?.prediction_snapshot?.scoring_strategy ??
+      (fallbackUsed ? 'heuristic_fallback' : 'hybrid_heuristic_ml_blend')
+  ).trim();
 
   return {
     userId,
@@ -1444,6 +1454,7 @@ async function getVolunteerRecommendationsForUser(userId, limit = 10) {
       model_version: modelVersion,
       provider,
       fallback_used: fallbackUsed,
+      scoring_strategy: scoringStrategy,
       candidate_count: candidateRows.length,
       recommended_count: recommendedCount,
       excluded_count: excludedRows.length,
